@@ -51,7 +51,7 @@ def test_testset_heuristic_deterministic():
 
 
 def _fake_chat(items):
-    def chat(messages, *, url, model, api_key, temperature, max_tokens, extra_body):
+    def chat(messages, *, url, model, api_key, temperature, max_tokens, extra_body, timeout, retries):
         assert url == "http://llm/v1" and model == "m" and extra_body == {"x": 1}
         return "<think>…</think>```json\n" + json.dumps(items, ensure_ascii=False) + "\n```"
     return chat
@@ -161,6 +161,8 @@ def test_run_compare_save(tmp_path):
     assert cmp["n"] == 2 and cmp["metrics"]["recall@5"]["delta"] == pytest.approx(0.75)
     lo, hi = cmp["metrics"]["recall@5"]["ci95"]
     assert 0.5 <= lo <= hi <= 1.0 and cmp["by_type"]["fact"]["metrics"]["mrr"]["delta"] == 1.0
+    with pytest.raises(ValueError, match="same testset"):
+        feval.compare(good, feval.run(TS[:1], Fake(chunks, {"청구 기한": []}), ks=(1, 5)))
     p = feval.save_result(good, tmp_path / "out")
     assert p.stem == good["timestamp"] and json.loads(p.read_text())["n"] == 2
 

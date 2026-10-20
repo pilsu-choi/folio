@@ -114,7 +114,7 @@ def _heuristic(text: str) -> tuple[str, str] | None:
 def generate(docs: list[Document], pages: int = 50, pairs: int = 20, method: str = "llm",
              types: tuple[str, ...] = TYPES, llm_url: str | None = None, model: str | None = None,
              api_key: str | None = None, extra_body: dict | None = None, seed: int = 0, workers: int = 4,
-             min_chars: int = 250) -> tuple[list[dict], dict]:
+             min_chars: int = 250, timeout: float = 300) -> tuple[list[dict], dict]:
     """Sample ``pages`` single pages and ``pairs`` page pairs (seeded; up to 5 pages per document first) and ask the
     LLM for questions with verbatim evidence. Returns ``(items, stats)``; an item is
     ``{qid, type, query, answer, evidence: [{doc_id, page, text, start, end}]}`` (``start``/``end`` = page-text
@@ -166,7 +166,8 @@ def generate(docs: list[Document], pages: int = 50, pairs: int = 20, method: str
         for _ in range(2):  # one retry on a malformed reply or an LLM error
             try:
                 return _parse_items(chat([{"role": "user", "content": prompt}], url=url, model=model, api_key=api_key,
-                                         temperature=0.3, max_tokens=2500, extra_body=extra_body))
+                                         temperature=0.3, max_tokens=2500, extra_body=extra_body,
+                                         timeout=timeout, retries=1))
             except (ValueError, KeyError, FolioError):
                 pass
         return None

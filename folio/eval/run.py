@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import random
 import subprocess
@@ -22,6 +23,12 @@ def config_commit(config_dir: str | None) -> str | None:
     except (OSError, subprocess.SubprocessError):
         return None
     return r.stdout.strip() or None if r.returncode == 0 else None
+
+
+def testset_hash(testset: list[dict]) -> str:
+    """Identity of the testset (queries + evidence): ``compare`` pairs qids only within the same testset."""
+    key = [(it["qid"], it["query"], [(e["doc_id"], e.get("page"), e["text"]) for e in it["evidence"]]) for it in testset]
+    return hashlib.sha256(json.dumps(key, ensure_ascii=False).encode()).hexdigest()[:16]
 
 
 def _prepare(item: dict) -> list[dict]:
@@ -74,7 +81,7 @@ def run(testset: list[dict], retriever, ks=(1, 5, 10), config_dir: str | None = 
     out = {"metrics": _mean(list(per.values())), "n": len(per), "ks": list(ks),
            "by_type": {t: {"n": len(rows), "metrics": _mean(rows)} for t in types
                        if (rows := [r for r in per.values() if r["type"] == t])},
-           "per_query": per, "config_commit": config_commit(config_dir),
+           "per_query": per, "testset_hash": testset_hash(testset), "config_commit": config_commit(config_dir),
            "timestamp": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")}
     if chunks is not None:
         by_doc: dict[str, list] = {}
@@ -88,9 +95,7 @@ def run(testset: list[dict], retriever, ks=(1, 5, 10), config_dir: str | None = 
 def _paired(a: dict, b: dict, qids: list[str], n_boot: int, rng: random.Random) -> dict:
     """Per metric: mean a, mean b, delta (b - a) and a paired-bootstrap 95% CI of the delta."""
     out = {}
-    for m in a[qids[0]]:
-        if m == "type":
-            continue
+    for m in [m for m in a[qids[0]] if m != "type" and m in b[qids[0]]]:
         d = [b[q][m] - a[q][m] for q in qids]
         boots = sorted(sum(rng.choices(d, k=len(d))) / len(d) for _ in range(n_boot))
         out[m] = {"a": sum(a[q][m] for q in qids) / len(qids), "b": sum(b[q][m] for q in qids) / len(qids),
@@ -100,6 +105,8 @@ def _paired(a: dict, b: dict, qids: list[str], n_boot: int, rng: random.Random) 
 
 def compare(result_a: dict, result_b: dict, n_boot: int = 2000, seed: int = 0) -> dict:
     """Paired comparison on the qids both results scored (same testset), overall and per type."""
+    if result_a.get("testset_hash") != result_b.get("testset_hash"):
+        raise ValueError("compare needs results of the same testset (testset_hash differs)")
     a, b = result_a["per_query"], result_b["per_query"]
     qids = sorted(set(a) & set(b))
     rng = random.Random(seed)

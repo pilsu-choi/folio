@@ -191,11 +191,11 @@ def cmd_eval(args) -> int:
         storage = _storage(cfg)
         chunks = [c for k in storage.list(f"{cfg.index}/") if k.endswith("/chunks.json") for c in storage.get_json(k)]
         result = ev.run(items, retriever(cfg), tuple(int(k) for k in args.ks.split(",")),
-                        config_dir=_config_dir(args), chunks=chunks, mode=args.mode)
+                        config_dir=_config_dir(args), chunks=chunks or None, mode=args.mode)
         path = ev.save_result(result, args.out)
         _out({"result": str(path), "metrics": result["metrics"],
               "by_type": {t: v["metrics"] for t, v in result["by_type"].items()},
-              "unreachable": len(result["unreachable"])})
+              "unreachable": len(result["unreachable"]) if chunks else "skipped: no chunks.json in storage"})
     else:
         _out(ev.compare(ev.load_result(args.a), ev.load_result(args.b)))
     return 0
