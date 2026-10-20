@@ -6,7 +6,7 @@ import hashlib
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 BBox = list[float]  # [x0, y0, x1, y1] in pt, top-left origin
 
@@ -92,6 +92,8 @@ class Document(BaseModel):
     mime_type: str
     pages: list[Page] = Field(default_factory=list)
     meta: dict[str, Any] = Field(default_factory=dict)
+    # PDF that `convert` mode parsed (pages/bbox refer to it); not serialized, the pipeline stores it as converted.pdf
+    _converted_pdf: bytes | None = PrivateAttr(default=None)
 
     def iter_blocks(self):
         for page in self.pages:

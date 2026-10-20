@@ -118,3 +118,25 @@ def test_config_dir_on_sys_path_for_mappers(make_cfg, sample, tmp_path):
     (d / "my_mappers_xyz.py").write_text("def m(doc, chunk):\n    return {**chunk, 'z': 1}\n")
     run_pipeline(sample, make_cfg(map="my_mappers_xyz:m", config_dir=str(d)))
     assert all(r["z"] == 1 for r in SINKS["default"].values())
+
+
+def test_converted_pdf_is_stored_next_to_source(make_cfg, tmp_path):
+    from folio.contracts import content_hash
+    from folio.storage import open_storage
+    from tests.test_convert import office_zip
+
+    src = tmp_path / "a.docx"
+    src.write_bytes(office_zip("word/document.xml"))
+    parse = {"fn": "folio.parse:default", "converter": "tests.test_convert:fake_converter",
+             "backend": "tests._parse_helpers:FakeBackend", "vlm": False}
+    cfg = make_cfg(parse=parse, chunk="folio.chunk:adaptive")
+    res = run_pipeline(str(src), cfg, stop_after="parse")
+    st = open_storage(cfg.storage)
+    base = f"idx/{res.doc_id}"
+    pdf = st.get_bytes(f"{base}/converted.pdf")
+    conv = st.get_json(f"{base}/document.json")["meta"]["convert"]
+    assert conv["pdf_hash"] == content_hash(pdf) and conv["pdf_key"] == "converted.pdf"
+    assert st.get_json(f"{base}/manifest.json")["converted_pdf"] == "converted.pdf"
+    # reprocessing later stages keeps the PDF the stored bbox values refer to
+    reprocess(cfg, "chunk")
+    assert st.exists(f"{base}/converted.pdf")

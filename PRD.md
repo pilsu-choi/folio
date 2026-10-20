@@ -294,7 +294,7 @@ HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. 변환
 
 `native` 모드 후보로 [kordoc](https://github.com/chrisryugj/kordoc) 4.22.15(MIT, Node)를 같은 샘플로 확인했다. 한컴 저장 11/11·법령 9/9 성공, 문서당 0.5~0.7초, 텍스트 재현율 0.97(법령은 머리말·꼬리말을 뺀 본문 누락 없음), 블록별 쪽 번호와 병합 셀(rowSpan·colSpan)이 있는 표 구조를 주지만 bbox는 없다. 서식 문서 1개에서는 재현율이 0.89로 일부 텍스트가 빠졌다(원인 미확인). `native` 모드 구현 시 직접 파싱과 비교할 기준으로 쓴다.
 
-구현(2026-10-21): 변환은 별도 이미지 `folio-convert`(`folio convert-server`, `FOLIO_CONVERT_URL`)가 맡는다. 구조 분석 서버와 같은 사이드카 방식이고, GPL인 H2Orestart를 메인 이미지에 넣지 않는다. URL이 없으면 로컬 LibreOffice·rhwp를 쓴다. 바이너리 HWP도 rhwp로 같은 경로를 탄다. Document의 `meta.convert`에 변환기·버전·`pdf_hash`를 남기며, 쪽 번호와 bbox는 그 PDF 기준이다. LibreOffice 출력은 실행마다 바이트가 달라(타임스탬프) 해시로 PDF를 재현할 수는 없다.
+구현(2026-10-21): 변환은 별도 이미지 `folio-convert`(`folio convert-server`, `FOLIO_CONVERT_URL`)가 맡는다. 구조 분석 서버와 같은 사이드카 방식이고, GPL인 H2Orestart를 메인 이미지에 넣지 않는다. URL이 없으면 로컬 LibreOffice·rhwp를 쓴다. 바이너리 HWP도 rhwp로 같은 경로를 탄다. Document의 `meta.convert`에 변환기·버전·`pdf_hash`를 남기며, 쪽 번호와 bbox는 그 PDF 기준이다. LibreOffice 출력은 실행마다 바이트가 달라(타임스탬프) 해시로 PDF를 재현할 수는 없다. 그래서 인용 하이라이트용으로 변환 PDF를 원본 옆(`{index}/{doc_id}/converted.pdf`)에 저장한다(2026-10-21 사용자 결정). 공개 샘플 기준 변환 PDF 크기는 원본 대비 DOCX 1.1배, HWPX 2.0배(합계)다.
 
 결론 (2026-10-21 벤치마크, [기록](wiki/2026-10-21-docx-converter-benchmark.md)): **DOCX → PDF 기본 변환기는 LibreOffice로 한다.** HWPX 대체 변환기와 같은 이미지를 쓴다. 고객사 샘플로 다시 확인할 때까지 이 결정은 잠정이다.
 
@@ -506,7 +506,7 @@ FR-21(DOCX·HWPX `native`, 보류)을 제외한 FR을 구현했다. FR-20(DOCX·
 - [ ] ARM GPU 호스트(예: DGX Spark GB10, aarch64 sm_121): paddlepaddle-gpu 3.3.1(cu129)·3.5 nightly(cu130)가 `run_check()`에서 실패해 PP-StructureV3가 CPU로만 돈다. 이런 고객사 환경을 지원할지, 그때 Docling(GPU 동작 확인)을 기본으로 쓸지
 - [ ] HWPX → PDF 변환기: 공개 샘플 벤치마크로 rhwp 기본 + LibreOffice·H2Orestart 대체로 잠정 결정. 첫 고객사 샘플로 재확인 필요
 - [ ] DOCX → PDF 변환기: 공개 샘플 벤치마크(Word PDF 정답)로 LibreOffice 기본으로 잠정 결정, OnlyOffice 제외. 첫 고객사 샘플로 재확인 필요
-- [ ] 변환 PDF 보관: bbox는 그 파싱에서 만든 PDF 기준이므로, 인용 하이라이트용으로 변환 PDF를 원본과 함께 저장·제공할지(현재는 `meta.convert.pdf_hash`만 기록, LibreOffice 재변환은 바이트가 달라짐)
+- [x] 변환 PDF 보관: 원본 옆에 `converted.pdf`로 저장(2026-10-21 사용자 결정). 앱에 제공하는 API는 아직 없다(앱은 artifact 저장소를 직접 읽는다)
 - [x] VLM 모델 수: 스캔 파싱·그림 설명·복잡 표를 모델 1개로 처리 (이미지 콘텐츠에 VLM 기본 적용도 결정됨)
 - [ ] VLM 모델 선정: 공개 샘플로 Qwen3.5-9B 잠정 선택([VLM 모델](#vlm-모델-1개)). 고객사 샘플 재확인, HTML 표 파서, FP8 속도 확인 필요
 - [ ] `adaptive` 청킹 기본값: 공개 샘플로 `max_tokens=512`·`min_tokens=64`가 잠정 최적([파라미터](#파라미터)). 현재 기본값 1024/128을 바꿀지 사용자 결정 필요

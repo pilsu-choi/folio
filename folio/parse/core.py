@@ -174,8 +174,10 @@ def default(uri: str, **opts: Any) -> Document:
     }
     doc_pages = [Page(page=p["page"], width=p["width"], height=p["height"],
                       blocks=[Block(**b) for b in p["blocks"]]) for p in pages]
-    return Document(doc_id=make_doc_id(uri, h), source_uri=uri, content_hash=h, mime_type=mime,
-                    pages=doc_pages, meta=meta)
+    doc = Document(doc_id=make_doc_id(uri, h), source_uri=uri, content_hash=h, mime_type=mime,
+                   pages=doc_pages, meta=meta)
+    doc._converted_pdf = data_pdf if converted else None
+    return doc
 
 
 def _table_is_weak(b: dict, words: list[Atom], o: Options) -> bool:
