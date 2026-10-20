@@ -12,7 +12,7 @@ if [ ! -f "$ENV_FILE" ]; then
   ENV_FILE=$(mktemp)
   # Random throwaway secrets (alphanumeric = URL-safe); never persisted.
   for k in POSTGRES_PASSWORD RABBITMQ_PASSWORD MINIO_ROOT_PASSWORD; do echo "$k=$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')" >> "$ENV_FILE"; done
-  echo "COMPOSE_PROFILES=infra,cpu" >> "$ENV_FILE"
+  echo "COMPOSE_PROFILES=${E2E_PROFILES:-infra,dev}" >> "$ENV_FILE"  # dev = heuristic structure server (no GPU/models)
   TMP_ENV=$ENV_FILE
 fi
 export COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-folio-e2e}

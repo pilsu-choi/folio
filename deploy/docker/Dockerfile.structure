@@ -1,15 +1,19 @@
 # syntax=docker/dockerfile:1
 # folio-structure: document structure analysis model server (`folio structure-server`).
 #   docker build -f deploy/docker/Dockerfile.structure \
-#       --build-arg BACKEND=docling --build-arg DEVICE=cpu -t folio-structure:0.1.0-cpu .
-# BACKEND: docling | ppstructure | heuristic     DEVICE: cpu | gpu (gpu = CUDA wheels; host needs NVIDIA container toolkit)
+#       --build-arg BACKEND=ppstructure --build-arg DEVICE=gpu -t folio-structure:0.1.0-gpu .
+# BACKEND: ppstructure (default) | docling | heuristic     DEVICE: gpu (default) | cpu
+#   gpu = CUDA wheels; host needs the NVIDIA driver + container toolkit. cpu = fallback for hosts without a GPU.
 # Model weights are NOT baked in: mount a volume at /models (caches point there).
-ARG BACKEND=heuristic
-ARG DEVICE=cpu
+ARG BACKEND=ppstructure
+ARG DEVICE=gpu
 
 FROM python:3.12-slim AS build
 ARG BACKEND
 ARG DEVICE
+# paddle 3.3.1 + paddleocr 3.7 is the combination benchmarked (CPU) and verified on GPU (CUDA 12.6 wheels bundle
+# the CUDA/cuDNN runtime; the host only needs the NVIDIA driver + container toolkit).
+ARG PADDLE_VERSION=3.3.1
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
 RUN python -m venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH
@@ -24,8 +28,8 @@ RUN set -eux; \
         pip install torch torchvision --index-url "${TORCH_INDEX}"; \
         pip install ".[service,docling]" ;; \
       ppstructure) \
-        if [ "${DEVICE}" = "gpu" ]; then pip install paddlepaddle-gpu==3.0.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu123/; \
-        else pip install paddlepaddle==3.0.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/; fi; \
+        if [ "${DEVICE}" = "gpu" ]; then pip install "paddlepaddle-gpu==${PADDLE_VERSION}" -i https://www.paddlepaddle.org.cn/packages/stable/cu126/; \
+        else pip install "paddlepaddle==${PADDLE_VERSION}" -i https://www.paddlepaddle.org.cn/packages/stable/cpu/; fi; \
         pip install ".[service,ppstructure]" ;; \
       heuristic) pip install ".[service,ocr]" ;; \
       *) echo "unknown BACKEND=${BACKEND}" >&2; exit 1 ;; \

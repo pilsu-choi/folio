@@ -36,12 +36,12 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - run: |
           docker build -f deploy/docker/Dockerfile -t folio:$FOLIO_TAG .
-          docker build -f deploy/docker/Dockerfile.structure --build-arg BACKEND=heuristic --build-arg DEVICE=cpu -t folio-structure:$FOLIO_TAG-cpu .
+          docker build -f deploy/docker/Dockerfile.structure --build-arg BACKEND=heuristic --build-arg DEVICE=cpu -t folio-structure:$FOLIO_TAG-heuristic .
           docker build -f deploy/docker/Dockerfile.opensearch -t folio-opensearch:$FOLIO_TAG .
           test "$(docker run --rm --entrypoint id -u folio:$FOLIO_TAG)" = 10001
       - run: |
           mkdir images
-          docker save folio:$FOLIO_TAG folio-structure:$FOLIO_TAG-cpu folio-opensearch:$FOLIO_TAG -o images/folio-images.tar
+          docker save folio:$FOLIO_TAG folio-structure:$FOLIO_TAG-heuristic folio-opensearch:$FOLIO_TAG -o images/folio-images.tar
       - uses: actions/upload-artifact@v4
         with: {name: images, path: images/folio-images.tar, retention-days: 1}
 
@@ -57,7 +57,7 @@ jobs:
       - run: docker load -i folio-images.tar
       - uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: ${{ matrix.image }}:${{ env.FOLIO_TAG }}${{ matrix.image == 'folio-structure' && '-cpu' || '' }}
+          image-ref: ${{ matrix.image }}:${{ env.FOLIO_TAG }}${{ matrix.image == 'folio-structure' && '-heuristic' || '' }}
           severity: CRITICAL
           exit-code: "1"
           ignore-unfixed: true

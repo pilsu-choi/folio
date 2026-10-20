@@ -5,7 +5,9 @@
 # Profiles (set COMPOSE_PROFILES in .env):
 #   infra : bundled PostgreSQL / RabbitMQ / OpenSearch / MinIO. Drop it to use external infra (FR-25):
 #           set FOLIO_DATABASE_URL, FOLIO_BROKER_URL, OPENSEARCH_URL, S3_ENDPOINT_URL, ... in .env.
-#   cpu   : structure model server, CPU image.      gpu : same server, GPU image (needs NVIDIA container toolkit).
+#   gpu   : PP-StructureV3 structure server on GPU (default; NVIDIA container toolkit).
+#   cpu   : PP-StructureV3 on CPU (no GPU).     dev : model-free heuristic structure server (dev / CI).
+#   vlm-stub, airflow : optional dev services (see below).
 # The same environment-variable contract is used by the Helm chart (docs/INTERFACES.md).
 #
 # WARNING: OpenSearch security is DISABLED here (plain http, no auth) - this is for dev / closed networks only.
@@ -132,42 +134,26 @@ services:
       retries: 20
     restart: unless-stopped
 
-  # Structure analysis server. CPU variant (profile cpu) and GPU variant (profile gpu) share the network alias
-  # `structure`, so FOLIO_STRUCTURE_URL stays http://structure:9000. Model weights live in the `models` volume
-  # (not baked into the image); the offline bundle can pre-populate it.
-  structure: &structure
-    profiles: [cpu]
-    image: ${FOLIO_REGISTRY:-}folio-structure:${FOLIO_TAG:-0.1.0}-cpu
-    build:
-      context: ../..
-      dockerfile: deploy/docker/Dockerfile.structure
-      args:
-        BACKEND: ${FOLIO_STRUCTURE_BACKEND:-heuristic}
-        DEVICE: cpu
-    environment:
-      FOLIO_STRUCTURE_BACKEND: ${FOLIO_STRUCTURE_BACKEND:-heuristic}
-    volumes:
-      - ${FOLIO_MODELS_DIR:-models}:/models
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9000/healthz', timeout=3).status == 200 else 1)"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 60s
-    restart: unless-stopped
-
-  structure-gpu:
-    <<: *structure
+  # Structure analysis server (PP-StructureV3). One profile per variant; all share the network alias `structure`,
+  # so FOLIO_STRUCTURE_URL stays http://structure:9000:
+  #   gpu (default) - PP-StructureV3 on 1 NVIDIA GPU (host needs the NVIDIA container toolkit)
+  #   cpu           - PP-StructureV3 on CPU, for hosts without a GPU (same output, much slower)
+  #   dev           - model-free heuristic backend, for local development / CI
+  # Model weights live in the `models` volume (not baked into the image); the offline bundle can pre-populate it.
+  # /readyz turns healthy only after the weights are loaded (first start downloads them unless pre-populated).
+  structure-gpu: &structure
     profiles: [gpu]
     image: ${FOLIO_REGISTRY:-}folio-structure:${FOLIO_TAG:-0.1.0}-gpu
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.structure
-      args:
-        BACKEND: ${FOLIO_STRUCTURE_BACKEND:-docling}
-        DEVICE: gpu
+      args: {BACKEND: ppstructure, DEVICE: gpu}
     environment:
-      FOLIO_STRUCTURE_BACKEND: ${FOLIO_STRUCTURE_BACKEND:-docling}
+      FOLIO_STRUCTURE_BACKEND: ppstructure
+      FOLIO_STRUCTURE_DEVICE: gpu
+    shm_size: 2gb
+    volumes:
+      - ${FOLIO_MODELS_DIR:-models}:/models
     networks:
       default:
         aliases: [structure]
@@ -178,6 +164,39 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9000/readyz', timeout=3).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 300s
+    restart: unless-stopped
+
+  structure-cpu:
+    <<: *structure
+    profiles: [cpu]
+    image: ${FOLIO_REGISTRY:-}folio-structure:${FOLIO_TAG:-0.1.0}-cpu
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.structure
+      args: {BACKEND: ppstructure, DEVICE: cpu}
+    environment:
+      FOLIO_STRUCTURE_BACKEND: ppstructure
+      FOLIO_STRUCTURE_DEVICE: cpu
+    deploy: {}
+
+  structure-dev:
+    <<: *structure
+    profiles: [dev]
+    image: ${FOLIO_REGISTRY:-}folio-structure:${FOLIO_TAG:-0.1.0}-heuristic
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.structure
+      args: {BACKEND: heuristic, DEVICE: cpu}
+    environment:
+      FOLIO_STRUCTURE_BACKEND: heuristic
+    shm_size: 64m
+    deploy: {}
 
   # Deterministic dev embedding server. To use a real endpoint instead, set FOLIO_EMBED_URL / FOLIO_EMBED_MODEL /
   # FOLIO_EMBED_API_KEY in .env (e.g. http://tei:80/v1) and stop this service: `docker compose stop embed`.

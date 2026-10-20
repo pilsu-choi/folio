@@ -32,6 +32,7 @@ spec:
             - {name: http, containerPort: 9000}
           env:
             - {name: FOLIO_STRUCTURE_BACKEND, value: {{ .Values.structure.backend | quote }}}
+            - {name: FOLIO_STRUCTURE_DEVICE, value: {{ ternary "gpu" "cpu" .Values.structure.gpu.enabled | quote }}}
             - {name: FOLIO_LOG_LEVEL, value: {{ .Values.config.logLevel | quote }}}
             - {name: HOME, value: /tmp}
           readinessProbe:

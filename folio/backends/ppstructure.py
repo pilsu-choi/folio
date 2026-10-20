@@ -74,7 +74,7 @@ def _poly_box(p) -> list[float]:
 class PPStructureBackend:
     def __init__(self, lang: str = "korean", device: str = "cpu", **pipeline_kwargs) -> None:
         self.lang = lang
-        self.device = device
+        self.device = "gpu:0" if device in ("gpu", "cuda") else device  # paddle device names
         self.pipeline_kwargs = pipeline_kwargs
         self._pipeline = None
         self._lock = threading.Lock()
@@ -96,11 +96,15 @@ class PPStructureBackend:
                         use_textline_orientation=False, use_seal_recognition=False,
                         use_formula_recognition=False, use_chart_recognition=False,
                         use_region_detection=False, use_table_recognition=True,
-                        enable_mkldnn=False,  # oneDNN path crashes on paddle 3.3 (PIR attr)
+                        enable_mkldnn=False,  # oneDNN path crashes on paddle 3.3 (PIR attr); CPU only anyway
                     )
                     kw.update(self.pipeline_kwargs)
                     self._pipeline = PPStructureV3(**kw)
         return self._pipeline
+
+    def warmup(self) -> None:
+        """Load model weights (downloads into the cache dir on first use unless pre-populated)."""
+        self._get_pipeline()
 
     def analyze(self, page_image: bytes, words: list[Word] | None) -> PageStructure:
         import cv2

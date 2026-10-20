@@ -24,10 +24,15 @@ class DoclingBackend:
     def __init__(self, do_ocr_languages=("ko", "en"), table_mode: str = "accurate", device: str = "cpu", **kw):
         self.langs = list(do_ocr_languages)
         self.table_mode = table_mode
-        self.device = device
+        self.device = "cuda" if device == "gpu" else device  # docling AcceleratorDevice names
         self.kw = kw
         self._converters: dict[bool, object] = {}
         self._lock = threading.Lock()
+
+    def warmup(self) -> None:
+        """Build the converters (model weights load on first conversion)."""
+        self._converter(False)
+        self._converter(True)
 
     def _converter(self, ocr: bool):
         if ocr not in self._converters:

@@ -1,0 +1,7 @@
+# Overlay: clusters without GPUs. PP-StructureV3 on CPU (same output as GPU, much slower per page).
+structure:
+  backend: ppstructure
+  gpu: {enabled: false}
+  resources:
+    requests: {cpu: "4", memory: 6Gi}
+    limits: {memory: 10Gi}
