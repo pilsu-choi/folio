@@ -1,6 +1,6 @@
 # folio
 
-**문서를 넣으면 검색할 수 있는 인덱스를 만들고, 그 인덱스로 검색 API를 제공한다.**
+**문서를 넣으면 검색할 수 있는 인덱스를 만들고, 그 인덱스로 검색 API와 근거를 인용하는 멀티턴 Chat API를 제공한다.**
 
 - **고객사 구축은 파일 3개로 끝난다**: 스키마 파일, 파이프라인 YAML, 매퍼 함수
 - **빠르다**: 디지털 PDF는 PDF 안의 글자를 그대로 쓰고, 스캔 페이지·그림만 VLM이나 OCR로 처리한다
@@ -20,6 +20,8 @@ flowchart LR
     E --> I[("5 index<br/>OpenSearch·Milvus·pgvector")]
     I --> S["검색<br/>키워드 + 의미 검색"]
     App["App"] -- "POST /v1/search" --> S
+    App -- "POST /v1/chat<br/>대화 이력 전체" --> G["생성 (선택)<br/>검색어 재작성 → 검색 → LLM 답변 [n]"]
+    G --> S
 ```
 
 | 단계 | 하는 일 | 결과물 |
@@ -120,6 +122,35 @@ flowchart LR
 - **필수 필터**: YAML `required_filters: [tenant_id]`를 두면 빠진 요청을 막는다. API에는 인증이 없으므로 내부망에 두고, App 백엔드가 사용자 권한으로 `tenant_id`·`acl`을 채워 호출한다
 - 검색 튜닝을 바꿔도 App 코드는 그대로다. YAML `retrieval:`만 고친다
 
+## 멀티턴 답변 흐름 (선택)
+
+파이프라인 YAML에 `generation:`이 있으면 `POST /v1/chat`을 쓸 수 있다. folio는 대화를 저장하지 않는다. App이 매 요청에 지금까지의 대화 전체를 보낸다.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant App
+    participant API as folio API
+    participant LLM as LLM (OpenAI 호환)
+    participant Idx as 검색 저장소
+
+    App->>API: POST /v1/chat {messages: [user, assistant, …, user], filters}
+    opt 이전 대화가 있을 때 (첫 턴은 생략)
+        API->>LLM: 마지막 질문을 독립 검색어로 재작성
+        LLM-->>API: query
+    end
+    API->>Idx: search(query, filters) — /v1/search와 같은 경로·필수 필터
+    Idx-->>API: hits
+    API->>LLM: system(지침 + 번호 붙인 근거 [1]…[n]) + 이력 + 질문
+    LLM-->>API: 답변 "… [1]"
+    API-->>App: {answer, query, citations: [{n, chunk_id, doc_id}], hits}
+```
+
+- **이력 정리**: 이전 답변의 `[n]` 표시는 지난 턴의 근거를 가리키므로 지운다. 이력과 근거는 `max_history_tokens`·`max_context_tokens` 안에서 오래된 턴, 낮은 순위 청크부터 버린다
+- **인용**: 답변의 `[n]`은 `hits[n-1]`이다. 범위를 벗어난 번호는 `citations`에서 뺀다
+- **보안**: `system` 역할은 받지 않는다(422). 권한 필터는 검색과 같이 App이 채운다
+- LLM 단계는 `generation.chat: module:function`(`fn(messages, **opts) -> str`)으로 바꿀 수 있다. 기본은 `FOLIO_LLM_URL`의 OpenAI 호환 서버(vLLM 등)
+
 ## 재처리: 바뀐 단계부터만 다시
 
 각 단계 결과를 저장해 두므로, 바뀐 단계부터 다시 돌린다.
@@ -215,6 +246,11 @@ retrieval:                                # 생략하면 hybrid, k=10, content�
   candidates: 50                          # 단계별 후보 수 (기본 max(k*3, 30)), rerank 입력
   rerank: {fn: folio.retrieval.rerank:http_rerank, top_n: 10}   # 선택, FOLIO_RERANK_URL
   required_filters: [tenant_id]           # 없으면 검색 요청 400
+generation:                               # 선택, 있으면 POST /v1/chat 사용 (true = 기본값)
+  chat: {fn: folio.generation:http, max_tokens: 1024}   # FOLIO_LLM_URL / FOLIO_LLM_MODEL
+  rewrite: true                           # 후속 질문을 독립 검색어로 재작성
+  max_context_tokens: 6000                # 근거 청크 예산
+  max_history_tokens: 2000                # 대화 이력 예산 (오래된 턴부터 버림)
 storage: ${FOLIO_STORAGE_URI:-.folio/artifacts}
 ```
 
@@ -230,6 +266,7 @@ storage: ${FOLIO_STORAGE_URI:-.folio/artifacts}
 | `POST /v1/ingest` | multipart `file`, `pipeline` → `202 {job_id}` |
 | `GET /v1/jobs/{id}` | `queued` \| `running` \| `succeeded` \| `partial` \| `failed`, 단계별 상태·소요 시간, 에러 메시지 |
 | `POST /v1/search` | JSON `query`, `pipeline`, `k`(≤100), `mode`, `filters` → `{pipeline, hits: [{chunk_id, doc_id, score, content, record}]}`. 잘못된 필터·모드, 필수 필터 누락은 400 |
+| `POST /v1/chat` | JSON `messages`(`user`·`assistant` 대화 전체, 마지막은 `user`), `pipeline`, `k`, `mode`, `filters` → `{pipeline, answer, query, citations: [{n, chunk_id, doc_id}], hits}`. 무상태라 이력은 App이 보관한다. `generation:` 없는 파이프라인·필수 필터 누락 400, `system` 역할 422, LLM 실패 502 |
 | `DELETE /v1/documents/{doc_id}?pipeline=` | 인덱스의 청크와 저장된 중간 결과 삭제 |
 | `/healthz`, `/readyz` | 상태 확인 |
 
@@ -251,6 +288,7 @@ folio eval testset --pipeline contracts --n 50 && folio eval run --pipeline cont
 | DOCX·HWPX | ⏸️ 보류(FR-20, FR-21). 넣으면 `NotImplementedError` |
 | VLM | 🟡 연동 완료, 운영 모델 미정(개발용 stub만 있음) |
 | 검색 API | ✅ `POST /v1/search` + YAML `retrieval:` ([작업 기록](wiki/2026-10-20-implementation-search-api.md)) |
+| 생성(Chat API) | 🟡 `POST /v1/chat` 무상태 멀티턴 + YAML `generation:`. stub LLM으로만 검증, 운영 LLM 미정, 스트리밍 미지원 ([작업 기록](wiki/2026-10-21-generation-multiturn.md)) |
 | 구조 분석 | ✅ 기본 PP-StructureV3 GPU ([작업 기록](wiki/2026-10-21-ppstructure-gpu-default.md)) |
 | Airflow | ✅ 예시 DAG(DockerOperator 기본, KubernetesPodOperator 선택) ([작업 기록](wiki/2026-10-20-airflow-container-dag.md)) |
 
@@ -270,7 +308,7 @@ python scripts/bench_backends.py --backends heuristic,docling,ppstructure   # �
 ## 폴더 구조
 
 ```
-folio/             라이브러리: contracts, parse, backends, chunk, embed, map, sinks, retrieval, eval, storage, pipeline, cli
+folio/             라이브러리: contracts, parse, backends, chunk, embed, map, sinks, retrieval, generation, eval, storage, pipeline, cli
 service/           API(FastAPI) + 워커(Celery)
 project-template/  고객사 구축 템플릿: schemas/ pipelines/ mappers.py dags/ samples/
 deploy/            docker, compose, helm, bundle, kind, airflow
@@ -289,3 +327,4 @@ tests/             단위, 통합, fixtures (생성 스크립트: tests/fixtures
 | BM25 | 단어가 얼마나 겹치는지로 매기는 키워드 검색 점수 |
 | RRF | 여러 검색 결과의 순위를 하나로 합치는 방법 |
 | rerank | 후보를 별도 모델로 다시 정렬해 정확도를 높이는 단계 |
+| 질의 재작성 | "그 사유는?" 같은 후속 질문을 대화 맥락을 넣어 혼자서도 검색되는 질의로 바꾸는 단계 |

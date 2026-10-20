@@ -53,6 +53,8 @@ external:
   # VLM (OpenAI-compatible, e.g. vLLM) for scanned pages/images/figures/complex tables. Empty = OCR path (parse vlm: auto).
   vlm: {url: "", model: ""}
   rerank: {url: ""}
+  # Chat LLM (OpenAI-compatible) for pipelines with `generation:` (POST /v1/chat). API key: extraEnv FOLIO_LLM_API_KEY.
+  llm: {url: "", model: ""}
 
 # Bundled single-replica infra for dev / PoC. Production: keep all disabled and fill `external` + Secret.
 infra:

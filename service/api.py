@@ -1,10 +1,11 @@
-"""FastAPI ingest (FR-14) and search (FR-30) API."""
+"""FastAPI ingest (FR-14), search (FR-30) and chat (FR-31) API."""
 
 from __future__ import annotations
 
 import os
 import re
 from contextlib import asynccontextmanager
+from typing import Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
@@ -78,32 +79,68 @@ def delete_document(doc_id: str, pipeline: str | None = None):
     return {"doc_id": doc_id, "deleted": True}
 
 
-class SearchRequest(BaseModel):
-    query: str = Field(min_length=1)
+class _Retrieve(BaseModel):
     pipeline: str | None = None
     k: int | None = Field(default=None, ge=1, le=100)
     mode: str | None = None
     filters: dict = Field(default_factory=dict)
 
 
+class SearchRequest(_Retrieve):
+    query: str = Field(min_length=1)
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]  # no client "system": the grounding prompt stays server-side
+    content: str = Field(min_length=1, max_length=20000)
+
+
+class ChatRequest(_Retrieve):
+    messages: list[ChatMessage] = Field(min_length=1, max_length=50, description="full history, last turn = user")
+
+
+def _pipeline(name: str | None):
+    from folio.pipeline import load_pipeline
+
+    name = name or settings.default_pipeline()
+    try:
+        return name, load_pipeline(name, settings.config_dir())
+    except Exception as exc:
+        raise HTTPException(400, f"unknown pipeline {name!r}: {exc}") from exc
+
+
+def _hit(h) -> dict:
+    return {"chunk_id": h.chunk_id, "doc_id": h.doc_id, "score": h.score, "content": h.content, "record": h.record}
+
+
 @app.post("/v1/search")
 def search(req: SearchRequest):
     from folio.errors import ConfigError
-    from folio.pipeline import load_pipeline
     from folio.pipeline import search as run_search
 
-    pipeline = req.pipeline or settings.default_pipeline()
-    try:
-        cfg = load_pipeline(pipeline, settings.config_dir())
-    except Exception as exc:
-        raise HTTPException(400, f"unknown pipeline {pipeline!r}: {exc}") from exc
+    pipeline, cfg = _pipeline(req.pipeline)
     try:
         hits = run_search(cfg, req.query, k=req.k, filters=req.filters, mode=req.mode)
     except (ValueError, ConfigError) as exc:
         raise HTTPException(400, str(exc)) from exc
-    return {"pipeline": pipeline, "hits": [
-        {"chunk_id": h.chunk_id, "doc_id": h.doc_id, "score": h.score, "content": h.content, "record": h.record}
-        for h in hits]}
+    return {"pipeline": pipeline, "hits": [_hit(h) for h in hits]}
+
+
+@app.post("/v1/chat")
+def chat(req: ChatRequest):
+    """Stateless multi-turn RAG: the App sends the whole conversation each time; folio stores none of it."""
+    from folio.errors import ConfigError, GenerationError
+    from folio.generation import answer
+
+    pipeline, cfg = _pipeline(req.pipeline)
+    try:
+        res = answer(cfg, [m.model_dump() for m in req.messages], k=req.k, filters=req.filters, mode=req.mode)
+    except GenerationError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    except (ValueError, ConfigError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"pipeline": pipeline, "answer": res.answer, "query": res.query, "citations": res.citations,
+            "hits": [_hit(h) for h in res.hits]}
 
 
 @app.get("/healthz")

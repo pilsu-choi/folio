@@ -19,6 +19,7 @@ from folio.errors import ConfigError
 DEFAULT_PARSE = "folio.parse:default"
 DEFAULT_CHUNK = "folio.chunk:adaptive"
 DEFAULT_EMBED = "folio.embed:http"
+DEFAULT_CHAT = "folio.generation:http"
 
 
 class StepSpec(BaseModel):
@@ -74,6 +75,24 @@ class RetrievalConfig(BaseModel):
         return self.model_dump(exclude={"fn", "rerank", "required_filters"})
 
 
+class GenerationConfig(BaseModel):
+    """Answer generation over search results (``generation:`` in the YAML; ``POST /v1/chat``). Off when absent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    chat: StepSpec = Field(default_factory=lambda: StepSpec(fn=DEFAULT_CHAT),
+                           description="chat step fn(messages, **opts) -> str")
+    system: str | None = Field(default=None, description="instruction prompt override; passages are appended")
+    rewrite: bool = Field(default=True, description="rewrite follow-ups into a standalone search query")
+    max_context_tokens: int = Field(default=6000, ge=1, description="passage budget (top hit always kept)")
+    max_history_tokens: int = Field(default=2000, ge=0, description="history budget, oldest turns dropped first")
+
+    @field_validator("chat", mode="before")
+    @classmethod
+    def _coerce_chat(cls, value: Any) -> Any:
+        return StepSpec.coerce(value)
+
+
 class PipelineConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -84,6 +103,7 @@ class PipelineConfig(BaseModel):
     embed: StepSpec | None = Field(default_factory=lambda: StepSpec(fn=DEFAULT_EMBED))
     sink: dict[str, Any]
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
+    generation: GenerationConfig | None = None
     storage: str = ".folio/artifacts"
     config_dir: str | None = Field(default=None, description="dir holding schemas/ and mappers.py")
 
@@ -91,6 +111,11 @@ class PipelineConfig(BaseModel):
     @classmethod
     def _coerce_step(cls, value: Any) -> Any:
         return StepSpec.coerce(value)
+
+    @field_validator("generation", mode="before")
+    @classmethod
+    def _generation_on(cls, value: Any) -> Any:
+        return {} if value is True else None if value is False else value
 
     @field_validator("sink")
     @classmethod
