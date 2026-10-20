@@ -63,7 +63,7 @@ sources:
 
 ## 검증
 
-- 단위 테스트(`tests/test_eval.py`, 11개): 지표 계산, 가짜 LLM으로 각 걸러내기 사유, 두 쪽·다른 문서 유형, 응답 형식 오류 재시도와 전체 실패 오류, adaptive·fixed 청킹 모두 같은 testset으로 채점되고 `unreachable`이 0인지, 쪽이 다르면 0점이 되고 `unreachable`에 잡히는지, 쪽 정보가 없는 스토어, 비교 신뢰구간.
+- 단위 테스트(`tests/test_eval.py`, 10개): 지표 계산, 가짜 LLM으로 각 걸러내기 사유, 두 쪽·다른 문서 유형, 응답 형식 오류 재시도와 전체 실패 오류, adaptive·fixed 청킹 모두 같은 testset으로 채점되고 `unreachable`이 0인지, 쪽이 다르면 0점이 되고 `unreachable`에 잡히는지, 쪽 정보가 없는 스토어, 비교 신뢰구간.
 - 전체 테스트: `176 passed, 3 skipped`(통합 테스트 제외).
 - 실데이터 확인(로컬, 2026-10-21): M1에서 Qwen3.8-27B로 만들고 인용 검증을 거친 한국어 질의 249개(`bench/m1/chunking/testset.jsonl`, fact 116·section 95·table 38)를 새 형식으로 바꾸고, pgx의 파싱 결과 16개 문서로 확인했다.
   - 근거 249개 모두 새 `page_texts`에서 찾아졌다. 벤치마크와 같은 쪽 텍스트를 만든다는 뜻이다.
