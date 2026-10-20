@@ -314,19 +314,19 @@ HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. EWL에
 
 M1에서 디지털 PDF 하나로 처음부터 끝까지 도는 것을 먼저 만들고, OCR 폴백과 서비스는 M2로 미룬다. 일정은 열린 질문에서 정한다.
 
-## Implementation status (2026-10-20)
+## 구현 현황 (2026-10-20)
 
-All FRs except DOCX·HWPX (FR-20, FR-21, deferred) are implemented. Verification details are in [wiki/2026-10-20-implementation-core-pipeline.md](wiki/2026-10-20-implementation-core-pipeline.md).
+DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 검증 상세는 [wiki/2026-10-20-implementation-core-pipeline.md](wiki/2026-10-20-implementation-core-pipeline.md)에 있다.
 
-| Status | FR |
+| 상태 | FR |
 | --- | --- |
-| Implemented + acceptance criteria verified by tests/E2E | FR-01–03, 05, 07–14, 16, 17, 19, 22–24, 26 (Compose offline install) |
-| Implemented, partially verified | FR-04 (rotation·CropBox·char matching with synthetic fixtures, no actual HWP-converted PDF), FR-06 (mocked VLM), FR-18 (heuristic testset; LLM generation mocked only), FR-25 (values·env switch rendering only) |
-| Implemented, not verified | FR-15 (Airflow DAG not run), FR-26 Helm private registry path |
-| Deferred | FR-20, FR-21 (DOCX·HWPX) |
+| 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01~03, 05, 07~14, 16, 17, 19, 22~24, 26(Compose 오프라인 설치) |
+| 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), FR-06(VLM은 mock), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인) |
+| 구현, 미검증 | FR-15(Airflow DAG 미실행), FR-26 Helm 사설 레지스트리 경로 |
+| 보류 | FR-20, FR-21 (DOCX·HWPX) |
 
-- Structure-analysis backend: on fixtures, heuristic·Docling·PP-StructureV3 are all identical for digital text and tables; OCR similarity is 0.72 / 0.75 / 0.91 and CPU sec/page is 0.04 / 1.75 / 20.6. The default backend is still to be decided with customer samples (Korean included).
-- `minio/minio` is no longer distributed on Docker Hub, so the bundled S3 was replaced with a digest-pinned `cgr.dev/chainguard/minio`.
+- 구조 분석 백엔드: 픽스처에서 heuristic·Docling·PP-StructureV3 모두 디지털 텍스트·표 결과가 같았다. OCR 유사도는 0.72 / 0.75 / 0.91, CPU 기준 초/페이지는 0.04 / 1.75 / 20.6이다. 기본 백엔드는 고객사 샘플(한글 포함)로 정한다.
+- `minio/minio`가 Docker Hub에서 더 이상 배포되지 않아, 내장 S3를 digest로 고정한 `cgr.dev/chainguard/minio`로 바꿨다.
 
 ## 열린 질문
 
