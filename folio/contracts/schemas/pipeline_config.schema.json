@@ -1,5 +1,50 @@
 {
   "$defs": {
+    "GenerationConfig": {
+      "additionalProperties": false,
+      "description": "Answer generation over search results (``generation:`` in the YAML; ``POST /v1/chat``). Off when absent.",
+      "properties": {
+        "chat": {
+          "$ref": "#/$defs/StepSpec",
+          "description": "chat step fn(messages, **opts) -> str"
+        },
+        "system": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "instruction prompt override; passages are appended",
+          "title": "System"
+        },
+        "rewrite": {
+          "default": true,
+          "description": "rewrite follow-ups into a standalone search query",
+          "title": "Rewrite",
+          "type": "boolean"
+        },
+        "max_context_tokens": {
+          "default": 6000,
+          "description": "passage budget (top hit always kept)",
+          "minimum": 1,
+          "title": "Max Context Tokens",
+          "type": "integer"
+        },
+        "max_history_tokens": {
+          "default": 2000,
+          "description": "history budget, oldest turns dropped first",
+          "minimum": 0,
+          "title": "Max History Tokens",
+          "type": "integer"
+        }
+      },
+      "title": "GenerationConfig",
+      "type": "object"
+    },
     "RetrievalConfig": {
       "additionalProperties": false,
       "description": "Search settings for the pipeline's index (``retrieval:`` in the YAML). Requests may override only\n``k``, ``mode`` and ``filters``; field weights, fusion and rerank stay in config.",
@@ -144,6 +189,17 @@
     },
     "retrieval": {
       "$ref": "#/$defs/RetrievalConfig"
+    },
+    "generation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/GenerationConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "storage": {
       "default": ".folio/artifacts",

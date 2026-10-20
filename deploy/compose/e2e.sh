@@ -3,6 +3,7 @@
 #   deploy/compose/e2e.sh            # uses deploy/compose/.env if present, otherwise a throwaway env
 #   KEEP=1 deploy/compose/e2e.sh     # leave the stack running
 #   AIRFLOW=1 deploy/compose/e2e.sh  # also run the folio_ingest DAG (profile `airflow`, DockerOperator) - FR-15
+#   E2E_HWPX=/path/x.hwpx deploy/compose/e2e.sh  # convert scenario also ingests this HWPX (DOCX fixture always)
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 . "$here/../e2e-common.sh"
@@ -64,7 +65,27 @@ print(json.load(r)['count'])")
   log "airflow DAG indexed $n chunks (source_uri=$src)"
 }
 
+# FR-20: DOCX (and optional HWPX) -> convert service -> PDF path; document.json must carry meta.convert and bbox.
+convert_scenario() {
+  local base=$1 f id doc
+  for f in "$(cd "$here/../.." && pwd)/tests/fixtures/contract.docx" ${E2E_HWPX:+"$E2E_HWPX"}; do
+    id=$(E2E_PDF=$f ingest "$base")
+    wait_job "$base" "$id"
+    doc=$(curl -fsS "$base/v1/jobs/$id" | python3 -c 'import json,sys; print(json.load(sys.stdin)["doc_id"])')
+    "${dc[@]}" exec -T api python -c "import json,os,sys
+from folio.storage import read_uri
+d = json.loads(read_uri(os.environ['FOLIO_STORAGE_URI'].rstrip('/') + '/contracts/$doc/document.json'))
+c = d['meta'].get('convert') or sys.exit('no meta.convert')
+blocks = [b for p in d['pages'] for b in p['blocks'] if b['type'] != 'figure']
+assert d['pages'] and blocks and all(b.get('bbox') for b in blocks), 'pages/bbox missing'
+print(c['converter'], c.get('version'), len(d['pages']), 'pages', len(blocks), 'blocks')" >&2 \
+      || die "converted document check failed for $(basename "$f")"
+    log "convert: $(basename "$f") ok"
+  done
+}
+
 if [ -n "${NO_BUILD:-}" ]; then "${dc[@]}" up -d --no-build; else "${dc[@]}" up -d --build; fi
 basic_scenario "http://127.0.0.1:${port}"
+convert_scenario "http://127.0.0.1:${port}"
 [ "${AIRFLOW:-0}" = 1 ] && airflow_scenario
 log "compose E2E passed"

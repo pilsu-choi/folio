@@ -58,3 +58,27 @@ def test_run_failure_exit_code(tmp_path, capsys):
     assert json.loads(capsys.readouterr().out)["error"] == "empty path" and not SINKS.get("default")
     assert main(["--config-dir", d, "run", str(tmp_path / "missing.pdf"), "--pipeline", "p"]) == 1
     assert json.loads(capsys.readouterr().out)["status"] == "failed"
+
+
+def test_eval_testset_run_compare(tmp_path, capsys):
+    d = project(tmp_path)
+    with open(f"{d}/pipelines/p.yaml", "a") as f:
+        f.write("retrieval: {fn: 'tests.conftest:memory_retriever', mode: bm25}\n")
+    src = tmp_path / "a.pdf"
+    src.write_text("\n".join(f"제{i}조 보험금 청구 기한은 사고일로부터 {i}년 이내이며 서류를 갖추어 신청한다." for i in range(1, 9)))
+    assert main(["--config-dir", d, "run", str(src), "--pipeline", "p"]) == 0
+    capsys.readouterr()
+    ts = tmp_path / "ts.json"
+    assert main(["--config-dir", d, "eval", "testset", "--pipeline", "p", "--method", "heuristic", "--out", str(ts)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["items"] == 1 and json.loads(ts.read_text())[0]["evidence"][0]["page"] == 1
+    results = []
+    for _ in range(2):
+        assert main(["--config-dir", d, "eval", "run", "--pipeline", "p", "--testset", str(ts), "--ks", "1,5",
+                     "--out", str(tmp_path / "res")]) == 0
+        r = json.loads(capsys.readouterr().out)
+        assert r["unreachable"] == 0 and r["metrics"]["recall@5"] == 1.0 and set(r["by_type"]) == {"fact"}
+        results.append(r["result"])
+    assert main(["--config-dir", d, "eval", "compare", *results]) == 0
+    cmp = json.loads(capsys.readouterr().out)
+    assert cmp["n"] == 1 and cmp["metrics"]["recall@5"]["delta"] == 0.0

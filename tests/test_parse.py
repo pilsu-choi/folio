@@ -131,14 +131,10 @@ def test_backend_failure_on_digital_page_degrades_to_text_layer():
 def test_unreadable_and_unsupported(tmp_path):
     with pytest.raises(ParseError):
         default(str(FIX / "corrupt.pdf"), backend=FakeBackend())
-    f = tmp_path / "a.docx"
-    f.write_bytes(b"PK\x03\x04 fake")
-    with pytest.raises(NotImplementedError, match="deferred"):
-        default(str(f))
-    h = tmp_path / "a.hwpx"
-    h.write_bytes(b"PK\x03\x04 fake")
-    with pytest.raises(NotImplementedError):
-        default("file://" + str(h))
+    u = tmp_path / "a.bin"
+    u.write_bytes(b"\x00\x01 unknown")
+    with pytest.raises(ParseError, match="unsupported"):
+        default(str(u))
 
 
 def test_ids_deterministic_and_file_uri():
@@ -161,6 +157,31 @@ def test_resolve_backend_specs(monkeypatch):
     assert b.heading_ratio == 1.5
     obj = FakeBackend()
     assert resolve_backend(obj) is obj
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 270])
+def test_words_split_on_gaps_without_space_glyphs(rotation):
+    """LibreOffice/rhwp/Hancom PDFs may draw Korean words without space glyphs, or draw the spaces out of order."""
+    from folio.parse.textlayer import extract_atoms
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.set_rotation(rotation)  # text then runs vertically on the visible page
+    tw, font = pymupdf.TextWriter(page.rect), pymupdf.Font("korea")
+    for x, ch in zip([72, 84, 99, 111, 123], "본계약은부"):  # a space-wide gap after 계, no space glyph
+        tw.append((x, 100), ch, font=font, fontsize=12)
+    tw.write_text(page)
+    tw = pymupdf.TextWriter(page.rect)
+    tw.append((96, 100), " ", font=font, fontsize=12)  # the space drawn later, inside the gap
+    tw.append((135, 100), "품", font=font, fontsize=12)  # continues 부 in a later text run
+    tw.append((151, 100), "가", font=font, fontsize=12)  # a space-wide gap: next word, same text line
+    for x, ch in zip([72, 88, 104, 120, 144], "경상북도법"):  # letter-spaced (distributed) text, then a word gap
+        tw.append((x, 140), ch, font=font, fontsize=12)
+    tw.write_text(page)
+    page = doc.reload_page(page)
+    words = extract_atoms(page)[1]
+    assert [a.text for a in words] == ["본계", "약은부품", "가", "경상북도", "법"]
+    assert words[0].line == words[2].line != words[3].line  # block text keeps "본계 약은부품 가" on one line
 
 
 def test_article_paragraphs_become_sections():

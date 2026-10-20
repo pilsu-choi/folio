@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -121,14 +122,18 @@ def cmd_reprocess(args) -> int:
 def cmd_api(args) -> int:
     import uvicorn
 
-    uvicorn.run("service.api:app", host=args.host, port=args.port)
+    from folio.logging import adopt
+
+    adopt("uvicorn", "uvicorn.error")  # JSON lines; the API middleware logs requests, so no uvicorn access log
+    uvicorn.run("service.api:app", host=args.host, port=args.port, log_config=None, access_log=False)
     return 0
 
 
 def cmd_worker(args) -> int:
+    from folio.logging import configure
     from service.worker import celery_app
 
-    argv = ["worker", "--loglevel", os.environ.get("FOLIO_LOG_LEVEL", "INFO").lower(), "-O", "fair"]
+    argv = ["worker", "--loglevel", logging.getLevelName(configure()).lower(), "-O", "fair"]
     concurrency = args.concurrency or int(os.environ.get("FOLIO_WORKER_CONCURRENCY", "2"))
     argv += ["--concurrency", str(concurrency)]
     celery_app.worker_main(argv)
@@ -137,6 +142,13 @@ def cmd_worker(args) -> int:
 
 def cmd_structure_server(args) -> int:
     from folio.backends.server import serve
+
+    serve(port=args.port)
+    return 0
+
+
+def cmd_convert_server(args) -> int:
+    from folio.parse.convert_server import serve
 
     serve(port=args.port)
     return 0
@@ -158,31 +170,38 @@ def cmd_vlm_stub(args) -> int:
 
 def cmd_eval(args) -> int:
     from folio import eval as ev
+    from folio.pipeline import _storage
 
     if args.eval_cmd == "testset":
+        from folio.contracts import Document
         from folio.eval import testset
 
-        if args.chunks:
-            chunks = json.loads(Path(args.chunks).read_text(encoding="utf-8"))
-        else:  # every stored chunks.json of the pipeline's index
-            from folio.pipeline import _storage
-
+        if args.docs:
+            docs = [json.loads(f.read_text(encoding="utf-8")) for f in sorted(Path(args.docs).glob("*.json"))]
+        else:  # every stored document.json of the pipeline's index
             cfg = _load(args, args.pipeline)
             storage = _storage(cfg)
-            chunks = [c for key in storage.list(f"{cfg.index}/") if key.endswith("/chunks.json")
-                      for c in storage.get_json(key)]
-        items = testset.generate(chunks, args.n, args.method, llm_url=args.llm_url, model=args.model)
+            docs = [storage.get_json(k) for k in storage.list(f"{cfg.index}/") if k.endswith("/document.json")]
+        items, stats = testset.generate(
+            [Document.model_validate(d) for d in docs], args.pages, args.pairs, args.method,
+            tuple(args.types.split(",")) if args.types else testset.TYPES, llm_url=args.llm_url, model=args.model,
+            extra_body=json.loads(args.llm_extra) if args.llm_extra else None, seed=args.seed,
+            min_per_type=args.min_per_type, max_rounds=args.max_rounds)
         Path(args.out).write_text(json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
-        _out({"testset": args.out, "items": len(items)})
+        _out({"testset": args.out, "items": len(items), "stats": stats})
     elif args.eval_cmd == "run":
         from folio.pipeline import retriever
 
         cfg = _load(args, args.pipeline)
         items = json.loads(Path(args.testset).read_text(encoding="utf-8"))
+        storage = _storage(cfg)
+        chunks = [c for k in storage.list(f"{cfg.index}/") if k.endswith("/chunks.json") for c in storage.get_json(k)]
         result = ev.run(items, retriever(cfg), tuple(int(k) for k in args.ks.split(",")),
-                        config_dir=_config_dir(args), mode=args.mode)
+                        config_dir=_config_dir(args), chunks=chunks or None, mode=args.mode)
         path = ev.save_result(result, args.out)
-        _out({"result": str(path), "metrics": result["metrics"]})
+        _out({"result": str(path), "metrics": result["metrics"],
+              "by_type": {t: v["metrics"] for t, v in result["by_type"].items()},
+              "unreachable": len(result["unreachable"]) if chunks else "skipped: no chunks.json in storage"})
     else:
         _out(ev.compare(ev.load_result(args.a), ev.load_result(args.b)))
     return 0
@@ -191,6 +210,7 @@ def cmd_eval(args) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="folio")
     p.add_argument("--config-dir", default=None)
+    p.add_argument("--log-level", default=None, help="DEBUG|INFO|WARNING|ERROR (default: FOLIO_LOG_LEVEL or INFO)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("init")
@@ -232,6 +252,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--port", type=int, default=9000)
     s.set_defaults(fn=cmd_structure_server)
 
+    s = sub.add_parser("convert-server", help="DOCX/HWPX/PPTX -> PDF server (LibreOffice, rhwp)")
+    s.add_argument("--port", type=int, default=9100)
+    s.set_defaults(fn=cmd_convert_server)
+
     s = sub.add_parser("embed-stub")
     s.add_argument("--port", type=int, default=8001)
     s.set_defaults(fn=cmd_embed_stub)
@@ -242,14 +266,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("eval")
     es = s.add_subparsers(dest="eval_cmd", required=True)
-    t = es.add_parser("testset")
+    t = es.add_parser("testset", help="span-based testset (evidence = source text, valid for any chunking)")
     src = t.add_mutually_exclusive_group(required=True)
-    src.add_argument("--chunks", help="chunks.json (list of chunk records)")
-    src.add_argument("--pipeline", help="use every stored chunks.json of this pipeline's index")
-    t.add_argument("--n", type=int, default=50)
-    t.add_argument("--method", choices=["heuristic", "llm"], default="heuristic")
-    t.add_argument("--llm-url", default=None, help="OpenAI-compatible base URL for --method llm")
+    src.add_argument("--docs", help="directory of Document JSON files (parse output)")
+    src.add_argument("--pipeline", help="use every stored document.json of this pipeline's index")
+    t.add_argument("--pages", type=int, default=50, help="single pages to sample (fact/table/section)")
+    t.add_argument("--pairs", type=int, default=20, help="page pairs to sample (multi-page/multi-document types)")
+    t.add_argument("--types", default=None, help="comma-separated question types (default: all)")
+    t.add_argument("--method", choices=["llm", "heuristic"], default="llm", help="heuristic: offline, fact only")
+    t.add_argument("--llm-url", default=None, help="OpenAI-compatible base URL (default FOLIO_LLM_URL)")
     t.add_argument("--model", default=None)
+    t.add_argument("--llm-extra", default=None, help='JSON merged into the request, e.g. \'{"chat_template_kwargs": {"enable_thinking": false}}\'')
+    t.add_argument("--min-per-type", type=int, default=0, help="extra rounds on unused pages until each type has N")
+    t.add_argument("--max-rounds", type=int, default=3, help="cap on --min-per-type extra rounds")
+    t.add_argument("--seed", type=int, default=0)
     t.add_argument("--out", default="testset.json")
     r = es.add_parser("run")
     r.add_argument("--pipeline", required=True)
@@ -268,13 +298,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    for i, tok in enumerate(argv):  # `folio [--config-dir D] cli ARGS` == `folio [--config-dir D] ARGS`
-        if tok == "cli" and (i == 0 or argv[i - 1] != "--config-dir"):
+    for i, tok in enumerate(argv):  # `folio [--config-dir D] [--log-level L] cli ARGS` == `folio [...] ARGS`
+        after_opt = i > 0 and argv[i - 1] in ("--config-dir", "--log-level")
+        if tok == "cli" and not after_opt:
             argv = argv[:i] + argv[i + 1 :]
             break
-        if not tok.startswith("-") and (i == 0 or argv[i - 1] != "--config-dir"):
+        if not tok.startswith("-") and not after_opt:
             break
     args = build_parser().parse_args(argv)
+    from folio.logging import configure
+
+    level = logging.getLevelName(configure(args.log_level))
+    if args.log_level:
+        os.environ["FOLIO_LOG_LEVEL"] = level  # child processes (workers, servers) inherit the effective level
     rc = args.fn(args)
     return rc or 0
 

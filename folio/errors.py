@@ -15,3 +15,7 @@ class ConfigError(FolioError):
 
 class DimensionMismatchError(FolioError):
     """Embedding dimension differs from the sink schema."""
+
+
+class GenerationError(FolioError):
+    """The generation chat step failed (LLM unreachable, bad response, ...)."""

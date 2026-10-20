@@ -9,7 +9,9 @@ from __future__ import annotations
 import base64
 import inspect
 import io
+import logging
 import os
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -17,6 +19,7 @@ import httpx
 from PIL import Image
 
 from folio._loader import load_callable
+from folio.logging import clip, log_event, ms_since
 
 PROMPTS = {
     "page": ("Convert this document page to Markdown. Use # for headings, '-' for list items and GitHub "
@@ -108,14 +111,20 @@ class Session:
         if self.caller is None or not png:
             return None
         self.calls += 1
+        t0 = time.perf_counter()
         try:
             out = self.caller(png, task=task) if self._task_kw else self.caller(png)
             if not isinstance(out, str) or not out.strip():
                 raise ValueError("empty response")
+            log_event("vlm_call", logging.DEBUG, "folio.parse", page=page, task=task, png_bytes=len(png),
+                      ms=ms_since(t0), reply_chars=len(out), reply=clip(out, 200))
             return out
         except Exception as exc:
+            log_event("vlm_fallback", logging.WARNING, "folio.parse", page=page, task=task, ms=ms_since(t0),
+                      error=f"{type(exc).__name__}: {clip(exc, 300)}")
             self.fallbacks.append({"page": page, "task": task, "error": f"vlm: {type(exc).__name__}: {exc}"})
             return None
 
     def note(self, page: int, task: str, error: str) -> None:
+        log_event("vlm_fallback", logging.WARNING, "folio.parse", page=page, task=task, error=clip(error, 300))
         self.fallbacks.append({"page": page, "task": task, "error": f"vlm: {error}"})

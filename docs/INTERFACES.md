@@ -25,7 +25,14 @@ folio.embed.http(texts: list[str], **opts) -> list[list[float]]
   structure tables -> VLM (`figure_min_area=0.01`, `table_min_coverage=0.8`, `table_max_empty=0.6`). Disabled/failed ->
   structure-backend OCR; failures are listed in `meta.vlm_fallbacks = [{page, task, error}]`.
   Formats by MIME/extension: PDF, PNG/JPG/TIFF/BMP/WebP, PPTX (`pptx_mode="native"|"convert"`, `pptx_notes=False`),
-  XLSX (`xlsx_include_hidden=False`), Markdown, TXT (encoding auto-detect, `meta.encoding`); DOCX/HWPX raise NotImplementedError.
+  XLSX (`xlsx_include_hidden=False`), Markdown, TXT (encoding auto-detect, `meta.encoding`), DOCX/HWPX/HWP (FR-20).
+  DOCX/HWPX/HWP: `docx_mode`/`hwpx_mode="convert"` (default; `hwpx_mode` covers HWP; `"native"` = FR-21, NotImplementedError)
+  converts to PDF and takes the PDF path; `pptx_mode="convert"` uses the same converter. `converter="auto"`:
+  `FOLIO_CONVERT_URL` server, else local (`soffice`, `rhwp`); `"local"` | `{url, timeout}` | `"module:function"` |
+  callable(data, mime) -> PDF bytes or (bytes, info). `convert_timeout` (s; env `FOLIO_CONVERT_TIMEOUT`, default 300).
+  `doc.meta["convert"] = {converter, version, ms, pdf_hash[, server, errors, pdf_key]}` (`pdf_key` added by the pipeline); pages/bbox refer to the PDF made in that
+  parse (LibreOffice output is not byte-reproducible, so `pdf_hash` identifies, not rebuilds, it) while
+  `mime_type`/`content_hash`/`doc_id` come from the original file. Failure -> `folio.parse.convert.ConvertError`.
   Dev VLM server: `folio.backends.vlm_stub:serve(host, port=8002)` (OpenAI-compatible, deterministic).
 - parse records model-call counts in `doc.meta["calls"] = {"structure": n, "ocr": n, "vlm": n}`
   and per-stage timings in `doc.meta["timings"]`; page failures in `doc.meta["errors"] = [{"page": n, "error": str}]`.
@@ -72,7 +79,61 @@ Retriever.search(query, k=None, filters=None, mode=None) -> list[Hit]   # Hit(ch
   bounds). `None` values are dropped. Field names must be identifiers; violations raise `ValueError`.
   pgvector: range on a real column compares the column, on `metadata` casts to numeric for number bounds, text otherwise;
   range on an array column is a `ConfigError`.
-- Service: `POST /v1/search` maps `ValueError`/`ConfigError` to 400; `k` is capped at 100.
+- Service: `POST /v1/search` maps `ValueError`/`ConfigError` to 400; `k` is capped at 100. Response `hits[].record` is
+  the stored chunk record without `embedding` (same for `/v1/chat`).
+- Service: `GET /v1/documents/{doc_id}/pdf?pipeline=` -> `application/pdf` (`ETag` = content hash) that hit `page`/`bbox`
+  refer to: `converted.pdf` for convert modes, else `source.pdf`; 404 when neither exists (images, native formats).
+  `doc_id` must match `[A-Za-z0-9_-]{1,128}` (400 otherwise, also for `DELETE`). No ACL: the App gates access.
+
+## Generation
+
+```python
+folio.generation.answer(cfg, messages, k=None, filters=None, mode=None) -> Answer   # Answer(answer, query, citations, hits)
+folio.generation.http(messages, *, url, model, api_key, temperature=0, max_tokens=1024, timeout=120) -> str
+```
+
+- `generation:` (`GenerationConfig`, `extra=forbid`, default absent = off; `true` = defaults): `chat` (step
+  `fn(messages, **opts) -> str`, default `folio.generation:http`, env `FOLIO_LLM_URL`/`FOLIO_LLM_MODEL`/`FOLIO_LLM_API_KEY`),
+  `system` (instruction override; numbered passages are appended), `rewrite` (true), `max_context_tokens` (6000; top hit
+  always kept), `max_history_tokens` (2000; oldest turns dropped, kept history starts with a user turn).
+- Stateless multi-turn: `messages` is the whole conversation, roles `user`/`assistant`, last one `user`. With history
+  and `rewrite`, one chat call rewrites the last question into a standalone `query`; the first turn skips it. Search
+  uses `folio.pipeline.search` (same `retrieval:` and `required_filters`). `[n]` markers are stripped from past assistant
+  turns. `citations` = `[n]` in the reply within `1..len(hits)`, each `{n, chunk_id, doc_id}` of `hits[n-1]`.
+- Errors: no `generation:` -> `ConfigError`, bad messages/filters -> `ValueError`, chat step failure -> `GenerationError`.
+- Service: `POST /v1/chat {messages (1..50, content <= 20000 chars), pipeline, k, mode, filters}` ->
+  `{pipeline, answer, query, citations, hits}`; `system` role or empty messages 422, `ValueError`/`ConfigError` 400,
+  `GenerationError` 502. No streaming yet.
+- Claude chat step: `folio.generation.anthropic:chat(messages, *, model="claude-opus-5-5", max_tokens=16000, effort=None,
+  fallbacks=True, ...) -> str` (extra `folio[anthropic]`, credentials from `ANTHROPIC_API_KEY` etc., model override
+  `FOLIO_LLM_MODEL`). `system` turns become the top-level `system`; `fallbacks` sends `fallbacks="default"` (Claude API
+  only); a refusal raises.
+
+## Chat app (`apps/chat`, extra `folio[app]`)
+
+`uvicorn --factory apps.chat.main:create_app`. It talks to folio only over HTTP (`POST /v1/chat`) and imports nothing
+from `folio`. Login (OIDC code flow + PKCE via Authlib, or a fixed `dev` user) sets a signed session cookie
+(`folio_chat`, HttpOnly, SameSite=Lax, 12 h) with `{sub, email, name, acl}`.
+
+| Method · path | Body → response |
+| --- | --- |
+| `GET /auth/login`, `GET /auth/callback`, `POST /auth/logout` (204) | OIDC redirect · callback · local logout |
+| `GET /api/me` | `{sub, email, name, auth_mode, pipelines, acl_keys}` |
+| `GET/POST /api/conversations` | list (newest first) · `{title?, pipeline?}` → 201 conversation |
+| `GET/PATCH/DELETE /api/conversations/{id}` | conversation + `messages` · `{title}` · 204 |
+| `GET /api/conversations/{id}/messages` | messages in order |
+| `POST /api/conversations/{id}/messages` | `{content, k?, mode?, filters?}` → 201 `{messages: [user, assistant], conversation}` |
+| `PATCH /api/messages/{id}` | `{feedback: up\|down\|null}` (assistant messages only) |
+| `DELETE /api/conversations/{id}/messages/{mid}` | 204, deletes `mid` and every later message |
+| `GET /api/conversations/{id}/messages/{mid}/sources/{n}/page.png` | source `n` of that answer: its `page`, bbox highlighted, cropped to bbox + 36pt (2 px/pt); 404 without page or PDF |
+| `GET /api/conversations/{id}/messages/{mid}/sources/{n}/pdf` | the whole PDF (proxied from folio `GET /v1/documents/{doc_id}/pdf`); only documents in that stored answer's hits |
+
+- Every query is scoped by the login `sub`; another user's ids return 404.
+- Send: history is rebuilt from the database (newest 50, starting with a user turn), `filters = {**client, **acl}`
+  (login ACL wins), and the conversation's `pipeline` is used. The turn is stored only when folio answered: folio
+  400/422 -> 400, 502 -> 502, other errors or unreachable -> 503. The first question becomes the title.
+- `acl`: `FOLIO_APP_ACL_CLAIMS` maps filter fields to claims. A user missing a mapped claim gets 403 on send, because
+  folio drops `None` filters, which would widen the search.
 
 ## Storage
 
@@ -83,13 +144,16 @@ Storage.put_bytes(key, data) / get_bytes(key) / put_json(key, obj) / get_json(ke
 ```
 
 Artifact layout: `{index}/{doc_id}/source{ext}`, `{index}/{doc_id}/document.json`, `{index}/{doc_id}/chunks.json`
-(chunk output before map), `{index}/{doc_id}/manifest.json` (`source_uri`, `mime_type`, `pipeline`).
+(chunk output before map), `{index}/{doc_id}/manifest.json` (`source_uri`, `mime_type`, `pipeline`[, `converted_pdf`]),
+`{index}/{doc_id}/converted.pdf` (convert modes only: the PDF that pages/bbox refer to; `meta.convert.pdf_key`, checked
+by `pdf_hash`; rewritten on every re-parse, removed when a re-parse does not convert).
 
 ## Pipeline
 
 ```python
 folio.pipeline.run_pipeline(uri, cfg: PipelineConfig, stop_after: str | None = None) -> PipelineResult
 folio.pipeline.reprocess(cfg, start_from: "parse"|"chunk"|"map", doc_ids: list[str] | None = None) -> list[PipelineResult]
+folio.pipeline.document_pdf(cfg, doc_id) -> bytes | None   # PDF the bbox values refer to (converted.pdf, else source.pdf)
 ```
 
 Stages: `parse → chunk → map → embed → index`. `PipelineResult` has `doc_id`, `status` (`succeeded|partial|failed`),
@@ -108,14 +172,35 @@ Stages: `parse → chunk → map → embed → index`. `PipelineResult` has `doc
 | `MILVUS_URI`, `MILVUS_TOKEN` | Milvus |
 | `PGVECTOR_DSN` | pgvector sink DB (App DB) |
 | `FOLIO_STRUCTURE_URL` | structure model server base URL |
+| `FOLIO_CONVERT_URL`, `FOLIO_CONVERT_TIMEOUT` | DOCX/HWPX/HWP -> PDF convert server base URL (unset = local binaries), timeout (s) |
+| `FOLIO_CONVERT_WORKERS`, `FOLIO_CONVERT_FONT_PATH` | convert server only: concurrent conversions, rhwp `--font-path` |
 | `FOLIO_VLM_URL`, `FOLIO_VLM_MODEL` | VLM for image content (OpenAI-compatible chat); unset = VLM off (`vlm="auto"`) |
 | `FOLIO_EMBED_URL`, `FOLIO_EMBED_MODEL`, `FOLIO_EMBED_API_KEY` | embedding endpoint |
 | `FOLIO_RERANK_URL` | optional rerank endpoint |
-| `FOLIO_LOG_LEVEL` | logging level |
+| `FOLIO_LLM_URL`, `FOLIO_LLM_MODEL`, `FOLIO_LLM_API_KEY` | chat LLM for `generation:` / `POST /v1/chat` and `eval testset --method llm` (OpenAI-compatible; testset falls back to `FOLIO_VLM_URL`/`FOLIO_VLM_MODEL`) |
+| `FOLIO_LOG_LEVEL` | `DEBUG`/`INFO` (default)/`WARNING`/`ERROR`. JSON lines on stderr from the `folio`, `service`, `apps` loggers; DEBUG adds per-call details and clipped user content (queries, LLM replies) - troubleshooting only. CLI: `folio --log-level DEBUG ...` |
+| `FOLIO_LOG_FILE`, `FOLIO_LOG_FILE_MAX_MB`, `FOLIO_LOG_FILE_BACKUPS` | optional rotating log file (default 50 MB x 5) for runs outside containers; containers log to stdout only |
+| `FOLIO_LOG_MAX_SIZE`, `FOLIO_LOG_MAX_FILES` | Compose only: docker `local` log driver rotation per container (default `20m` x 5) |
+
+Chat app (`apps/chat`):
+
+| Variable | Meaning |
+| --- | --- |
+| `FOLIO_APP_AUTH` | `oidc` (default; startup fails without the secret and client) or `dev` (no login: fixed user `FOLIO_APP_DEV_USER`, claims `FOLIO_APP_DEV_CLAIMS` JSON) |
+| `OIDC_ISSUER` (or `OIDC_METADATA_URL`), `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_SCOPES` | IdP (Keycloak, Entra ID, Google, ...); redirect URI `<app>/auth/callback` |
+| `FOLIO_APP_SECRET_KEY` | session cookie signing key (required for `oidc`) |
+| `FOLIO_APP_COOKIE_SECURE` | `Secure` cookie flag (default true for `oidc`) |
+| `FOLIO_APP_PUBLIC_URL` | external base URL behind a proxy (builds the redirect URI) |
+| `FOLIO_APP_ACL_CLAIMS` | JSON `{filter_field: claim}`, e.g. `{"tenant_id": "tenant"}` |
+| `FOLIO_APP_PIPELINES` | comma list users may pick; empty = folio's default pipeline |
+| `FOLIO_APP_DATABASE_URL` | conversations DB (default `sqlite:///.folio/app.db`; PostgreSQL for production) |
+| `FOLIO_API_URL` | folio API base (default `http://localhost:8080`) |
 
 ## Commands (image entrypoint is `folio`)
 
-`folio api` (FastAPI on :8080: ingest, jobs, search), `folio worker` (Celery), `folio init`, `folio schema apply [--reindex]`,
+`folio api` (FastAPI on :8080: ingest, jobs, search, chat), `folio worker` (Celery), `folio init`, `folio schema apply [--reindex]`,
 `folio run [--source-uri]`, `folio reprocess`, `folio eval ...`, `folio structure-server` (structure backend HTTP server on :9000),
+`folio convert-server` (`POST /v1/convert`, multipart `file` + form `mime` -> PDF, headers `x-folio-converter[-version]`;
+:9100, image `folio-convert`),
 `folio embed-stub` (deterministic OpenAI-compatible embedding server for dev/tests on :8001).
 All HTTP servers expose `/healthz` and `/readyz`.

@@ -11,7 +11,7 @@ Oct 20, 2026 · @pilsu
 - **현재 문제 1 — 재사용 불가**: 파싱·청킹·적재 코드가 고객사 요구사항과 한 덩어리라, 다음 프로젝트에서 복사 후 수정하게 된다.
 - **현재 문제 2 — 느린 Parse**: VLM으로 필드를 추출하면 문서당 처리 시간이 길다. 디지털 PDF는 텍스트 레이어로 글자를 얻고, DLA로 레이아웃만 잡으면 충분하다.
 - **현재 문제 3 — 재처리 비용**: 스키마나 매핑이 바뀌면 원본부터 다시 돌려 OCR까지 반복한다.
-- **레포의 책임 범위**: 이 레포는 "문서 → 인덱스 → 검색" 경로와 그 계약에 집중하고, 다른 레포는 이 레포를 라이브러리나 검색 API로 가져다 쓴다. 고객사마다 검색 래퍼를 따로 만들지 않도록 검색 API(`POST /v1/search`)까지 제공한다.
+- **레포의 책임 범위**: 이 레포는 "문서 → 인덱스 → 검색" 경로와 그 계약에 집중하고, 다른 레포는 이 레포를 라이브러리나 검색 API로 가져다 쓴다. 고객사마다 검색 래퍼를 따로 만들지 않도록 검색 API(`POST /v1/search`)와, 검색 결과를 근거로 답하는 멀티턴 Chat API(`POST /v1/chat`)까지 제공한다.
 
 ## 목표와 비목표
 
@@ -32,8 +32,8 @@ Oct 20, 2026 · @pilsu
 - 선언형 매핑 DSL, 플러그인 마켓·레지스트리
 - 단계별 큐 분리, 오토스케일링 정책
 - Kubernetes Operator·CRD, 클러스터·GPU 노드 프로비저닝 — 이미 준비된 클러스터에 Helm으로 올리는 것까지만 다룬다
-- 답변 생성(LLM 응답) 서비스 — 이 레포는 검색 인덱스와 검색 결과 반환(검색 API)까지만 책임진다
-- API 인증·인가 — folio API는 내부망 서비스로 둔다. 테넌트·ACL 필터 값은 App이 사용자 권한으로 정해 넘기고, folio는 `required_filters`로 누락만 막는다
+- folio API 안의 대화 저장, 에이전트 도구 호출 루프, 질문에서 필터 자동 추출 — `POST /v1/chat`은 무상태다. App이 매 요청에 대화 이력 전체와 권한 필터를 넣는다. 대화 저장·로그인은 참조 App `apps/chat`(FR-32)이 맡고, 에이전트 로직은 App이나 별도 레포가 맡는다
+- folio API 인증·인가 — folio API는 내부망 서비스로 둔다. 테넌트·ACL 필터 값은 App이 사용자 권한으로 정해 넘기고, folio는 `required_filters`로 누락만 막는다. 사용자 로그인(SSO)은 참조 App `apps/chat`이 맡는다
 - SaaS 커넥터(Slack, Notion 등) — 수집은 파일·URI 입력까지만 다룬다
 
 ## 사용자와 핵심 시나리오
@@ -72,13 +72,25 @@ Oct 20, 2026 · @pilsu
 2. App이 `POST /v1/search`로 `{query, pipeline, k, filters}`를 보낸다. `filters`에는 사용자 권한으로 정한 `tenant_id`·`acl`과 도메인 조건(같음, 목록, `{gte, lte}` 범위)을 넣는다.
 3. 응답의 `hits[]`(`chunk_id`, `doc_id`, `score`, `content`, `record`)를 화면이나 답변 생성에 쓴다. 검색 튜닝을 바꿀 때 App 코드는 바뀌지 않는다.
 
+### 시나리오 5 — App에서 멀티턴 질의응답
+
+1. 구축 개발자가 파이프라인 YAML에 `generation:`(LLM 단계, 프롬프트, 토큰 예산)을 추가하고 `FOLIO_LLM_URL`에 OpenAI 호환 LLM 서버를 연결한다.
+2. App이 `POST /v1/chat`으로 `{messages, pipeline, k, filters}`를 보낸다. `messages`는 지금까지의 `user`·`assistant` 대화 전체이고 마지막은 `user`다. 대화 이력은 App이 보관한다.
+3. folio는 후속 질문을 독립 검색어로 바꿔(`query`) 검색하고, 번호 붙인 근거로 답한다. 응답 `answer`의 `[n]`은 `citations[]`와 `hits[n-1]`로 원문 청크를 가리킨다.
+
+### 시나리오 6 — 사내 사용자가 채팅 App으로 질문
+
+1. 운영자가 `apps/chat`을 OIDC IdP(Keycloak, Entra ID 등)에 등록하고, 토큰 클레임과 검색 필터의 매핑(`FOLIO_APP_ACL_CLAIMS`, 예: `tenant` → `tenant_id`)을 정한다. folio API는 내부망에 둔다.
+2. 사용자가 SSO로 로그인해 대화를 만들고 질문한다. App은 저장된 이력과 로그인으로 정해진 권한 필터를 붙여 `POST /v1/chat`을 호출하고, 성공한 턴만 저장한다.
+3. 사용자는 답변의 `[n]`을 눌러 근거 청크(문서·섹션·페이지)를 확인하고, 대화 목록에서 이전 대화를 이어 가거나 이름 변경·삭제·피드백을 남긴다.
+
 ## 기능 요구사항
 
 P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 요구가 확인되면 한다. 수용 기준은 레포의 샘플 문서 세트(`tests/fixtures/`)로 검증한다.
 
 | ID | 영역 | 요구사항 | 우선순위 | 수용 기준 |
 | --- | --- | --- | --- | --- |
-| FR-01 | Parse | 디지털 PDF를 텍스트 레이어 + 구조 분석 백엔드 결과의 좌표 매칭으로 Document JSON으로 변환 | P0 | 디지털 PDF 샘플에서 OCR 호출 0회, 블록 텍스트가 PyMuPDF 추출 원문과 일치 |
+| FR-01 | Parse | 디지털 PDF를 텍스트 레이어 + 구조 분석 백엔드 결과의 좌표 매칭으로 Document JSON으로 변환 | P0 | 디지털 PDF 샘플에서 OCR 호출 0회, 블록 텍스트가 PyMuPDF 추출 원문과 일치(공백 정규화 후. 공백 글리프 없이 간격으로 띄운 어절은 공백으로 나눈다) |
 | FR-02 | Parse | 페이지별 텍스트 레이어 품질 판정, 기준 미달 페이지만 이미지 경로(OCR 먼저, 표·그림과 저신뢰 페이지는 VLM, VLM을 끄면 OCR만)로 폴백 | P0 | 스캔·깨진 폰트 페이지만 `text_source=ocr`/`vlm`, 나머지는 `pdf_text` |
 | FR-03 | Parse | 구조 분석 백엔드의 표 구조로 셀 단위 `cells` 구성 | P0 | 샘플 표의 행·열 수와 셀 텍스트가 정답 파일과 일치 |
 | FR-04 | Parse | 회전·CropBox 보정, char 단위 매칭 옵션(한글 변환 PDF) | P1 | 회전 페이지·HWP 변환 PDF 샘플에서 블록 텍스트 누락 없음 |
@@ -101,8 +113,10 @@ P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 �
 | FR-15 | Service | Airflow 예시 DAG(folio 이미지로 `folio run` 실행: DockerOperator 기본, KubernetesPodOperator 선택). Airflow에는 folio 의존성을 설치하지 않는다 | P1 | 예시 DAG가 로컬 Airflow에서 실행 |
 | FR-16 | CLI | `init`, `schema apply [--reindex]`, `run`, `reprocess` | P0 | `init` 반복 실행이 안전(멱등), `--reindex`는 alias 교체로 무중단 |
 | FR-17 | Retrieval | 하이브리드 검색(BM25 + 벡터, RRF) + rerank 라이브러리, OpenSearch·Milvus·pgvector 공통 인터페이스. 필터는 같음·목록·범위(`gt`·`gte`·`lt`·`lte`). 파이프라인 YAML `retrieval:`로 모드·`k`·BM25 필드 가중치(OpenSearch)·`rrf_k`·후보 수·rerank·필수 필터·사용자 retriever(`fn`) 설정 | P1 | 필터 인자로 도메인 필드 검색 가능, 세 스토어 모두 범위 필터 통합 테스트 통과, 가중치를 지원하지 않는 스토어에 가중치를 주면 설정 오류 |
-| FR-18 | Eval | Testset 생성, Recall@k·MRR·nDCG 평가. 서비스와 같은 `retrieval:` 설정으로 검색 | P2 | 설정 파일의 Git 커밋별로 결과 비교 가능 |
+| FR-18 | Eval | 구간 기반 Testset 생성(정답 = 원문 구간이라 청킹 설정과 무관, 근거 인용 원문 일치 검증), 질문 유형(한 쪽 fact·table·section, 여러 쪽 multi_hop·comparison·temporal·multi_intent, 여러 문서 multi_document), Recall@k·All@k·MRR·nDCG 평가. 서비스와 같은 `retrieval:` 설정으로 검색 | P2 | 설정 파일의 Git 커밋별로 결과 비교 가능, 같은 testset으로 청킹 설정이 다른 인덱스를 비교 가능, 유형별 지표와 비교 신뢰구간 출력 |
 | FR-30 | Service | Search API `POST /v1/search` (`query`, `pipeline`, `k`≤100, `mode`, `filters`) → `hits[]`. 파이프라인의 임베딩 단계·`retrieval:` 설정을 그대로 사용. 잘못된 필터·모드·누락된 필수 필터는 400 | P1 | 업로드 후 검색 결과가 반환되는 E2E 통과, `required_filters` 누락 시 400 |
+| FR-31 | Service | Chat API `POST /v1/chat` (`messages`, `pipeline`, `k`, `mode`, `filters`) → `{answer, query, citations[], hits[]}`. 무상태 멀티턴: 이력은 요청에 포함, 후속 질문은 검색 전에 독립 검색어로 재작성(첫 턴은 생략), 이전 답변의 `[n]` 표시는 제거. 근거·이력은 토큰 예산 안에서 자름. LLM 단계는 `generation.chat`(`module:function`, 기본 OpenAI 호환). `system` 역할 거부(422), `generation:` 없는 파이프라인·필수 필터 누락 400, LLM 실패 502 | P2 | 멀티턴 요청에서 재작성된 `query`로 검색, 인용 번호가 `hits`의 청크와 일치, 오류 코드가 명세대로 반환 |
+| FR-32 | App | 참조 채팅 App `apps/chat`: OIDC SSO(코드 플로 + PKCE, 개발용 `dev` 모드), 사용자별 대화·메시지 저장과 CRUD API(`/api/conversations`, 메시지 전송·피드백·"이 질문부터 삭제"), 외부 리소스 없는 단일 HTML UI(대화·근거 패널 독립 접기와 데스크톱 상태 저장, 1100px 이하 서랍의 배경 클릭·Escape 닫기와 포커스 관리, 검색 대상·수정 가능한 질문 예시, 근거 점수·메타데이터 상세 접기, 쉬운 설정 용어와 대화 중 검색 대상 고정·새 대화에서 변경, 인용 클릭·근거 원문 쪽 하이라이트). folio는 HTTP(`POST /v1/chat`)로만 호출하고, 권한 필터는 토큰 클레임에서 정해 클라이언트 값을 덮어씀. 실패한 턴은 저장하지 않음. Claude 사용 시 chat 단계 `folio.generation.anthropic:chat` | P2 | SSO 로그인 후 멀티턴 대화가 저장·재개됨, 다른 사용자의 대화 접근 404, 클라이언트가 보낸 ACL 필터 무시, 매핑된 클레임이 없으면 403 |
 | FR-22 | Deploy | 컨테이너 이미지: `folio`(API·워커·CLI 공용, 실행 명령으로 역할 선택), 구조 분석 모델 서버, 고객사 이미지 빌드용 베이스 | P0 | 같은 이미지 태그가 Compose와 k8s 양쪽에서 E2E 통과, non-root 실행, 이미지 안에 비밀값 없음 |
 | FR-23 | Deploy | Docker Compose 배포(앱 + PostgreSQL·RabbitMQ·OpenSearch·S3 호환 스토리지·모델 서버), GPU 서비스 선택 | P0 | 빈 서버에서 `docker compose up` 후 시나리오 3 통과 |
 | FR-24 | Deploy | Helm 차트: API·워커·모델 서버 Deployment, `folio init`·`schema apply` 실행 Job(hook), ConfigMap(파이프라인 YAML)·Secret(접속 정보), GPU 리소스·nodeSelector·toleration 설정 | P0 | kind(또는 k3s) 클러스터에서 `helm install` 후 시나리오 3 통과, `helm upgrade` 중 진행 중인 job 유실 없음 |
@@ -173,10 +187,15 @@ retrieval:                            # 생략 시 hybrid, k=10, content만 BM25
   candidates: 50                      # 단계별 후보 수, 기본 max(k*3, 30). rerank는 이 후보를 보고 k개로 자른다
   rerank: {fn: folio.retrieval.rerank:http_rerank, top_n: 10}   # 선택, FOLIO_RERANK_URL
   required_filters: [tenant_id]       # 검색 요청에 반드시 있어야 하는 필터
+generation:                           # 선택, 있으면 POST /v1/chat 사용 가능 (true = 기본값)
+  chat: {fn: folio.generation:http, model: qwen3-32b, max_tokens: 1024}   # FOLIO_LLM_URL
+  rewrite: true                       # 후속 질문을 독립 검색어로 재작성
+  max_context_tokens: 6000            # 근거 청크 예산 (1위 청크는 항상 포함)
+  max_history_tokens: 2000            # 대화 이력 예산, 오래된 턴부터 버림
 storage: s3://folio-artifacts/       # 중간 산출물 위치
 ```
 
-단계 함수 시그니처는 `parse(uri, **opts) -> DocumentJSON`, `chunk(doc, **opts) -> list[dict]`, `map(doc, chunk) -> dict`, `embed(texts, **opts) -> list[list[float]]`로 고정한다.
+단계 함수 시그니처는 `parse(uri, **opts) -> DocumentJSON`, `chunk(doc, **opts) -> list[dict]`, `map(doc, chunk) -> dict`, `embed(texts, **opts) -> list[list[float]]`, 생성 단계 `chat(messages, **opts) -> str`로 고정한다.
 
 ## 파싱 백엔드
 
@@ -275,6 +294,8 @@ HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. 변환
 
 `native` 모드 후보로 [kordoc](https://github.com/chrisryugj/kordoc) 4.22.15(MIT, Node)를 같은 샘플로 확인했다. 한컴 저장 11/11·법령 9/9 성공, 문서당 0.5~0.7초, 텍스트 재현율 0.97(법령은 머리말·꼬리말을 뺀 본문 누락 없음), 블록별 쪽 번호와 병합 셀(rowSpan·colSpan)이 있는 표 구조를 주지만 bbox는 없다. 서식 문서 1개에서는 재현율이 0.89로 일부 텍스트가 빠졌다(원인 미확인). `native` 모드 구현 시 직접 파싱과 비교할 기준으로 쓴다.
 
+구현(2026-10-21): 변환은 별도 이미지 `folio-convert`(`folio convert-server`, `FOLIO_CONVERT_URL`)가 맡는다. 구조 분석 서버와 같은 사이드카 방식이고, GPL인 H2Orestart를 메인 이미지에 넣지 않는다. URL이 없으면 로컬 LibreOffice·rhwp를 쓴다. 바이너리 HWP도 rhwp로 같은 경로를 탄다. Document의 `meta.convert`에 변환기·버전·`pdf_hash`를 남기며, 쪽 번호와 bbox는 그 PDF 기준이다. LibreOffice 출력은 실행마다 바이트가 달라(타임스탬프) 해시로 PDF를 재현할 수는 없다. 그래서 인용 하이라이트용으로 변환 PDF를 원본 옆(`{index}/{doc_id}/converted.pdf`)에 저장한다(2026-10-21 사용자 결정). 공개 샘플 기준 변환 PDF 크기는 원본 대비 DOCX 1.1배, HWPX 2.0배(합계)다.
+
 결론 (2026-10-21 벤치마크, [기록](wiki/2026-10-21-docx-converter-benchmark.md)): **DOCX → PDF 기본 변환기는 LibreOffice로 한다.** HWPX 대체 변환기와 같은 이미지를 쓴다. 고객사 샘플로 다시 확인할 때까지 이 결정은 잠정이다.
 
 Word(Microsoft 365)가 저장한 PDF를 정답으로 두고, 공공기관이 공개한 한국어 DOCX 11개와 영어 테스트 문서 2개(총 319쪽)를 비교했다. 아래 수치는 공개 글꼴만 넣은 결과이고, 괄호 안은 Windows 글꼴을 마운트한 결과다.
@@ -282,10 +303,11 @@ Word(Microsoft 365)가 저장한 PDF를 정답으로 두고, 공공기관이 공
 | 후보 | 성공 | 쪽수 일치 | 텍스트 재현율 | 어절 재현율 | 단어 위치 일치(6pt 이내) | 쪽당 시간(DGX Spark) | 이미지 | 판단 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | LibreOffice 24.2 | 13/13 | 5/13 (6/13) | 0.99 | 0.87 (0.93) | 0.05 (0.13) | 0.05초 | 773MB | **기본값**. 실패·큰 누락 없음. 다단·가로 구역 문서는 쪽이 줄어든다 |
-| [OnlyOffice DocumentBuilder](https://github.com/ONLYOFFICE/DocumentBuilder) 9.4.0 | 13/13 | 4/13 (6/13) | 0.97 | 0.38 (0.40) | 0.04 (0.16) | 0.07초 | 364MB | 제외. 한국어 텍스트 레이어에 공백 문자가 없어 pymupdf 추출 시 어절이 붙는다. 공개 글꼴에서 쪽수가 최대 +26%. AGPL |
+| [OnlyOffice DocumentBuilder](https://github.com/ONLYOFFICE/DocumentBuilder) 9.4.0 | 13/13 | 4/13 (6/13) | 0.97 | 0.38 (0.40) | 0.04 (0.16) | 0.07초 | 364MB | 제외. 한국어 텍스트 레이어에 공백 문자가 없다(글자 간격 기반 어절 분리 추가 후 어절 재현율 0.90). 공개 글꼴에서 쪽수가 최대 +26%. AGPL |
 | Word, Aspose 등 | 미시험 | | | | | | | Windows 의존 또는 상용 |
 
 - 텍스트 재현율은 순서 무관 2-gram 재현율이다. 어절 재현율은 공백 단위 토큰 재현율로, 띄어쓰기 손실을 잡는다.
+- 표의 어절 재현율은 공백 문자만으로 단어를 나누던 추출기 기준이다. LibreOffice(대체 한글 글꼴), rhwp, 한컴, OnlyOffice가 만든 PDF는 한국어 어절 사이에 공백 글리프가 없거나 다른 위치에 그려진다. 그래서 텍스트 레이어 추출기가 글자 간격으로도 어절을 나누도록 바꿨다([작업 기록](wiki/2026-10-21-docx-hwpx-convert-mode.md)). 바꾼 추출기로 정답·후보를 다시 읽으면 어절 재현율은 LibreOffice 0.93, OnlyOffice 0.90, rhwp(HWPX) 0.97이다.
 - 정답 PDF는 맑은 고딕·바탕 등 Windows 글꼴을 쓴다. 고객사 MS 글꼴은 이미지에 넣지 못할 수 있으므로 대체 글꼴 매핑을 설정으로 둔다.
 - `native` 기준인 kordoc은 DOCX 13/13 성공, 텍스트 재현율 0.91, 정밀도 0.95다. 쪽마다 반복되는 표 머리행과 머리말·꼬리말이 없어서 재현율이 낮게 나온다.
 
@@ -391,7 +413,7 @@ M1 벤치마크(2026-10-21, 공개 한글 디지털 문서 16개, 질의 249개,
 | 보안 | 폐쇄망 설치 가능(외부 API 의존 없음). 모델·DB 접속 정보는 환경변수로만 주입 | 오프라인 compose·Helm 설치로 E2E 통과 |
 | 배포 | Docker Compose와 Kubernetes를 같은 이미지·같은 환경변수 계약으로 지원. 컨테이너는 non-root, 비밀값은 이미지·차트 기본값에 넣지 않음 | CI에서 Compose E2E와 kind 클러스터 Helm E2E를 모두 실행, `helm lint`·이미지 취약점 스캔 통과 |
 | 권한 | `tenant_id`·`acl` 필드를 Chunk Record에 실을 수 있고, Retrieval이 필터로 적용. `retrieval.required_filters`로 필터 누락 요청을 거부 | 다른 테넌트 문서가 검색되지 않음, 필수 필터 없는 검색 요청은 400 |
-| 관측 | job 상태, 단계별 소요 시간, 실패 사유를 `jobs` 테이블과 구조화 로그로 남긴다 | `GET /v1/jobs/{id}`에서 단계별 상태 조회 |
+| 관측 | job 상태, 단계별 소요 시간, 실패 사유를 `jobs` 테이블과 구조화 로그로 남긴다. 라이브러리·API·worker·chat app 모두 JSON 한 줄 로그(`request_id`·`job_id` 포함)를 stderr로 내고(CLI 결과 JSON은 stdout) `FOLIO_LOG_LEVEL`(기본 INFO, DEBUG는 장애 분석용)로 상세도를 조절한다. 저장은 컨테이너 런타임(Compose `local` 드라이버 로테이션, k8s kubelet + 클러스터 수집기)이 맡고, 컨테이너 밖 실행은 `FOLIO_LOG_FILE` 로테이션 파일 | `GET /v1/jobs/{id}`에서 단계별 상태 조회, `X-Request-ID`로 app→API 요청 추적, 로그에 비밀값 미노출 테스트 |
 | 이식성 | 라이브러리는 서비스 없이 `pip install`만으로 동작 | 노트북에서 `run_pipeline` 단독 실행 |
 
 ## 레포 구조와 기술 스택
@@ -412,6 +434,7 @@ M1 벤치마크(2026-10-21, 공개 한글 디지털 문서 16개, 질의 249개,
 │  ├─ retrieval/  eval/      # 독립 모듈
 │  └─ cli.py                 # folio init / schema / run / reprocess
 ├─ service/                  # FastAPI + Celery 래퍼
+├─ apps/chat/                # 참조 채팅 App (SSO·대화 저장·UI). folio는 HTTP로만 호출
 ├─ project-template/         # schemas/ pipelines/ mappers.py dags/ samples/
 ├─ deploy/
 │  ├─ docker/                # Dockerfile (folio, folio-structure, 고객사 베이스)
@@ -434,6 +457,7 @@ M1 벤치마크(2026-10-21, 공개 한글 디지털 문서 16개, 질의 249개,
 | 검색 인덱스 | OpenSearch (기본), Milvus, pgvector |  |
 | 배치 | Airflow (선택) | 예시 DAG + Compose `airflow` 프로필(개발용). 작업은 folio 컨테이너에서 실행. 운영 Airflow는 설치하지 않고, 공식 Apache Airflow Helm 차트용 설치 가이드·values 예시·RBAC(`deploy/airflow/`)만 제공 |
 | 배포 | Docker 이미지, Docker Compose v2, Kubernetes + Helm 3 | 지원 k8s 최소 버전은 열린 질문 |
+| 채팅 App | FastAPI, Authlib(OIDC), SQLAlchemy(SQLite·PostgreSQL), 단일 HTML | `folio[app]` extra. 이미지·Compose·Helm에는 아직 넣지 않았다 |
 
 ## 마일스톤
 
@@ -450,23 +474,27 @@ M1에서 디지털 PDF 하나로 처음부터 끝까지 도는 것을 먼저 만
 | M2 | FR-02·05 이미지 경로, FR-06 VLM 기본 적용 (M3 선택 항목에서 이동) | OCR 폴백과 같은 경로이고, M1 벤치마크로 고른 VLM을 띄운다 |
 | M2 | FR-27 PPTX, FR-28 XLSX, FR-29 Markdown·TXT | 그림·차트는 FR-06의 VLM을 재사용한다. Markdown·TXT는 모델 없이 구현돼 청킹 테스트 입력으로도 쓴다 |
 | M3 | FR-30 Search API, FR-17 `retrieval:` 설정·범위 필터 | 고객사마다 검색 래퍼를 다시 만들지 않게 한다. FR-18 Eval과 같은 검색 경로를 쓴다 |
+| M3 | FR-31 Chat API (무상태 멀티턴 생성) | FR-30 검색 경로를 그대로 쓰고, 운영 LLM은 VLM처럼 고객사 환경에서 정한다 |
+| M3 | FR-32 참조 채팅 App (SSO, 대화 저장) | FR-31 위에 얇게 둔다. 고객사 App이 있으면 그 App이 같은 계약으로 `/v1/chat`을 호출한다 |
 
-## 구현 현황 (2026-10-20)
+## 구현 현황 (2026-10-21)
 
-DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 검증 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md), [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md), [Airflow 컨테이너 DAG](wiki/2026-10-20-airflow-container-dag.md) 작업 기록에 있다.
+FR-21(DOCX·HWPX `native`, 보류)을 제외한 FR을 구현했다. FR-20(DOCX·HWPX `convert`)은 [작업 기록](wiki/2026-10-21-docx-hwpx-convert-mode.md)에 있다. 검증 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md), [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md), [Airflow 컨테이너 DAG](wiki/2026-10-20-airflow-container-dag.md) 작업 기록에 있다.
 
 | 상태 | FR |
 | --- | --- |
-| 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 15(Compose Airflow + DockerOperator, k3s에 공식 Airflow 차트 설치 후 KubernetesExecutor → KubernetesPodOperator, folio 내장 PostgreSQL을 메타데이터 DB로 공유), 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~30 |
-| 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인) |
-| 구현, 미검증 | FR-15 운영 Airflow 가이드의 원격 로그 설정(예시만 제공), FR-26 Helm 사설 레지스트리 경로, PPTX `convert` 모드(LibreOffice 미포함) |
-| 보류 | FR-20, FR-21 (DOCX·HWPX) |
+| 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 20(DOCX 13·HWPX 11·HWP 1개를 변환 서버로 파싱, 모든 텍스트 블록에 쪽·bbox), 15(Compose Airflow + DockerOperator, k3s에 공식 Airflow 차트 설치 후 KubernetesExecutor → KubernetesPodOperator, folio 내장 PostgreSQL을 메타데이터 DB로 공유), 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~30 |
+| 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), PPTX `convert` 모드(픽스처 4장을 변환 서버와 이미지 안 LibreOffice로 변환, 쪽·bbox 확인. 실제 고객 슬라이드 미확인), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(구간 기반 testset·유형별 지표·CI를 M1 한국어 질의 249개와 청킹 설정 4종으로 확인, OpenRouter qwen3.8-27b로 공개 샘플에서 8개 유형 생성 확인, 고객사 샘플·내부 LLM 미확인. [작업 기록](wiki/2026-10-21-eval-span-testset.md)), FR-25(values·env 전환 렌더링만 확인), FR-31(stub LLM으로 재작성·인용·오류 코드만 확인, 실제 LLM 모델 미선정), FR-32(실제 `/v1/chat`(memory sink·stub LLM)과 로컬 테스트용 OIDC 서버로 SSO·CRUD·ACL·브라우저 흐름 확인, 실제 IdP·실제 LLM·배포 미확인) |
+| 구현, 미검증 | FR-15 운영 Airflow 가이드의 원격 로그 설정(예시만 제공), FR-26 Helm 사설 레지스트리 경로 |
+| 보류 | FR-21 (DOCX·HWPX `native`) |
 
 - VLM 기본 적용은 `parse.vlm: auto`로 구현했다. `FOLIO_VLM_URL`이 있으면 VLM 경로(기본)를 쓰고, 없으면 구조 분석 OCR을 쓰며 `meta.vlm`에 사유를 남긴다. VLM 호출이 실패한 페이지만 OCR로 폴백하고 `meta.vlm_fallbacks`에 기록한다.
 - 청킹 기본 전략은 `adaptive`이고 대안은 `page`·`fixed`다. 이전의 `auto`·`section`·`table` 전략은 제거했다. `max_tokens`는 임베딩 입력인 `contextualized_content` 기준으로 지킨다.
 - 구조 분석 백엔드: 픽스처에서 heuristic·Docling·PP-StructureV3 모두 디지털 텍스트·표 결과가 같았다. OCR 유사도는 0.72 / 0.75 / 0.91, CPU 기준 초/페이지는 0.04 / 1.75 / 20.6이다(PP-StructureV3는 모델 로드 포함).
 - 기본 구조 분석 백엔드는 PP-StructureV3 GPU다(2026-10-20 사용자 결정). Compose `gpu` 프로필과 Helm 기본값이 GPU 서버를 띄우고, GPU가 없으면 `cpu`(Compose 프로필, `values-cpu.yaml`), 개발·CI는 `heuristic`을 쓴다. 폐쇄망 번들 기본 변형은 `STRUCTURE_VARIANTS=gpu`다. 모델을 미리 로드한 상태의 픽스처 11페이지 측정은 GPU(RTX 4070) 0.33~0.42 s/page, CPU 4스레드(pgx aarch64) 17.6 s/page, 최대 메모리 11.6 GiB다. 상세는 [PP-StructureV3 기본 백엔드](wiki/2026-10-21-ppstructure-gpu-default.md)에 있다.
 - 검색: `POST /v1/search`와 파이프라인 YAML `retrieval:`을 구현했다. 서비스·`folio eval run`·라이브러리 모두 `folio.pipeline.retriever(cfg)` 한 경로로 retriever를 만든다. 상세는 [검색 API 작업 기록](wiki/2026-10-20-implementation-search-api.md)에 있다.
+- 생성: `POST /v1/chat`과 YAML `generation:`을 구현했다(무상태 멀티턴, 기본 꺼짐). `folio eval testset --method llm`도 같은 chat 클라이언트(`folio.generation:http`)를 쓴다. 상세는 [멀티턴 생성 작업 기록](wiki/2026-10-21-generation-multiturn.md)에 있다.
+- 채팅 App: `apps/chat`(FR-32)을 추가했다. Claude API용 chat 단계 `folio.generation.anthropic:chat`도 추가했다(pgx vLLM 준비 전 테스트용). 상세는 [채팅 App 작업 기록](wiki/2026-10-21-chat-app-sso.md)에 있다.
 - `minio/minio`가 Docker Hub에서 더 이상 배포되지 않아, 내장 S3를 digest로 고정한 `cgr.dev/chainguard/minio`로 바꿨다.
 
 ## 열린 질문
@@ -478,6 +506,7 @@ DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 검증 상세�
 - [ ] ARM GPU 호스트(예: DGX Spark GB10, aarch64 sm_121): paddlepaddle-gpu 3.3.1(cu129)·3.5 nightly(cu130)가 `run_check()`에서 실패해 PP-StructureV3가 CPU로만 돈다. 이런 고객사 환경을 지원할지, 그때 Docling(GPU 동작 확인)을 기본으로 쓸지
 - [ ] HWPX → PDF 변환기: 공개 샘플 벤치마크로 rhwp 기본 + LibreOffice·H2Orestart 대체로 잠정 결정. 첫 고객사 샘플로 재확인 필요
 - [ ] DOCX → PDF 변환기: 공개 샘플 벤치마크(Word PDF 정답)로 LibreOffice 기본으로 잠정 결정, OnlyOffice 제외. 첫 고객사 샘플로 재확인 필요
+- [x] 변환 PDF 보관: 원본 옆에 `converted.pdf`로 저장(2026-10-21 사용자 결정). 앱은 `GET /v1/documents/{doc_id}/pdf`로 받는다
 - [x] VLM 모델 수: 스캔 파싱·그림 설명·복잡 표를 모델 1개로 처리 (이미지 콘텐츠에 VLM 기본 적용도 결정됨)
 - [ ] VLM 모델 선정: 공개 샘플로 Qwen3.5-9B 잠정 선택([VLM 모델](#vlm-모델-1개)). 고객사 샘플 재확인, HTML 표 파서, FP8 속도 확인 필요
 - [ ] `adaptive` 청킹 기본값: 공개 샘플로 `max_tokens=512`·`min_tokens=64`가 잠정 최적([파라미터](#파라미터)). 현재 기본값 1024/128을 바꿀지 사용자 결정 필요

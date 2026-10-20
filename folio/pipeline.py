@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import re
 import sys
 import time
 from collections.abc import Callable
@@ -30,6 +32,8 @@ __all__ = ["PipelineResult", "delete_document", "load_config", "load_pipeline", 
 
 STAGES = ["parse", "chunk", "map", "embed", "index"]
 DEFAULT_MAP = "folio.map:common"
+CONVERTED_PDF = "converted.pdf"
+_DOC_ID = re.compile(r"[A-Za-z0-9_-]{1,128}")
 Progress = Callable[[str, str, int], None]  # (stage, status running|done|failed, ms)
 
 _SINKS: dict[str, Any] = {}
@@ -121,6 +125,7 @@ def _execute(
         if progress:
             progress(name, "running", 0)
         t0 = time.perf_counter()
+        log_event("stage_start", logging.DEBUG, stage=name, doc_id=result.doc_id)
         try:
             out = fn()
         except Exception as exc:
@@ -128,7 +133,7 @@ def _execute(
             timings[name] = ms
             if progress:
                 progress(name, "failed", ms)
-            log_event("stage_failed", stage=name, ms=ms, error=str(exc), doc_id=result.doc_id)
+            log_event("stage_failed", logging.ERROR, stage=name, ms=ms, error=str(exc), doc_id=result.doc_id, exc_info=True)
             raise
         ms = int((time.perf_counter() - t0) * 1000)
         timings[name] = ms
@@ -160,10 +165,17 @@ def _execute(
         result.doc_id = doc.doc_id
         base = f"{cfg.index}/{doc.doc_id}"
         storage.put_bytes(f"{base}/source{_ext(uri)}", read_uri(uri))
+        # citation highlights need the exact PDF the bbox values refer to (re-conversion may differ)
+        if doc._converted_pdf:
+            storage.put_bytes(f"{base}/{CONVERTED_PDF}", doc._converted_pdf)
+            doc.meta.setdefault("convert", {})["pdf_key"] = CONVERTED_PDF
+        else:
+            storage.delete(f"{base}/{CONVERTED_PDF}")
         storage.put_json(f"{base}/document.json", doc.model_dump(mode="json"))
         storage.put_json(
             f"{base}/manifest.json",
-            {"source_uri": doc.source_uri, "origin_uri": uri, "mime_type": doc.mime_type, "pipeline": cfg.name},
+            {"source_uri": doc.source_uri, "origin_uri": uri, "mime_type": doc.mime_type, "pipeline": cfg.name,
+             **({"converted_pdf": CONVERTED_PDF} if doc._converted_pdf else {})},
         )
     result.doc_id = doc.doc_id
     base = f"{cfg.index}/{doc.doc_id}"
@@ -266,9 +278,26 @@ def reprocess(
     return out
 
 
+def _doc_base(cfg: PipelineConfig, doc_id: str) -> str:
+    """Storage prefix of a document; rejects ids that could escape it (`..`, `/`)."""
+    if not _DOC_ID.fullmatch(doc_id):
+        raise ValueError(f"invalid doc_id {doc_id!r}")
+    return f"{cfg.index}/{doc_id}"
+
+
 def delete_document(cfg: PipelineConfig, doc_id: str) -> None:
+    base = _doc_base(cfg, doc_id)
     _sink(cfg).delete(doc_id)
-    _storage(cfg).delete(f"{cfg.index}/{doc_id}")
+    _storage(cfg).delete(base)
+
+
+def document_pdf(cfg: PipelineConfig, doc_id: str) -> bytes | None:
+    """The PDF that the document's pages/bbox refer to: the converted PDF, or the source if it is a PDF. None if absent."""
+    base, storage = _doc_base(cfg, doc_id), _storage(cfg)
+    for key in (f"{base}/{CONVERTED_PDF}", f"{base}/source.pdf"):
+        if storage.exists(key):
+            return storage.get_bytes(key)
+    return None
 
 
 def _no_embed(texts: list[str]):

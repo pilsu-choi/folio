@@ -86,6 +86,7 @@ def test_search_endpoint(client, tmp_path):
     assert r.status_code == 200
     hits = r.json()["hits"]
     assert len(hits) == 1 and hits[0]["doc_id"] == job["doc_id"] and hits[0]["content"] == "제1조"
+    assert "embedding" not in hits[0]["record"] and hits[0]["record"]["chunk_id"] == hits[0]["chunk_id"]
     assert client.post("/v1/search", json={"query": "제1조", "filters": {"doc_id": "other"}}).json()["hits"] == []
     assert client.post("/v1/search", json={"query": "x", "pipeline": "nope"}).status_code == 400
     assert client.post("/v1/search", json={"query": "x", "k": 0}).status_code == 422
@@ -102,3 +103,44 @@ def test_search_endpoint(client, tmp_path):
         assert r.status_code == 400 and "tenant_id" in r.json()["detail"]
     r = client.post("/v1/search", json={"query": "제1조", "pipeline": "secure", "filters": {"tenant_id": "t1"}})
     assert r.status_code == 200 and r.json()["hits"] == []
+
+
+def test_chat_endpoint(client, tmp_path):
+    upload(client)
+    assert client.post("/v1/chat", json={"messages": [{"role": "user", "content": "제1조"}]}).status_code == 400
+    (tmp_path / "pipelines" / "chat.yaml").write_text(
+        (tmp_path / "pipelines" / "contracts.yaml").read_text()
+        + "generation: {chat: 'tests.test_generation:fake_chat', rewrite: false}\n")
+    msgs = [{"role": "user", "content": "제1조"}, {"role": "assistant", "content": "a [1]"},
+            {"role": "user", "content": "제1조"}]
+    r = client.post("/v1/chat", json={"messages": msgs, "pipeline": "chat", "k": 3})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["query"] == "제1조" and body["answer"].endswith("[9].")
+    assert body["hits"][0]["content"] == "제1조" and body["citations"][0]["chunk_id"] == body["hits"][0]["chunk_id"]
+    assert "embedding" not in body["hits"][0]["record"]
+    system = [{"role": "system", "content": "x"}, {"role": "user", "content": "q"}]
+    assert client.post("/v1/chat", json={"messages": system, "pipeline": "chat"}).status_code == 422
+    assert client.post("/v1/chat", json={"messages": [], "pipeline": "chat"}).status_code == 422
+    last_bot = [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]
+    assert client.post("/v1/chat", json={"messages": last_bot, "pipeline": "chat"}).status_code == 400
+    (tmp_path / "pipelines" / "down.yaml").write_text(
+        (tmp_path / "pipelines" / "chat.yaml").read_text().replace("fake_chat", "broken_chat"))
+    r = client.post("/v1/chat", json={"messages": msgs[:1], "pipeline": "down"})
+    assert r.status_code == 502 and "llm down" in r.json()["detail"]
+
+
+def test_document_pdf_for_highlights(client, tmp_path):
+    job = client.get(f"/v1/jobs/{upload(client)}").json()
+    r = client.get(f"/v1/documents/{job['doc_id']}/pdf?pipeline=contracts")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
+    assert r.content == "제1조\n제2조\n".encode() and r.headers["etag"].startswith('"sha256:')  # PDF source as-is
+    converted = tmp_path / "store" / "idx" / job["doc_id"] / "converted.pdf"
+    converted.write_bytes(b"%PDF-converted")  # convert modes: the PDF that bbox refers to wins
+    assert client.get(f"/v1/documents/{job['doc_id']}/pdf?pipeline=contracts").content == b"%PDF-converted"
+    assert client.get("/v1/documents/" + "0" * 32 + "/pdf?pipeline=contracts").status_code == 404
+    assert client.get("/v1/documents/../pdf?pipeline=contracts").status_code == 404  # not routed
+    assert client.get("/v1/documents/a.b/pdf?pipeline=contracts").status_code == 400
+    assert client.delete("/v1/documents/%2E%2E?pipeline=contracts").status_code == 400  # would be the index's parent
+    assert client.delete("/v1/documents/a.b?pipeline=contracts").status_code == 400
+    assert (tmp_path / "store" / "idx" / job["doc_id"]).is_dir()

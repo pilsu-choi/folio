@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>folio chat</title>
+<style>
+:root {
+  --bg: #f6f6f3; --panel: #ffffff; --ink: #1d1f22; --muted: #6a6f76; --line: #e3e2dc;
+  --accent: #2f5bd3; --accent-soft: #e8eefc; --user: #1d1f22; --user-ink: #fafaf7;
+  --warn: #b3261e; --warn-soft: #fbeaea; --mark: #fff3c4;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15171a; --panel: #1d2024; --ink: #e7e8ea; --muted: #959aa2; --line: #2e3238;
+    --accent: #8fb0ff; --accent-soft: #22304d; --user: #e7e8ea; --user-ink: #15171a;
+    --warn: #ff8a80; --warn-soft: #3a2121; --mark: #4a4220; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15171a; --panel: #1d2024; --ink: #e7e8ea; --muted: #959aa2; --line: #2e3238;
+  --accent: #8fb0ff; --accent-soft: #22304d; --user: #e7e8ea; --user-ink: #15171a;
+  --warn: #ff8a80; --warn-soft: #3a2121; --mark: #4a4220; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 15px/1.6 system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  display: grid; grid-template-rows: auto 1fr; overflow: hidden;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+
+header {
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+  border-bottom: 1px solid var(--line); background: var(--panel);
+}
+header h1 { font-size: 16px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+header h1 span { color: var(--muted); font-weight: 400; }
+header .spacer { flex: 1; }
+header .user { font-size: 12px; color: var(--muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#convBtn, #sourcesBtn { white-space: nowrap; }
+.btn {
+  border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 5px 12px;
+}
+.btn:hover { background: var(--accent-soft); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+.btn.primary:disabled { opacity: .45; cursor: default; }
+
+#settings {
+  display: none; gap: 12px; flex-wrap: wrap; align-items: flex-end;
+  padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+#settings.open { display: flex; }
+#settings label { display: grid; gap: 2px; font-size: 12px; color: var(--muted); }
+#settings input, #settings select, #settings textarea {
+  border: 1px solid var(--line); background: var(--bg); border-radius: 6px; padding: 4px 8px; min-width: 0;
+}
+#settings textarea { font-family: var(--mono); font-size: 12px; width: min(360px, 80vw); height: 34px; resize: vertical; }
+#settings .err { color: var(--warn); font-size: 12px; }
+
+main { display: grid; grid-template-columns: var(--left, 240px) minmax(0, 1fr) var(--right, 340px); min-height: 0; }
+#chat { display: grid; grid-template-rows: auto 1fr auto; min-height: 0; min-width: 0; }
+#log { overflow-y: auto; padding: 24px 16px 8px; }
+.turns { max-width: 760px; margin: 0 auto; display: grid; gap: 18px; }
+.empty { max-width: 520px; margin-left: auto; margin-right: auto; color: var(--muted); text-align: center; margin-top: 18vh; }
+.empty b { display: block; color: var(--ink); font-size: 18px; margin-bottom: 4px; }
+
+.urow { justify-self: end; max-width: 85%; display: grid; justify-items: end; gap: 2px; }
+.urow .del { border: 0; background: none; color: var(--muted); font-size: 11px; padding: 0; opacity: .0; }
+.urow:hover .del, .urow .del:focus { opacity: 1; }
+@media (hover: none) { .urow .del { opacity: 1; } }
+.msg.user { background: var(--user); color: var(--user-ink);
+  padding: 8px 14px; border-radius: 14px 14px 4px 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.bot { justify-self: stretch; padding: 4px 2px; overflow-wrap: anywhere; }
+.msg.bot.selected { border-left: 3px solid var(--accent); padding-left: 12px; }
+.msg.bot p { margin: 0 0 .7em; } .msg.bot p:last-child { margin-bottom: 0; }
+.msg.bot ul, .msg.bot ol { margin: 0 0 .7em; padding-left: 1.4em; }
+.msg.bot h3 { font-size: 15px; margin: .8em 0 .3em; }
+.msg.bot code { font-family: var(--mono); font-size: 13px; background: var(--accent-soft); padding: 1px 4px; border-radius: 4px; }
+.msg.bot pre { background: var(--accent-soft); padding: 10px; border-radius: 8px; overflow-x: auto; }
+.msg.bot pre code { background: none; padding: 0; }
+.cite {
+  border: 0; background: var(--accent-soft); color: var(--accent); border-radius: 5px;
+  font-size: 11px; font-weight: 650; padding: 0 5px; margin: 0 1px; vertical-align: 2px; line-height: 1.5;
+}
+.cite:hover { background: var(--accent); color: var(--panel); }
+.meta { margin-top: 8px; font-size: 12px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.meta .q { color: var(--ink); }
+.meta .q::before { content: "“"; } .meta .q::after { content: "”"; }
+.meta .fb { color: var(--muted); }
+.meta .fb[aria-pressed="true"] { color: var(--accent); font-weight: 650; }
+.meta button { border: 0; background: none; color: var(--accent); padding: 0; font-size: 12px; }
+.msg.error { background: var(--warn-soft); color: var(--warn); padding: 8px 12px; border-radius: 8px; font-size: 14px; }
+.msg.error button { margin-left: 8px; }
+.thinking { color: var(--muted); font-size: 14px; }
+.thinking::after { content: ""; animation: dots 1.2s steps(4) infinite; }
+@keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+
+form#composer { padding: 10px 16px 16px; }
+.box { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 8px 8px 8px 14px; }
+.box:focus-within { border-color: var(--accent); }
+.box textarea { flex: 1; border: 0; outline: 0; background: transparent; resize: none; max-height: 200px; padding: 6px 0; }
+.hint { max-width: 760px; margin: 6px auto 0; font-size: 12px; color: var(--muted); }
+
+aside.right { border-left: 1px solid var(--line); background: var(--panel); display: grid; grid-template-rows: auto 1fr; min-height: 0; }
+aside.right .head { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+aside.right .head h2 { font-size: 14px; margin: 0; flex: 1; }
+aside.right .head .close { display: inline-block; }
+#sources { overflow-y: auto; padding: 12px; display: grid; gap: 10px; align-content: start; }
+#sources .none { color: var(--muted); font-size: 13px; padding: 4px; }
+.src { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); }
+.src.cited { border-color: var(--accent); }
+.src.flash { background: var(--mark); transition: background .2s; }
+.src .top { display: flex; gap: 8px; align-items: baseline; }
+.src .n { font-weight: 700; color: var(--accent); font-size: 13px; }
+.src .title { flex: 1; font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }
+.src .where { font-size: 12px; color: var(--muted); margin: 2px 0 6px; overflow-wrap: anywhere; }
+.src .tags { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+.src .tag { font-size: 11px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; overflow-wrap: anywhere; }
+.src .body { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 7.5em; overflow: hidden; position: relative; }
+.src.expanded .body { max-height: none; }
+.src .more { border: 0; background: none; color: var(--accent); font-size: 12px; padding: 4px 0 0; }
+.src .acts { display: flex; gap: 12px; }
+.src .page { margin-top: 8px; }
+.src .page:empty { display: none; }
+.src .page a { display: block; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #fff; }
+.src .page img { display: block; width: 100%; height: auto; }
+.src .page .none { font-size: 12px; color: var(--muted); }
+.src .badge { font-size: 10px; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 4px; }
+
+main.left-collapsed { --left: 0px; }
+main.right-collapsed { --right: 0px; }
+#side, aside.right { min-width: 0; }
+main.left-collapsed #side, main.right-collapsed #aside { visibility: hidden; overflow: hidden; }
+.scope { padding: 10px 24px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.scope strong { color: var(--ink); font-weight: 600; }
+.examples { display: grid; gap: 8px; margin: 22px auto 0; max-width: 380px; }
+.examples button { text-align: left; padding: 10px 14px; background: var(--panel); }
+.empty small { display: block; margin-top: 12px; }
+.src details { margin-top: 10px; font-size: 12px; color: var(--muted); }
+.src summary { cursor: pointer; }
+.src details .tags { margin-top: 8px; }
+#settings details { flex-basis: 100%; }
+#settings summary { font-size: 13px; cursor: pointer; color: var(--muted); }
+#settings details label { margin-top: 10px; }
+#settings input:disabled, #settings select:disabled { opacity: .65; }
+#pipelineNote { flex-basis: 100%; font-size: 12px; color: var(--muted); }
+#pipelineNote:empty { display: none; }
+button:focus-visible, summary:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#side { border-right: 1px solid var(--line); background: var(--panel); display: grid; grid-template-rows: auto 1fr; min-height: 0; }
+#side .head { padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+#side .head .btn:first-child { flex: 1; }
+#side .head .close { display: inline-block; }
+#convs { overflow-y: auto; padding: 8px; display: grid; gap: 2px; align-content: start; }
+#convs .none { color: var(--muted); font-size: 13px; padding: 8px; }
+.conv { display: flex; align-items: center; gap: 2px; border-radius: 8px; padding: 2px 4px 2px 0; }
+.conv:hover { background: var(--accent-soft); }
+.conv.active { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.conv .open { flex: 1; min-width: 0; text-align: left; border: 0; background: none; padding: 6px 8px; display: grid; }
+.conv .ttl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.conv .dt { font-size: 11px; color: var(--muted); }
+.conv .act { border: 0; background: none; color: var(--muted); font-size: 12px; padding: 4px; border-radius: 4px; visibility: hidden; }
+.conv:hover .act, .conv.active .act, .conv:focus-within .act { visibility: visible; }
+.conv .act:hover { color: var(--warn); }
+@media (hover: none) { .conv .act { visibility: visible; } }
+#scrim { display: none; }
+@media (max-width: 1100px) {
+  main { grid-template-columns: minmax(0, 1fr); }
+  main.left-collapsed #side, main.right-collapsed #aside { visibility: visible; overflow: visible; }
+  #scrim.open { display: block; position: fixed; inset: 0; z-index: 9; border: 0; background: rgba(0,0,0,.3); }
+  .scope { padding: 8px 16px; }
+  #side { position: fixed; inset: 0 auto 0 0; width: min(300px, 90vw); z-index: 10; transform: translateX(-100%);
+    transition: transform .2s; box-shadow: 8px 0 24px rgba(0,0,0,.15); }
+  #side.open { transform: none; }
+  #side .head .close { display: inline-block; }
+  #convBtn { display: inline-block; }
+  aside.right { position: fixed; inset: 0 0 0 auto; width: min(420px, 100vw); z-index: 10; transform: translateX(100%);
+    transition: transform .2s; box-shadow: -8px 0 24px rgba(0,0,0,.15); }
+  aside.right.open { transform: none; }
+  aside.right .head .close { display: inline-block; }
+  #sourcesBtn { display: inline-block; }
+  header h1 span { display: none; }
+}
+@media (max-width: 600px) { header { gap: 6px; padding: 8px 10px; } header .user { display: none; } header .btn { padding: 4px 8px; } }
+#settings .note { color: var(--muted); font-size: 12px; flex-basis: 100%; }
+#settings .note:empty { display: none; }
+#settings label[hidden] { display: none; }
+</style>
+</head>
+<body>
+<div id="topBar">
+  <header>
+    <button class="btn" id="convBtn" type="button" aria-controls="side" aria-expanded="true">대화 접기</button>
+    <h1>folio <span>· 문서 검색 채팅</span></h1>
+    <div class="spacer"></div>
+    <span class="user" id="user"></span>
+    <button class="btn" id="sourcesBtn" type="button" aria-controls="aside" aria-expanded="true">근거 접기</button>
+    <button class="btn" id="settingsBtn" type="button" aria-expanded="false">설정</button>
+    <button class="btn" id="logoutBtn" type="button">로그아웃</button>
+  </header>
+  <div id="settings">
+    <label id="pipelineLabel" hidden>검색 대상 <select id="pipeline"></select></label>
+    <label>검색 결과 수 <input id="k" type="number" min="1" max="100" placeholder="자동" style="width:90px"></label>
+    <label>검색 방식
+      <select id="mode"><option value="">자동</option><option value="hybrid">키워드 + 의미</option><option value="bm25">키워드 일치</option><option value="vector">의미 유사도</option></select>
+    </label>
+    <span id="pipelineNote"></span>
+    <details id="advancedSettings"><summary>고급 설정 · 검색 조건</summary>
+      <label>추가 검색 조건 (JSON)<textarea id="filters" spellcheck="false" placeholder='예: {"department": "인사팀"}'></textarea></label>
+      <span class="err" id="filtersErr" role="alert"></span>
+      <p class="note">문서 필드에 익숙한 사용자를 위한 옵션입니다. 비워 두면 기본 검색 조건을 사용합니다.</p>
+      <p class="note" id="aclNote"></p>
+    </details>
+  </div>
+</div>
+<main id="layout">
+  <button id="scrim" type="button" aria-label="열린 패널 닫기" tabindex="-1" hidden></button>
+  <nav id="side" aria-label="대화 목록">
+    <div class="head"><button class="btn primary" id="newBtn" type="button">새 대화</button><button class="btn close" id="closeSide" type="button" aria-label="대화 목록 접기">접기</button></div>
+    <div id="convs"></div>
+  </nav>
+  <section id="chat" aria-label="문서 질의응답">
+    <div class="scope" id="scope"></div>
+    <div id="log"><div class="turns" id="turns"></div></div>
+    <form id="composer">
+      <div class="box">
+        <textarea id="input" rows="1" placeholder="문서에 대해 물어보세요" aria-label="질문 입력" autofocus></textarea>
+        <button class="btn primary" id="send" type="submit" disabled>보내기</button>
+      </div>
+      <div class="hint">Enter 전송 · Shift+Enter 줄바꿈 · 답변은 검색된 문서만 근거로 합니다</div>
+    </form>
+  </section>
+  <aside id="aside" class="right" aria-label="근거 문서">
+    <div class="head"><h2 id="sourcesTitle">근거 문서</h2><button class="btn close" id="closeAside" type="button" aria-label="근거 패널 접기">접기</button></div>
+    <div id="sources"><div class="none">답변을 받으면 검색된 문서 조각이 여기에 표시됩니다.</div></div>
+  </aside>
+</main>
+<script>
+(() => {
+  // All URLs are relative (no leading slash) so the app works behind a path-prefixing proxy.
+  const SETTINGS_KEY = "folio.chat.settings.v2", LAST_KEY = "folio.chat.last.v2";
+  const $ = (id) => document.getElementById(id);
+  const turnsEl = $("turns"), logEl = $("log"), input = $("input"), sendBtn = $("send");
+  const mobile = () => window.matchMedia("(max-width: 1100px)").matches;
+
+  let me = { pipelines: [], acl_keys: [] }, scopeKnown = false;
+  let convs = [], cur = null, msgs = [], selected = -1, busy = false, activePipeline = null;
+  let pending = null;                 // {content, error}: a question that failed and can be retried
+  let settings = { pipeline: "", k: "", mode: "", filters: "" };
+
+  const lsGet = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+  const lsSet = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (_) {} };
+  try { Object.assign(settings, JSON.parse(lsGet(SETTINGS_KEY) || "{}")); } catch (_) {}
+  const saveSettings = () => lsSet(SETTINGS_KEY, JSON.stringify(settings));
+
+  // Desktop preferences are independent from temporary mobile drawers.
+  const PANELS_KEY = "folio.chat.panels.v1";
+  let panels = { side: true, aside: true }, drawer = null;
+  try { const saved = JSON.parse(lsGet(PANELS_KEY) || "{}");
+    for (const id of ["side", "aside"]) if (typeof saved[id] === "boolean") panels[id] = saved[id];
+  } catch (_) {}
+  const panelButton = (id) => $(id === "side" ? "convBtn" : "sourcesBtn");
+  function syncPanels() {
+    $("topBar").inert = false; $("chat").inert = false;
+    for (const id of ["side", "aside"]) {
+      const open = mobile() ? drawer === id : panels[id], panel = $(id), button = panelButton(id);
+      $("layout").classList.toggle(id === "side" ? "left-collapsed" : "right-collapsed", !panels[id]);
+      panel.classList.toggle("open", mobile() && open);
+      if (!open && panel.contains(document.activeElement)) button.focus();
+      panel.inert = !open;
+      panel.setAttribute("aria-hidden", String(!open));
+      if (mobile() && open) { panel.setAttribute("role", "dialog"); panel.setAttribute("aria-modal", "true"); }
+      else { panel.removeAttribute("role"); panel.removeAttribute("aria-modal"); }
+      button.setAttribute("aria-expanded", String(open));
+      const name = id === "side" ? "대화" : "근거";
+      button.textContent = mobile() ? name : `${name} ${open ? "접기" : "펼치기"}`;
+      button.setAttribute("aria-label", `${name} 패널 ${open ? "접기" : "펼치기"}`);
+      $(id === "side" ? "closeSide" : "closeAside").textContent = mobile() ? "닫기" : "접기";
+    }
+    $("topBar").inert = mobile() && !!drawer; $("chat").inert = mobile() && !!drawer;
+    $("scrim").hidden = !mobile() || !drawer;
+    $("scrim").classList.toggle("open", mobile() && !!drawer);
+  }
+  function setPanel(id, open, focus = false) {
+    if (mobile()) drawer = open ? id : null;
+    else { panels[id] = open; lsSet(PANELS_KEY, JSON.stringify(panels)); }
+    syncPanels();
+    if (focus) (open ? $(id).querySelector("button") : panelButton(id)).focus();
+  }
+  function closeDrawer() { if (drawer) setPanel(drawer, false, true); }
+  window.matchMedia("(max-width: 1100px)").addEventListener("change", () => { drawer = null; syncPanels(); });
+  document.addEventListener("keydown", (e) => {
+    if (!mobile() || !drawer) return;
+    if (e.key === "Escape") { e.preventDefault(); closeDrawer(); }
+    if (e.key === "Tab") {
+      const focusable = [...$(drawer).querySelectorAll('button, a[href], input, select, textarea, summary')]
+        .filter((el) => !el.disabled && el.getClientRects().length && getComputedStyle(el).visibility !== "hidden");
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (!first) return;
+      if (e.shiftKey && (document.activeElement === first || !$(drawer).contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (document.activeElement === last || !$(drawer).contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+    }
+  });
+  syncPanels();
+
+  function renderScope() {
+    const target = (cur == null ? settings.pipeline : activePipeline) || "기본 문서 모음";
+    $("scope").innerHTML = scopeKnown ? `검색 대상 <strong>${esc(target)}</strong> · 로그인 권한에 따라 검색합니다` : "검색 대상을 확인할 수 없습니다. 새로고침해 다시 시도해 주세요.";
+    const selector = $("pipeline");
+    selector.querySelectorAll("[data-conversation]").forEach((option) => option.remove());
+    if (cur != null && activePipeline && ![...selector.options].some((option) => option.value === activePipeline)) {
+      const option = document.createElement("option"); option.value = activePipeline; option.textContent = activePipeline;
+      option.dataset.conversation = "true"; selector.appendChild(option);
+    }
+    selector.value = (cur == null ? settings.pipeline : activePipeline) || "";
+    selector.disabled = cur != null;
+    $("pipelineLabel").hidden = !(me.pipelines || []).length && !(cur != null && activePipeline);
+    $("pipelineNote").textContent = cur != null ? "검색 대상을 바꾸려면 새 대화를 시작하세요." : "";
+  }
+
+  // ---------- api ----------
+  async function api(method, url, body) {
+    let res;
+    try {
+      res = await fetch(url, { method, headers: body !== undefined ? { "Content-Type": "application/json" } : {}, body: body !== undefined ? JSON.stringify(body) : undefined });
+    } catch (_) { return { ok: false, status: 0, data: null }; }
+    if (res.status === 401) { location.href = "auth/login"; return { ok: false, status: 401, data: null, redirected: true }; }
+    const data = res.status === 204 ? null : await res.json().catch(() => null);
+    return { ok: res.ok, status: res.status, data };
+  }
+
+  function errorText(status, data) {
+    const d = data && data.detail;
+    const msg = typeof d === "string" ? d : Array.isArray(d) ? d.map((e) => `${(e.loc || []).join(".")}: ${e.msg}`).join("; ") : "";
+    if (status === 0) return "서버에 연결할 수 없습니다. 네트워크를 확인해 주세요.";
+    if (status === 502) return `답변 생성에 실패했습니다 (LLM 연결 확인). ${msg}`;
+    if (status === 503) return `검색 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요. ${msg}`;
+    if (status === 403) return `권한이 없습니다 (접근 권한 정보 없음). ${msg}`;
+    return `요청에 실패했습니다 (${status}). ${msg}`;
+  }
+
+  // ---------- rendering ----------
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function inline(s, nHits) {
+    return esc(s)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/\[(\d+)\]/g, (m, n) => (+n >= 1 && +n <= nHits) ? `<button class="cite" type="button" data-n="${n}">${n}</button>` : m);
+  }
+
+  function markdown(text, nHits) {
+    const out = [], lines = String(text).split("\n");
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (/^```/.test(line)) {
+        const code = []; i++;
+        while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++]);
+        i++; out.push(`<pre><code>${esc(code.join("\n"))}</code></pre>`); continue;
+      }
+      if (/^\s*([-*]|\d+\.)\s+/.test(line)) {
+        const ordered = /^\s*\d+\./.test(line), items = [];
+        while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*([-*]|\d+\.)\s+/, ""));
+        const tag = ordered ? "ol" : "ul";
+        out.push(`<${tag}>${items.map((t) => `<li>${inline(t, nHits)}</li>`).join("")}</${tag}>`); continue;
+      }
+      if (/^#{1,6}\s/.test(line)) { out.push(`<h3>${inline(line.replace(/^#+\s/, ""), nHits)}</h3>`); i++; continue; }
+      if (!line.trim()) { i++; continue; }
+      const para = [];
+      while (i < lines.length && lines[i].trim() && !/^(```|#{1,6}\s|\s*([-*]|\d+\.)\s+)/.test(lines[i])) para.push(lines[i++]);
+      out.push(`<p>${para.map((t) => inline(t, nHits)).join("<br>")}</p>`);
+    }
+    return out.join("");
+  }
+
+  function userRow(content, delIdx) {
+    const row = document.createElement("div");
+    row.className = "urow";
+    const b = document.createElement("div"); b.className = "msg user"; b.textContent = content;
+    row.appendChild(b);
+    if (delIdx != null) {
+      const d = document.createElement("button");
+      d.type = "button"; d.className = "del"; d.dataset.del = delIdx; d.textContent = "이 질문부터 삭제";
+      row.appendChild(d);
+    }
+    return row;
+  }
+
+  function render(keepScroll) {
+    renderScope();
+    const top = logEl.scrollTop;
+    turnsEl.innerHTML = "";
+    if (!msgs.length && !pending && !busy) {
+      turnsEl.innerHTML = `<div class="empty"><b>문서에서 필요한 답을 찾아보세요</b>선택한 검색 대상에서 근거와 함께 답합니다.
+        <div class="examples"><button class="btn" type="button" data-example="주요 내용을 항목별로 정리해 주세요">주요 내용 정리하기</button>
+        <button class="btn" type="button" data-example="신청 절차와 필요한 서류를 알려 주세요">절차와 준비 서류 알아보기</button>
+        <button class="btn" type="button" data-example="준수해야 할 기한과 예외 조건을 찾아 주세요">기한과 예외 조건 찾기</button></div>
+        <small>질문 예시입니다. 찾으려는 주제에 맞게 수정해 보세요.</small></div>`;
+    }
+    msgs.forEach((m, idx) => {
+      if (m.role === "user") { turnsEl.appendChild(userRow(m.content, idx)); return; }
+      const el = document.createElement("div");
+      el.className = "msg bot" + (idx === selected ? " selected" : "");
+      el.dataset.idx = idx;
+      const asked = msgs[idx - 1] && msgs[idx - 1].content;
+      const rewritten = m.query && m.query !== asked;
+      const nh = (m.hits || []).length;
+      el.innerHTML = markdown(m.content, nh) +
+        `<div class="meta">${rewritten ? `<span>검색어 <span class="q">${esc(m.query)}</span></span>` : ""}` +
+        `<button type="button" data-show="${idx}">검색 결과 ${nh}개 · 인용 ${(m.citations || []).length}건</button>` +
+        `<button type="button" class="fb" data-fb="up" aria-pressed="${m.feedback === "up"}" title="도움이 된 답변">도움됨</button>` +
+        `<button type="button" class="fb" data-fb="down" aria-pressed="${m.feedback === "down"}" title="아쉬운 답변">아쉬움</button></div>`;
+      turnsEl.appendChild(el);
+    });
+    if (pending) {
+      turnsEl.appendChild(userRow(pending.content));
+      if (pending.error) {
+        const el = document.createElement("div");
+        el.className = "msg error";
+        el.append(pending.error);
+        const r = document.createElement("button");
+        r.className = "btn"; r.type = "button"; r.dataset.retry = "1"; r.textContent = "다시 시도";
+        el.appendChild(r);
+        turnsEl.appendChild(el);
+      }
+    }
+    if (busy) {
+      const el = document.createElement("div");
+      el.className = "thinking"; el.textContent = "문서를 찾아 답변을 작성하는 중";
+      turnsEl.appendChild(el);
+    }
+    logEl.scrollTop = keepScroll ? top : logEl.scrollHeight;
+    sendBtn.disabled = busy || !input.value.trim();
+  }
+
+  const SKIP = new Set(["doc_id", "chunk_id", "content", "contextualized_content", "embedding", "bbox", "page", "pages", "section_path", "source_uri", "chunk_type"]);
+  const NO_PDF = /\.(png|jpe?g|tiff?|bmp|webp|xlsx|md|markdown|txt)$/i;  // formats folio keeps no PDF for
+  const NO_SOURCES = `<div class="none">답변을 받으면 검색된 문서 조각이 여기에 표시됩니다.</div>`;
+
+  function renderSources(idx, flashN) {
+    const box = $("sources"), t = msgs[idx];
+    if (!t || t.role !== "assistant") { $("sourcesTitle").textContent = "근거 문서"; box.innerHTML = NO_SOURCES; return; }
+    const cited = new Set((t.citations || []).map((c) => c.n));
+    $("sourcesTitle").textContent = `근거 문서 · ${new Set((t.hits || []).map((h) => h.doc_id)).size}개`;
+    box.innerHTML = (t.hits || []).length ? "" : `<div class="none">검색된 문서가 없습니다.</div>`;
+    (t.hits || []).forEach((h, i) => {
+      const n = i + 1, r = h.record || {};
+      const title = r.title || (r.source_uri ? String(r.source_uri).split(/[\\/]/).pop() : h.doc_id);
+      const pages = Array.isArray(r.pages) && r.pages.length > 1 ? `p.${r.pages[0]}–${r.pages[r.pages.length - 1]}` : (r.page ? `p.${r.page}` : "");
+      const where = [pages, (r.section_path || []).join(" › ")].filter(Boolean).join(" · ");
+      const tags = Object.entries(r).filter(([k, v]) => !SKIP.has(k) && v !== null && v !== "" && typeof v !== "object")
+        .slice(0, 8).map(([k, v]) => `<span class="tag">${esc(k)}: ${esc(v)}</span>`).join("");
+      const el = document.createElement("div");
+      el.className = "src" + (cited.has(n) ? " cited" : "");
+      el.id = `src-${n}`;
+      el.innerHTML = `<div class="top"><span class="n">[${n}]</span><span class="title">${esc(title)}</span>` +
+        `${cited.has(n) ? `<span class="badge">답변에 인용</span>` : ""}</div>` +
+        `${where ? `<div class="where">${esc(where)}</div>` : ""}` +
+        `<div class="body">${esc(h.content)}</div><div class="acts"><button class="more" type="button">펼치기</button>` +
+        `${r.page && t.id && !NO_PDF.test(String(r.source_uri || "")) ? `<button class="more view" type="button" data-n="${n}" data-mid="${t.id}" data-page="${esc(r.page)}">원문 보기</button>` : ""}</div>` +
+        `<div class="page"></div><details><summary>검색 상세 정보</summary>` +
+        `<div>검색 점수 ${Number(h.score).toFixed(3)}${r.chunk_type ? ` · 문서 조각 유형 ${esc(r.chunk_type)}` : ""}</div>` +
+        `${tags ? `<div class="tags">${tags}</div>` : ""}</details>`;
+      box.appendChild(el);
+    });
+    if (flashN) {
+      const el = $(`src-${flashN}`);
+      if (el) { el.classList.add("expanded", "flash"); el.querySelector(".more").textContent = "접기";
+        el.scrollIntoView({ block: "nearest", behavior: "smooth" }); setTimeout(() => el.classList.remove("flash"), 1200); }
+    }
+  }
+
+  function select(idx, flashN) {
+    selected = idx;
+    document.querySelectorAll(".msg.bot").forEach((el) => el.classList.toggle("selected", +el.dataset.idx === idx));
+    renderSources(idx, flashN);
+    if (flashN) setPanel("aside", true, mobile());
+  }
+
+  // ---------- conversation list ----------
+  function shortDate(iso) {
+    const d = new Date(iso); if (isNaN(d)) return "";
+    const now = new Date(), p = (n) => String(n).padStart(2, "0");
+    if (d.toDateString() === now.toDateString()) return `${p(d.getHours())}:${p(d.getMinutes())}`;
+    const y = new Date(now); y.setDate(now.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return "어제";
+    return d.getFullYear() === now.getFullYear() ? `${d.getMonth() + 1}/${d.getDate()}` : `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+  }
+
+  const same = (a, b) => a != null && b != null && String(a) === String(b);
+
+  function renderConvs() {
+    const box = $("convs");
+    box.innerHTML = "";
+    if (!convs.length) { box.innerHTML = `<div class="none">대화가 없습니다.</div>`; return; }
+    for (const c of convs) {
+      const row = document.createElement("div");
+      row.className = "conv" + (same(c.id, cur) ? " active" : "");
+      row.dataset.id = c.id;
+      const open = document.createElement("button");
+      open.type = "button"; open.className = "open"; open.dataset.act = "open";
+      const t = document.createElement("span"); t.className = "ttl"; t.textContent = c.title || "새 대화"; t.title = c.title || "";
+      const d = document.createElement("span"); d.className = "dt"; d.textContent = shortDate(c.updated_at || c.created_at);
+      open.append(t, d);
+      const ren = document.createElement("button");
+      ren.type = "button"; ren.className = "act"; ren.dataset.act = "rename"; ren.textContent = "이름"; ren.title = "이름 바꾸기";
+      const del = document.createElement("button");
+      del.type = "button"; del.className = "act"; del.dataset.act = "delete"; del.textContent = "삭제"; del.title = "대화 삭제";
+      row.append(open, ren, del);
+      box.appendChild(row);
+    }
+  }
+
+  async function refreshList() {
+    const r = await api("GET", "api/conversations");
+    if (r.ok && Array.isArray(r.data)) { convs = r.data; renderConvs(); }
+    return r;
+  }
+
+  function upsertConv(c) {
+    if (!c) return;
+    convs = [c, ...convs.filter((x) => !same(x.id, c.id))];
+    renderConvs();
+  }
+
+  function resetView() {
+    cur = null; activePipeline = null; msgs = []; selected = -1; pending = null;
+    lsSet(LAST_KEY, null); renderConvs(); render(); renderSources(-1);
+  }
+
+  async function openConv(id) {
+    const r = await api("GET", `api/conversations/${encodeURIComponent(id)}`);
+    if (r.redirected) return false;
+    if (!r.ok || !r.data) { if (r.status === 404) { convs = convs.filter((x) => !same(x.id, id)); if (same(id, cur)) resetView(); else renderConvs(); } return false; }
+    cur = r.data.id; activePipeline = r.data.pipeline || null; msgs = r.data.messages || []; pending = null;
+    lsSet(LAST_KEY, String(cur));
+    renderConvs(); render();
+    const last = msgs.map((m) => m.role).lastIndexOf("assistant");
+    last >= 0 ? select(last) : renderSources(-1);
+    return true;
+  }
+
+  // ---------- send ----------
+  function reqExtras() {
+    const s = settings, b = {};
+    if (s.k) b.k = +s.k;
+    if (s.mode) b.mode = s.mode;
+    if (s.filters.trim()) b.filters = JSON.parse(s.filters);
+    return b;
+  }
+
+  async function ask(content) {
+    if (busy) return;
+    let extras;
+    try { extras = reqExtras(); } catch (e) { $("filtersErr").textContent = "검색 조건의 JSON 형식을 확인해 주세요."; $("advancedSettings").open = true; openSettings(true); input.value = input.value || content; autosize(); return; }
+    pending = { content, error: null };
+    busy = true; render();
+    try {
+      if (cur == null) {
+        const c = await api("POST", "api/conversations", { pipeline: settings.pipeline || null });
+        if (c.redirected) return;
+        if (!c.ok || !c.data) throw new Error(errorText(c.status, c.data));
+        cur = c.data.id; activePipeline = c.data.pipeline || null; renderScope(); lsSet(LAST_KEY, String(cur)); upsertConv(c.data);
+      }
+      const r = await api("POST", `api/conversations/${encodeURIComponent(cur)}/messages`, { content, ...extras });
+      if (r.redirected) return;
+      if (!r.ok || !r.data) throw new Error(errorText(r.status, r.data));
+      msgs = msgs.concat(r.data.messages || []); pending = null; busy = false;
+      if (r.data.conversation) upsertConv(r.data.conversation);
+      render(); select(msgs.length - 1);
+      refreshList();
+    } catch (e) {
+      pending.error = e.message || "네트워크 오류"; busy = false; render();
+    }
+  }
+
+  // ---------- events ----------
+  $("composer").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text || busy) return;
+    input.value = ""; autosize(); ask(text);
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("composer").requestSubmit(); }
+  });
+  function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 200) + "px"; sendBtn.disabled = busy || !input.value.trim(); }
+  input.addEventListener("input", autosize);
+
+  turnsEl.addEventListener("click", async (e) => {
+    const example = e.target.closest("[data-example]");
+    if (example) { input.value = example.dataset.example; autosize(); input.focus(); return; }
+    const cite = e.target.closest(".cite"), show = e.target.closest("[data-show]"), bot = e.target.closest(".msg.bot");
+    const fb = e.target.closest("[data-fb]"), del = e.target.closest("[data-del]");
+    if (e.target.closest("[data-retry]")) return pending && ask(pending.content);
+    if (fb && bot) return setFeedback(+bot.dataset.idx, fb.dataset.fb);
+    if (del) return deleteFrom(+del.dataset.del);
+    if (cite && bot) return select(+bot.dataset.idx, +cite.dataset.n);
+    if (show) { select(+show.dataset.show); setPanel("aside", true, mobile()); return; }
+    if (bot && !window.getSelection().toString()) select(+bot.dataset.idx);
+  });
+  $("sources").addEventListener("click", (e) => {
+    const view = e.target.closest(".view");
+    if (view) {  // cited page rendered by the server with the chunk's area highlighted; click opens the PDF there
+      const box = view.closest(".src").querySelector(".page");
+      if (box.innerHTML) { box.innerHTML = ""; view.textContent = "원문 보기"; return; }
+      const base = `api/conversations/${encodeURIComponent(cur)}/messages/${view.dataset.mid}/sources/${view.dataset.n}`;
+      box.innerHTML = `<a href="${base}/pdf#page=${view.dataset.page}" target="_blank" rel="noopener" title="PDF에서 열기">` +
+        `<img src="${base}/page.png" alt="${view.dataset.page}쪽, 근거 위치 표시"></a>`;
+      box.querySelector("img").onerror = () => { box.innerHTML = `<div class="none">원문 PDF가 없습니다. PDF로 변환해 처리한 문서만 볼 수 있습니다(PPTX는 convert 모드).</div>`; };
+      view.textContent = "원문 닫기";
+      return;
+    }
+    const more = e.target.closest(".more"); if (!more) return;
+    const src = more.closest(".src"); src.classList.toggle("expanded");
+    more.textContent = src.classList.contains("expanded") ? "접기" : "펼치기";
+  });
+
+  async function setFeedback(idx, val) {
+    const m = msgs[idx]; if (!m) return;
+    const next = m.feedback === val ? null : val;
+    const r = await api("PATCH", `api/messages/${m.id}`, { feedback: next });
+    if (r.ok && r.data) { msgs[idx] = r.data; render(true); }
+    else if (!r.redirected) alert(errorText(r.status, r.data));
+  }
+
+  async function deleteFrom(idx) {
+    const m = msgs[idx]; if (!m || busy) return;
+    if (!confirm("이 질문과 이후의 모든 메시지를 삭제할까요?")) return;
+    const r = await api("DELETE", `api/conversations/${encodeURIComponent(cur)}/messages/${m.id}`);
+    if (!r.ok) { if (!r.redirected) alert(errorText(r.status, r.data)); return; }
+    msgs = msgs.slice(0, idx); pending = null; selected = -1;
+    render(true);
+    const last = msgs.map((x) => x.role).lastIndexOf("assistant");
+    last >= 0 ? select(last) : renderSources(-1);
+    refreshList();
+  }
+
+  $("convs").addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-act]"); if (!btn || busy) return;
+    const id = btn.closest(".conv").dataset.id, c = convs.find((x) => same(x.id, id));
+    if (btn.dataset.act === "open") {
+      if (!same(id, cur)) await openConv(id);
+      if (mobile()) setPanel("side", false);
+    } else if (btn.dataset.act === "rename") {
+      const title = prompt("대화 이름", c ? c.title : "");
+      if (title == null || !title.trim()) return;
+      const r = await api("PATCH", `api/conversations/${encodeURIComponent(id)}`, { title: title.trim() });
+      if (r.ok && r.data) upsertConvInPlace(r.data); else if (!r.redirected) alert(errorText(r.status, r.data));
+    } else if (btn.dataset.act === "delete") {
+      if (!confirm(`'${c ? c.title : ""}' 대화를 삭제할까요?`)) return;
+      const r = await api("DELETE", `api/conversations/${encodeURIComponent(id)}`);
+      if (!r.ok) { if (!r.redirected) alert(errorText(r.status, r.data)); return; }
+      convs = convs.filter((x) => !same(x.id, id));
+      if (same(id, cur)) resetView(); else renderConvs();
+    }
+  });
+
+  function upsertConvInPlace(c) { convs = convs.map((x) => (same(x.id, c.id) ? c : x)); renderConvs(); }
+
+  $("newBtn").addEventListener("click", () => {
+    if (busy) return;
+    resetView(); if (mobile()) setPanel("side", false); input.focus();
+  });
+  for (const id of ["side", "aside"]) {
+    panelButton(id).addEventListener("click", () => setPanel(id, mobile() ? drawer !== id : !panels[id], true));
+    $(id === "side" ? "closeSide" : "closeAside").addEventListener("click", () => setPanel(id, false, true));
+  }
+  $("scrim").addEventListener("click", closeDrawer);
+  $("logoutBtn").addEventListener("click", async () => { await api("POST", "auth/logout"); location.href = "./"; });
+
+  function openSettings(open) {
+    $("settings").classList.toggle("open", open);
+    $("settingsBtn").setAttribute("aria-expanded", String(open));
+  }
+  $("settingsBtn").addEventListener("click", () => openSettings(!$("settings").classList.contains("open")));
+  for (const key of ["pipeline", "k", "mode", "filters"]) {
+    $(key).addEventListener("input", () => {
+      settings[key] = $(key).value;
+      if (key === "filters") {
+        try { if ($(key).value.trim()) JSON.parse($(key).value); $("filtersErr").textContent = ""; }
+        catch (_) { $("filtersErr").textContent = "검색 조건의 JSON 형식을 확인해 주세요."; }
+      }
+      saveSettings(); renderScope();
+    });
+  }
+
+  // ---------- boot ----------
+  async function init() {
+    const r = await api("GET", "api/me");
+    if (r.redirected) return;
+    if (r.ok && r.data) { me = Object.assign(me, r.data); scopeKnown = true; }
+    $("user").textContent = [me.name, me.email].filter(Boolean).join(" · ") || me.sub || "";
+    $("user").title = $("user").textContent;
+    const pl = me.pipelines || [];
+    if (pl.length) {
+      const sel = $("pipeline");
+      sel.innerHTML = "";
+      for (const [v, label] of [["", "기본 문서 모음"], ...pl.map((p) => [p, p])]) {
+        const o = document.createElement("option"); o.value = v; o.textContent = label; sel.appendChild(o);
+      }
+      if (!pl.includes(settings.pipeline)) settings.pipeline = "";
+      sel.value = settings.pipeline;
+      $("pipelineLabel").hidden = false;
+    } else settings.pipeline = "";
+    for (const key of ["k", "mode", "filters"]) $(key).value = settings[key] || "";
+    if ((me.acl_keys || []).length) {
+      $("aclNote").textContent = "로그인에 따른 문서 접근 권한은 자동으로 적용되며 변경할 수 없습니다.";
+    }
+    render(); renderSources(-1);
+    await refreshList();
+    const last = lsGet(LAST_KEY);
+    if (last && convs.some((c) => same(c.id, last))) await openConv(last);
+    else lsSet(LAST_KEY, null);
+  }
+  init();
+})();
+</script>
+</body>
+</html>

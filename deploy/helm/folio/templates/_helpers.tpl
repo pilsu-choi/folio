@@ -136,6 +136,11 @@ annotations:
 {{- else if .Values.external.structure.url }}
 - {name: FOLIO_STRUCTURE_URL, value: {{ .Values.external.structure.url | quote }}}
 {{- end }}
+{{- if .Values.convert.enabled }}
+- {name: FOLIO_CONVERT_URL, value: "http://{{ $fn }}-convert:9100"}
+{{- else if .Values.external.convert.url }}
+- {name: FOLIO_CONVERT_URL, value: {{ .Values.external.convert.url | quote }}}
+{{- end }}
 {{- if .Values.embedStub.enabled }}
 - {name: FOLIO_EMBED_URL, value: "http://{{ $fn }}-embed:8001/v1"}
 - {name: FOLIO_EMBED_MODEL, value: {{ .Values.embedStub.model | quote }}}
@@ -159,6 +164,12 @@ annotations:
 {{- end }}
 {{- if .Values.external.rerank.url }}
 - {name: FOLIO_RERANK_URL, value: {{ .Values.external.rerank.url | quote }}}
+{{- end }}
+{{- if .Values.external.llm.url }}
+- {name: FOLIO_LLM_URL, value: {{ .Values.external.llm.url | quote }}}
+{{- end }}
+{{- if .Values.external.llm.model }}
+- {name: FOLIO_LLM_MODEL, value: {{ .Values.external.llm.model | quote }}}
 {{- end }}
 {{- with .Values.extraEnv }}
 {{ toYaml . }}

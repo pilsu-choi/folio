@@ -3,10 +3,6 @@
 from __future__ import annotations
 
 import io
-import shutil
-import subprocess
-import tempfile
-from pathlib import Path
 
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
@@ -18,19 +14,6 @@ EMU_PT = 12700
 _TITLES = (PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE, PP_PLACEHOLDER.VERTICAL_TITLE)
 _BODY = (PP_PLACEHOLDER.BODY, PP_PLACEHOLDER.OBJECT)
 _NOTES = "노트"
-
-
-def convert_to_pdf(data: bytes) -> bytes:
-    """`pptx_mode="convert"`: LibreOffice -> PDF (then the regular PDF path)."""
-    soffice = shutil.which("soffice") or shutil.which("libreoffice")
-    if not soffice:
-        raise NotImplementedError("pptx convert mode needs LibreOffice; not bundled")
-    with tempfile.TemporaryDirectory() as d:
-        src = Path(d) / "in.pptx"
-        src.write_bytes(data)
-        subprocess.run([soffice, "--headless", "--convert-to", "pdf", "--outdir", d, str(src)],
-                       check=True, capture_output=True, timeout=300)
-        return (Path(d) / "in.pdf").read_bytes()
 
 
 def _box(sh) -> list[float] | None:

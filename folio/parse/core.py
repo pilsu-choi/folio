@@ -21,21 +21,20 @@ from folio.contracts import Block, Document, Page, content_hash, make_doc_id
 from folio.errors import FolioError
 from folio.parse import vlm as vlm_mod
 from folio.parse.assemble import build_blocks, cluster_lines, finalize
-from folio.parse.textlayer import Atom, assess_page, extract_atoms
+from folio.parse.convert import MIME_DOCX, MIME_HWP, MIME_HWPX, MIME_PPTX, to_pdf
 from folio.parse.text import md_blocks, parse_text
+from folio.parse.textlayer import Atom, assess_page, extract_atoms
 
 log = logging.getLogger("folio.parse")
 
-MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-MIME_PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-MIME_HWPX = "application/hwp+zip"
 _EXT_MIME = {".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
              ".tif": "image/tiff", ".tiff": "image/tiff", ".bmp": "image/bmp", ".webp": "image/webp",
              ".docx": MIME_DOCX, ".pptx": MIME_PPTX, ".xlsx": MIME_XLSX, ".hwpx": MIME_HWPX,
-             ".hwp": "application/x-hwp", ".md": "text/markdown", ".markdown": "text/markdown",
+             ".hwp": MIME_HWP, ".md": "text/markdown", ".markdown": "text/markdown",
              ".txt": "text/plain", ".text": "text/plain"}
-_ZIP_MARKERS = {"ppt/presentation.xml": MIME_PPTX, "xl/workbook.xml": MIME_XLSX, "word/document.xml": MIME_DOCX}
+_ZIP_MARKERS = {"ppt/presentation.xml": MIME_PPTX, "xl/workbook.xml": MIME_XLSX,
+                "word/document.xml": MIME_DOCX, "Contents/header.xml": MIME_HWPX}
 
 
 class ParseError(FolioError):
@@ -65,7 +64,11 @@ class Options:
     ocr_min_conf: float = 0.85
     table_min_coverage: float = 0.8
     table_max_empty: float = 0.6
-    # native formats
+    # native formats; "convert" = PDF conversion -> the PDF path (FR-20)
+    docx_mode: str = "convert"
+    hwpx_mode: str = "convert"
+    converter: Any = "auto"
+    convert_timeout: float | None = None
     pptx_mode: str = "native"
     pptx_notes: bool = False
     xlsx_include_hidden: bool = False
@@ -112,7 +115,7 @@ def detect_mime(data: bytes, uri: str) -> str:
 
 def default(uri: str, **opts: Any) -> Document:
     """Parse `uri` into a Document. Dispatch by content/extension: PDF, images (PNG/JPG/TIFF/BMP/WebP),
-    PPTX, XLSX, Markdown, TXT (DOCX/HWPX: NotImplementedError, FR-20/21).
+    DOCX, HWPX, HWP, PPTX, XLSX, Markdown, TXT.
 
     Opts: `backend` ("auto"|alias|"module:Class"|{fn, **kw}|object), `ocr_fallback=True`, `dpi=144`,
     `char_match=False`, text-layer thresholds (`min_chars`, `max_bad_char_ratio`, `image_ratio_min`,
@@ -127,6 +130,10 @@ def default(uri: str, **opts: Any) -> Document:
     described by the VLM.
     A failed VLM request falls back to OCR (pages) or the structure result and is listed in
     `meta.vlm_fallbacks`. `meta.calls.vlm` counts requests; `meta.vlm` records enabled/reason.
+    Convert: `docx_mode`/`hwpx_mode="convert"` (default; `hwpx_mode` also covers binary HWP; "native" is FR-21), `pptx_mode="convert"`
+    -> PDF via `converter="auto"` (FOLIO_CONVERT_URL server, else local LibreOffice/rhwp; see folio.parse.convert),
+    `convert_timeout` (s, default FOLIO_CONVERT_TIMEOUT or 300). `meta.convert` records converter, version, ms and
+    `pdf_hash`: pages, bbox and coordinates refer to that converted PDF. `mime_type`/`content_hash` stay the original's.
     Native: `pptx_mode="native"|"convert"`, `pptx_notes=False`, `xlsx_include_hidden=False`.
     """
     o = Options(**opts)
@@ -134,8 +141,12 @@ def default(uri: str, **opts: Any) -> Document:
         raise ValueError(f"vlm_scan must be 'page' or 'ocr_first', got {o.vlm_scan!r}")
     data = read_bytes(uri)
     mime = detect_mime(data, uri)
-    if mime in (MIME_DOCX, MIME_HWPX, "application/x-hwp"):
-        raise NotImplementedError("DOCX/HWPX parsing is deferred (FR-20/21)")
+    mode = {MIME_DOCX: o.docx_mode, MIME_HWPX: o.hwpx_mode, MIME_HWP: o.hwpx_mode, MIME_PPTX: o.pptx_mode}.get(mime)
+    if mode not in (None, "native", "convert"):
+        raise ValueError(f"unknown mode {mode!r} for {mime}")
+    if mode == "native" and mime != MIME_PPTX:
+        raise NotImplementedError("DOCX/HWPX/HWP native mode is not implemented yet (FR-21); use convert")
+    converted = mode == "convert"
     t0 = time.perf_counter()
     caller, vinfo = vlm_mod.resolve(o.vlm)
     sess = vlm_mod.Session(caller)
@@ -145,10 +156,8 @@ def default(uri: str, **opts: Any) -> Document:
         run.backend = resolve_backend(o.backend)
         backend_name = type(run.backend).__name__
     extra: dict = {}
-    if mime == MIME_PPTX and o.pptx_mode == "convert":
-        from folio.parse.pptx import convert_to_pdf
-
-        data_pdf = convert_to_pdf(data)
+    if converted:
+        data_pdf, extra["convert"] = to_pdf(data, mime, o.converter, o.convert_timeout)
         run.backend = resolve_backend(o.backend)
         backend_name = type(run.backend).__name__
         pages = run.pdf(data_pdf)
@@ -158,7 +167,7 @@ def default(uri: str, **opts: Any) -> Document:
         pages = run.image(data)
     else:
         pages = run.native(data, mime, extra)
-    if mime == "application/pdf" or mime.startswith("image/") or o.pptx_mode == "convert":
+    if mime == "application/pdf" or mime.startswith("image/") or converted:
         finalize([[b for b in p["blocks"]] for p in pages])
     h = content_hash(data)
     meta = {
@@ -174,8 +183,10 @@ def default(uri: str, **opts: Any) -> Document:
     }
     doc_pages = [Page(page=p["page"], width=p["width"], height=p["height"],
                       blocks=[Block(**b) for b in p["blocks"]]) for p in pages]
-    return Document(doc_id=make_doc_id(uri, h), source_uri=uri, content_hash=h, mime_type=mime,
-                    pages=doc_pages, meta=meta)
+    doc = Document(doc_id=make_doc_id(uri, h), source_uri=uri, content_hash=h, mime_type=mime,
+                   pages=doc_pages, meta=meta)
+    doc._converted_pdf = data_pdf if converted else None
+    return doc
 
 
 def _table_is_weak(b: dict, words: list[Atom], o: Options) -> bool:
@@ -321,6 +332,7 @@ class _Run:
             struct = self.backend.analyze(png, px)
             self.calls["structure"] += 1
         except Exception as exc:  # degrade to text-layer paragraphs
+            log.warning("structure backend failed on page %d, using text-layer paragraphs: %s: %s", n, type(exc).__name__, exc)
             self.errors.append({"page": n, "error": f"structure backend failed: {type(exc).__name__}: {exc}"})
             struct = PageStructure()
         return build_blocks(atoms, struct, scale, "pdf_text", self.o.char_match)

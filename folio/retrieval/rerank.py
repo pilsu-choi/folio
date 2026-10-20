@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import os
+import time
 
 import httpx
 
 from folio.errors import FolioError
+from folio.logging import log_event, ms_since, redact_url
 from folio.retrieval.base import Hit
 
 
@@ -27,8 +30,11 @@ def http_rerank(query: str, hits: list[Hit], url: str | None = None, model: str 
     if top_n:
         body["top_n"] = top_n
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    t0 = time.perf_counter()
     with httpx.Client(timeout=timeout, headers=headers, transport=transport) as client:
         r = client.post(url, json=body)
+        log_event("rerank", logging.DEBUG, "folio.retrieval", url=redact_url(url), model=model, docs=len(hits),
+                  top_n=top_n, status=r.status_code, ms=ms_since(t0))
         r.raise_for_status()
         data = r.json()
     results = data["results"] if isinstance(data, dict) else data

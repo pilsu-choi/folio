@@ -1,0 +1,68 @@
+# syntax=docker/dockerfile:1
+# folio-convert: DOCX/HWPX/PPTX -> PDF conversion sidecar (`folio convert-server`, port 9100).
+#   docker build -f deploy/docker/Dockerfile.convert -t folio-convert:0.1.0 .
+# Build args: H2ORESTART=1 (default) installs the H2Orestart HWPX filter (GPL extension, LibreOffice fallback for HWPX);
+#             H2ORESTART=0 skips it and the Java runtime. RHWP_VERSION pins the rhwp CLI (SHA256-verified download).
+# Converters: DOCX/PPTX -> LibreOffice (`soffice`); HWPX -> rhwp (`rhwp export-pdf`). Both are found via PATH.
+# Customer-licensed fonts: mount them under /usr/share/fonts/custom (read-only is fine). Fontconfig scans /usr/share/fonts
+#   recursively, so LibreOffice picks them up (fontconfig rescans changed dirs; no `fc-cache` needed at start). rhwp's
+#   --font-path also recurses into subdirectories (verified), so FOLIO_CONVERT_FONT_PATH=/usr/share/fonts covers the
+#   bundled open fonts and /usr/share/fonts/custom alike.
+# Aliases for non-shippable fonts (Malgun Gothic, Batang, Calibri, ...) live in convert-fonts.conf.
+ARG PYTHON_VERSION=3.12
+
+FROM python:${PYTHON_VERSION}-slim AS build
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
+WORKDIR /src
+COPY pyproject.toml README.md ./
+COPY folio ./folio
+COPY service ./service
+RUN pip wheel --wheel-dir /wheels ".[service]"
+
+FROM python:${PYTHON_VERSION}-slim AS runtime
+ARG H2ORESTART=1
+ARG RHWP_VERSION=v0.8.7
+ARG H2O_URL=https://github.com/ebandal/H2Orestart/releases/download/v0.8.0/H2Orestart.oxt
+ARG FOLIO_VERSION=0.1.0
+LABEL org.opencontainers.image.title="folio-convert" \
+      org.opencontainers.image.description="folio document conversion sidecar (DOCX/HWPX/PPTX to PDF)" \
+      org.opencontainers.image.version="${FOLIO_VERSION}" \
+      io.folio.convert.rhwp="${RHWP_VERSION}" io.folio.convert.h2orestart="${H2ORESTART}"
+ENV DEBIAN_FRONTEND=noninteractive
+RUN set -eux; \
+    pkgs="libreoffice-writer libreoffice-impress fontconfig ca-certificates curl \
+          fonts-noto-cjk fonts-nanum fonts-nanum-extra fonts-unfonts-core fonts-dejavu-core \
+          fonts-crosextra-carlito fonts-crosextra-caladea fonts-liberation2"; \
+    if [ "${H2ORESTART}" = "1" ]; then pkgs="$pkgs libreoffice-java-common default-jre-headless"; fi; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends -o Acquire::Retries=5 $pkgs; \
+    rm -rf /var/lib/apt/lists/*
+# rhwp release tarball (name uses uname -m: x86_64 / aarch64); checksum must match SHA256SUMS.txt.
+RUN set -eux; cd /tmp; a="$(uname -m)"; \
+    curl -fsSLO "https://github.com/edwardkim/rhwp/releases/download/${RHWP_VERSION}/rhwp-${RHWP_VERSION}-linux-${a}.tar.gz"; \
+    curl -fsSLO "https://github.com/edwardkim/rhwp/releases/download/${RHWP_VERSION}/SHA256SUMS.txt"; \
+    grep "linux-${a}" SHA256SUMS.txt | sha256sum -c -; \
+    tar xzf "rhwp-${RHWP_VERSION}-linux-${a}.tar.gz"; install -m755 rhwp/rhwp /usr/local/bin/rhwp; \
+    rm -rf /tmp/*
+RUN set -eux; \
+    if [ "${H2ORESTART}" = "1" ]; then \
+      curl -fsSL -o /tmp/H2Orestart.oxt "${H2O_URL}"; \
+      unopkg add --shared /tmp/H2Orestart.oxt; \
+      unopkg list --shared | grep -qi h2orestart; \
+      rm -f /tmp/H2Orestart.oxt; \
+    fi
+COPY deploy/docker/convert-fonts.conf /etc/fonts/conf.d/60-folio-aliases.conf
+RUN mkdir -p /usr/share/fonts/custom && fc-cache -f
+RUN groupadd --gid 10001 folio \
+ && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/folio --shell /usr/sbin/nologin folio
+COPY --from=build /wheels /wheels
+RUN pip install --no-cache-dir --no-index --find-links /wheels "folio[service]" && rm -rf /wheels
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 HOME=/home/folio \
+    FOLIO_CONVERT_WORKERS=2 FOLIO_CONVERT_TIMEOUT=300 FOLIO_CONVERT_FONT_PATH=/usr/share/fonts
+USER 10001:10001
+WORKDIR /app
+EXPOSE 9100
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=10 \
+  CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9100/healthz', timeout=3).status == 200 else 1)"]
+ENTRYPOINT ["folio"]
+CMD ["convert-server", "--port", "9100"]

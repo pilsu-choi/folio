@@ -7,11 +7,14 @@ Schema file ``{config_dir}/schemas/opensearch/{index}.json`` is the index body (
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
+import time
 from pathlib import Path
 
 from folio.errors import ConfigError, FolioError
+from folio.logging import log_event, ms_since
 
 
 def diff_properties(desired: dict, current: dict, path: str = "") -> tuple[dict, list[str]]:
@@ -116,6 +119,7 @@ class OpenSearchSink:
 
         if not records:
             return
+        t0 = time.perf_counter()
         by_doc: dict[str, list[str]] = {}
         actions = []
         for r in records:
@@ -128,6 +132,8 @@ class OpenSearchSink:
         if errors:
             raise FolioError(f"OpenSearch bulk failed for {len(errors)} records: {errors[0]}")
         self.client.indices.refresh(index=self.index)
+        log_event("sink_upsert", logging.DEBUG, "folio.sinks", sink="opensearch", index=self.index, records=len(records),
+                  docs=len(by_doc), ms=ms_since(t0))
         for doc_id, ids in by_doc.items():
             self.client.delete_by_query(index=self.index, conflicts="proceed", refresh=self.refresh, body={"query": {"bool": {
                 "filter": [{"term": {"doc_id": doc_id}}], "must_not": [{"ids": {"values": ids}}]}}})

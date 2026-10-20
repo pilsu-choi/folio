@@ -22,11 +22,14 @@ Schema file ``{config_dir}/schemas/milvus/{collection}.json``::
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
+import time
 from pathlib import Path
 
 from folio.errors import ConfigError
+from folio.logging import log_event, ms_since
 
 _PAGE = 1000
 
@@ -172,6 +175,7 @@ class MilvusSink:
     def upsert(self, records: list[dict]) -> None:
         if not records:
             return
+        t0 = time.perf_counter()
         spec = self._spec()
         fields = {f["name"]: f for f in spec["fields"]}
         derived = {spec["bm25"]["output_field"]} if spec.get("bm25") else set()
@@ -188,6 +192,7 @@ class MilvusSink:
             stale = [e["chunk_id"] for e in existing if e["chunk_id"] not in ids]
             for i in range(0, len(stale), _PAGE):
                 self.client.delete(collection_name=self.collection, ids=stale[i : i + _PAGE])
+        log_event("sink_upsert", logging.DEBUG, "folio.sinks", sink="milvus", collection=self.collection, records=len(records), docs=len(keep), ms=ms_since(t0))
 
     def delete(self, doc_id: str) -> None:
         self.client.delete(collection_name=self.collection, filter=f"doc_id == {_q(doc_id)}")
