@@ -80,3 +80,14 @@ sources:
 - 범위: `service/api.py`의 `_hit()`만 바꿨다. 라이브러리 `folio.pipeline.search()`와 `folio.generation.answer()`의 `Hit.record`는 그대로다.
 - 조율: 채팅 App 세션(folio-f7)에 미리 알렸고 확인을 받았다. App 쪽 제거 코드는 예전 folio를 쓸 때를 대비해 남긴다.
 - 검증: `pytest -q`에서 169 passed, 3 skipped. `test_search_endpoint`와 `test_chat_endpoint`에 `embedding`이 없는지 확인하는 검사를 추가했다.
+
+## 실제 LLM 스모크 테스트 (2026-10-21, OpenRouter)
+
+- 환경: 기본 chat 단계 `folio.generation:http`, `FOLIO_LLM_URL=https://openrouter.ai/api/v1`, `FOLIO_LLM_MODEL=qwen/qwen3.8-27b`(입력 $0.04/M, 출력 $1.35/M), `max_tokens: 2048`. 코드 변경 없이 env만으로 연결됐다.
+- 데이터: 직접 작성한 가상 유지보수 계약서 Markdown 1건(7개 조항, 청크 8개). 검색은 OpenSearch 대신 스모크용 글자 bigram 겹침 retriever(`retrieval.fn`)를 썼다. 따라서 이번 결과는 생성 단계 검증이고, 검색 품질 검증은 아니다.
+- 결과(3턴, `answer()` 직접 호출):
+  1. "계약을 해지할 수 있는 경우가 뭐야?": 첫 턴이라 재작성을 생략했다. 해지 사유 3가지를 답했고 `[1]`·`[2]`가 제5조 청크를 가리켰다. 2.7초.
+  2. "을 잘못으로 해지되면 그때 위약금은 얼마야?": "을의 잘못으로 계약 해지 시 위약금은 얼마인가요?"로 재작성됐다. "잔여 계약 기간 대금의 10%"를 답했고 `[1]`이 제6조를 가리켰다. 14.8초(재작성 호출 포함).
+  3. "갑 회사 대표이사 이름은?": 문서에 없다고 답했고 인용은 0건이었다(지어내지 않음).
+- 비용: 호출 5회에 1센트 미만.
+- 남은 검증: 실제 검색 저장소(OpenSearch 등)와 결합한 E2E, 여러 문서·질문에서의 인용 정확도 평가, 다른 모델과의 비교.
