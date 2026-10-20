@@ -2,7 +2,7 @@
 
     schemas/opensearch/contracts.json   index settings (nori analyzer, 384-dim knn_vector)
     schemas/milvus/contracts.json       Milvus collection definition (format: folio/sinks/milvus.py docstring)
-    pipelines/contracts.yaml            stages as module:function; `map: mappers:map_contract`
+    pipelines/contracts.yaml            stages as module:function; `map: mappers:map_contract`; `retrieval:` search settings
     mappers.py                          domain fields (contract_no, party, article)
     samples/                            put sample documents here (PDF, images, PPTX, XLSX, Markdown, TXT)
     dags/folio_ingest.py                Airflow example: `folio run` in the folio image (DockerOperator / KubernetesPodOperator)

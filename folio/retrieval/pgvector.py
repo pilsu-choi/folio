@@ -6,7 +6,7 @@ import re
 from psycopg import sql
 
 from folio.errors import ConfigError
-from folio.retrieval.base import Hit, Retriever
+from folio.retrieval.base import RANGE_OPS, Hit, Retriever, is_range
 
 
 class PgVectorRetriever(Retriever):
@@ -37,6 +37,20 @@ class PgVectorRetriever(Retriever):
         where, params = [], []
         for k, v in filters.items():
             col = s._col(k)
+            if is_range(v):
+                if col in cols and cols[col] == "ARRAY":
+                    raise ConfigError(f"pgvector range filter on array column {k!r}")
+                for op, b in v.items():
+                    if col in cols:
+                        where.append(sql.SQL("{} " + RANGE_OPS[op] + " %s").format(sql.Identifier(col)))
+                        params.append(b)
+                    elif "metadata" in cols:  # numbers compare numerically, strings (ISO dates) as text
+                        cast = "::numeric" if isinstance(b, (int, float)) else ""
+                        where.append(sql.SQL(f"(metadata->>%s::text){cast} {RANGE_OPS[op]} %s{cast}"))
+                        params += [k, b if cast else str(b)]
+                    else:
+                        raise ConfigError(f"pgvector filter on unknown column {k!r}")
+                continue
             multi = isinstance(v, (list, tuple, set))
             vals = list(v) if multi else v
             if col in cols:

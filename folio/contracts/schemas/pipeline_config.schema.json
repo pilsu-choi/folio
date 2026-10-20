@@ -1,5 +1,88 @@
 {
   "$defs": {
+    "RetrievalConfig": {
+      "additionalProperties": false,
+      "description": "Search settings for the pipeline's index (``retrieval:`` in the YAML). Requests may override only\n``k``, ``mode`` and ``filters``; field weights, fusion and rerank stay in config.",
+      "properties": {
+        "fn": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "custom retriever factory(sink, embed, **settings)",
+          "title": "Fn"
+        },
+        "mode": {
+          "default": "hybrid",
+          "enum": [
+            "hybrid",
+            "bm25",
+            "vector"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "k": {
+          "default": 10,
+          "minimum": 1,
+          "title": "K",
+          "type": "integer"
+        },
+        "fields": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "BM25 fields -> weight",
+          "title": "Fields",
+          "type": "object"
+        },
+        "rrf_k": {
+          "default": 60,
+          "minimum": 1,
+          "title": "Rrf K",
+          "type": "integer"
+        },
+        "candidates": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "per-leg candidates; default max(k*3, 30)",
+          "title": "Candidates"
+        },
+        "rerank": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StepSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "required_filters": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Filters",
+          "type": "array"
+        }
+      },
+      "title": "RetrievalConfig",
+      "type": "object"
+    },
     "StepSpec": {
       "additionalProperties": false,
       "properties": {
@@ -58,6 +141,9 @@
       "additionalProperties": true,
       "title": "Sink",
       "type": "object"
+    },
+    "retrieval": {
+      "$ref": "#/$defs/RetrievalConfig"
     },
     "storage": {
       "default": ".folio/artifacts",
