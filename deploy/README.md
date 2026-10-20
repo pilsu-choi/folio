@@ -62,5 +62,5 @@ tar xzf folio-bundle-0.1.0.tar.gz && cd folio-bundle-0.1.0
 ## E2E
 
 `deploy/compose/e2e.sh` and `deploy/kind/e2e.sh` upload `tests/fixtures/digital.pdf` via `POST /v1/ingest` and poll
-`GET /v1/jobs/{id}` to `succeeded`; the kind script then runs `helm upgrade` with 5 jobs in flight and checks they all finish.
+`GET /v1/jobs/{id}` to `succeeded`, then require at least one hit from `POST /v1/search` (`E2E_QUERY`, default `contract`); the kind script then runs `helm upgrade` with 5 jobs in flight and checks they all finish.
 CI: `.github/workflows/ci.yml`.

@@ -86,7 +86,8 @@ def test_range_filters_all_stores():
 
 def test_check_filters_validation():
     assert check_filters({"a": 1, "b": None, "c": {"gt": 0}}) == {"a": 1, "c": {"gt": 0}}
-    for bad in ({"a b": 1}, {'x") or 1==1 or ("': 1}, {"p": {"near": 1}}, {"p": {}}, {"p": {"gte": [1]}}, {"p": {"gte": None}}):
+    for bad in ({"a b": 1}, {'x") or 1==1 or ("': 1}, {"p": {"near": 1}}, {"p": {}}, {"p": {"gte": [1]}}, {"p": {"gte": None}},
+                {"acl": [{"x": 1}]}, {"acl": [None]}):
         with pytest.raises(ValueError):
             check_filters(bad)
 
@@ -134,6 +135,7 @@ def test_settings_rerank_sees_candidates_then_cut_to_k():
     assert [h.chunk_id for h in r.search("q")] == ["7", "6", "5"]
     assert seen == {"n": 8, "reranked": 8}
     assert len(r.search("q", k=2)) == 2
+    assert len(r.search("q", k=12)) == 12 and seen["n"] == 12  # candidates never below k
 
 
 def test_retrieval_config_and_create_retriever():

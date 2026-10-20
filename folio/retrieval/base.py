@@ -36,14 +36,16 @@ def is_range(value) -> bool:
 
 
 def check_filters(filters: dict | None) -> dict:
-    """Drop ``None`` values and validate: field names are identifiers, a dict value is a range over
-    ``gt``/``gte``/``lt``/``lte`` with scalar bounds. Raises ``ValueError``."""
+    """Drop ``None`` values and validate: field names are identifiers, list elements are scalars, a dict value is a
+    range over ``gt``/``gte``/``lt``/``lte`` with scalar bounds. Raises ``ValueError``."""
     out = {}
     for k, v in (filters or {}).items():
         if v is None:
             continue
         if not isinstance(k, str) or not _FIELD.match(k):
             raise ValueError(f"invalid filter field {k!r}")
+        if isinstance(v, (list, tuple, set)) and any(isinstance(x, (dict, list, tuple, set)) or x is None for x in v):
+            raise ValueError(f"filter {k!r}: list elements must be scalars")
         if is_range(v):
             if not v or set(v) - set(RANGE_OPS):
                 raise ValueError(f"filter {k!r}: range keys must be among {sorted(RANGE_OPS)}, got {sorted(v)}")
@@ -83,7 +85,7 @@ class Retriever:
         if mode not in ("hybrid", "bm25", "vector"):
             raise ValueError(f"mode must be hybrid, bm25 or vector, got {mode!r}")
         filters = check_filters(filters)
-        n = self.candidates or max(k * 3, 30)
+        n = max(self.candidates or max(k * 3, 30), k)
         keep = n if self.rerank else k
         if mode == "bm25":
             hits = self._bm25(query, n, filters)[:keep]
