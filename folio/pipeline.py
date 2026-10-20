@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from collections.abc import Callable
@@ -31,6 +32,7 @@ __all__ = ["PipelineResult", "delete_document", "load_config", "load_pipeline", 
 STAGES = ["parse", "chunk", "map", "embed", "index"]
 DEFAULT_MAP = "folio.map:common"
 CONVERTED_PDF = "converted.pdf"
+_DOC_ID = re.compile(r"[A-Za-z0-9_-]{1,128}")
 Progress = Callable[[str, str, int], None]  # (stage, status running|done|failed, ms)
 
 _SINKS: dict[str, Any] = {}
@@ -274,9 +276,26 @@ def reprocess(
     return out
 
 
+def _doc_base(cfg: PipelineConfig, doc_id: str) -> str:
+    """Storage prefix of a document; rejects ids that could escape it (`..`, `/`)."""
+    if not _DOC_ID.fullmatch(doc_id):
+        raise ValueError(f"invalid doc_id {doc_id!r}")
+    return f"{cfg.index}/{doc_id}"
+
+
 def delete_document(cfg: PipelineConfig, doc_id: str) -> None:
+    base = _doc_base(cfg, doc_id)
     _sink(cfg).delete(doc_id)
-    _storage(cfg).delete(f"{cfg.index}/{doc_id}")
+    _storage(cfg).delete(base)
+
+
+def document_pdf(cfg: PipelineConfig, doc_id: str) -> bytes | None:
+    """The PDF that the document's pages/bbox refer to: the converted PDF, or the source if it is a PDF. None if absent."""
+    base, storage = _doc_base(cfg, doc_id), _storage(cfg)
+    for key in (f"{base}/{CONVERTED_PDF}", f"{base}/source.pdf"):
+        if storage.exists(key):
+            return storage.get_bytes(key)
+    return None
 
 
 def _no_embed(texts: list[str]):
