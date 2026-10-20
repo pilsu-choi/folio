@@ -52,3 +52,7 @@ sources:
 - LibreOffice + H2Orestart (v0.8.0, 2026-10-18, GPL): headless 변환을 지원하고 JRE가 필요하다. https://extensions.libreoffice.org/en/extensions/show/27504
 - 한컴 한글 SDK: 상용이며 HWPX → PDF 변환을 지원한다. Linux 지원과 가격은 공개되지 않았다. 구 DocsConverter는 hwpx 처리 누락 사례가 있다. https://www.hancom.com/product/sdk/hwpSdk , https://forum.developer.hancom.com/t/docsconverter/738
 - 가정: 1순위 후보는 hwpforge·rhwp(경량, permissive 라이선스), 기준선은 LibreOffice+H2Orestart. 최종 결정은 샘플 벤치마크 후.
+
+## 후속 (2026-10-20)
+
+- 위 "가정"(hwpforge·rhwp 1순위)은 실제 벤치마크로 대체되었다. hwpforge는 샘플 11개 모두 실패해 제외했고, rhwp 기본 + LibreOffice·H2Orestart 대체로 잠정 결정했다. [벤치마크 기록](2026-10-20-hwpx-converter-benchmark.md)
