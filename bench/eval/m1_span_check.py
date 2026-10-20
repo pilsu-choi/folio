@@ -1,5 +1,5 @@
-# usage: PYTHONPATH=. python bench/eval/m1_span_check.py <dir containing m1docs/> bench/m1/chunking/testset.jsonl
-"""Score the M1 LLM testset (249 Korean queries) with folio.eval on several chunk configs (lexical retriever)."""
+"""Score the M1 LLM testset (249 Korean queries) with folio.eval on several chunk configs (lexical retriever).
+usage: PYTHONPATH=. python bench/eval/m1_span_check.py <dir containing m1docs/> bench/m1/chunking/testset.jsonl"""
 import json, math, sys, time
 from collections import Counter
 from pathlib import Path
