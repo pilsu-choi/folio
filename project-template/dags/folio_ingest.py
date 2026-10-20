@@ -6,7 +6,8 @@ Airflow only schedules; the work runs in a separate folio container, so Airflow 
                                    and Secret. The image must contain the project (deploy/docker/Dockerfile.project).
 
 Trigger with conf: {"uri": "s3://bucket/key.pdf", "pipeline": "contracts", "source_uri": ""}
-The task fails when `folio run` exits 1 (document failed); `partial` succeeds. XCom = last log line (result JSON).
+The task fails when `folio run` exits 1 (document failed); `partial` succeeds. Result JSON = last task log line
+(docker runner: also the XCom). Production Airflow setup: deploy/airflow/README.md.
 """
 
 from __future__ import annotations

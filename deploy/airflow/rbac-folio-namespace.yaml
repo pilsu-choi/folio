@@ -1,0 +1,31 @@
+# Lets Airflow task pods (official chart, release `airflow` in namespace `airflow`, worker SA `airflow-worker`)
+# start folio pods with KubernetesPodOperator in the folio namespace. Apply in the folio namespace:
+#   kubectl apply -n folio -f deploy/airflow/rbac-folio-namespace.yaml
+# Other release/namespace names: change the subject below.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: airflow-folio-pod-launcher
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [create, get, list, watch, delete, patch]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: airflow-folio-pod-launcher
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: airflow-folio-pod-launcher
+subjects:
+  - kind: ServiceAccount
+    name: airflow-worker
+    namespace: airflow

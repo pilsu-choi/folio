@@ -10,6 +10,7 @@ environment variables are listed in [docs/INTERFACES.md](../docs/INTERFACES.md).
 | `helm/folio/` | Helm 3 chart (no subcharts, works offline), see its README |
 | `bundle/` | `make_bundle.sh` / `install.sh` - air-gapped bundle (FR-26) |
 | `kind/` | kind config and Helm E2E (`e2e.sh`) |
+| `airflow/` | production Airflow guide: official Apache Airflow chart values + RBAC for KubernetesPodOperator |
 
 ## Images
 
@@ -42,13 +43,14 @@ curl localhost:8080/readyz
 - Offline: `-f docker-compose.yml -f docker-compose.offline.yml` (no build, `pull_policy: never`).
 - Worker `stop_grace_period` is 120s so SIGTERM (Celery warm shutdown) finishes the running task.
 - OpenSearch security is disabled in the bundled service: dev / closed network only.
-- Airflow example (FR-15): `--profile airflow` adds `airflow standalone` (UI on `${AIRFLOW_PORT:-8081}`, SQLite, DAGs unpaused at creation, dev only)
+- Airflow example (FR-15): adding `airflow` to `COMPOSE_PROFILES` adds `airflow standalone` (UI on `${AIRFLOW_PORT:-8081}`, SQLite, DAGs unpaused at creation, dev only)
   with `project-template/dags/folio_ingest.py`. The DAG runs `folio run` in a sibling folio container via the
   mounted Docker socket (DockerOperator), so Airflow has no folio dependencies. Set `DOCKER_GID` (gid of
   `/var/run/docker.sock`) and `FOLIO_DOCKER_NETWORK=<project>_default`; the spawned container uses the project baked
   into `FOLIO_IMAGE` (build a customer image for your own pipelines). Socket access is root-equivalent on the host.
   Kubernetes: `FOLIO_AIRFLOW_RUNNER=kubernetes` switches to KubernetesPodOperator with env from the chart's
-  `<fullname>-env` ConfigMap and Secret (`FOLIO_K8S_FULLNAME`, `FOLIO_K8S_NAMESPACE`, `FOLIO_K8S_SECRET`).
+  `<fullname>-env` ConfigMap and Secret (`FOLIO_K8S_FULLNAME`, `FOLIO_K8S_NAMESPACE`, `FOLIO_K8S_SECRET`). Production
+  Airflow (official Apache Airflow chart values, RBAC for the folio namespace): [airflow/README.md](airflow/README.md).
 
 ## Kubernetes
 

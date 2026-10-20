@@ -63,6 +63,11 @@ infra:
     database: folio
     password: ""          # dev only; required when enabled and secrets.create=true
     persistence: {enabled: false, size: 5Gi, storageClass: ""}
+    # Extra databases on the same server (e.g. Airflow metadata), created idempotently by the init Job.
+    #   - {name: airflow, user: airflow, password: ""}
+    # Password = Secret key POSTGRES_<NAME>_PASSWORD (from `password` with secrets.create, else in existingSecret).
+    # Shared use needs persistence.enabled=true and a backup plan (single replica).
+    extraDatabases: []
     resources: {}
   rabbitmq:
     enabled: false

@@ -385,10 +385,10 @@ Document JSON의 `heading`과 `section_path`로 트리를 만든다. 헤딩이 �
 | VLM | 이미지 콘텐츠 기본 경로, 모델 1개(M1에서 확정) | OpenAI 호환 HTTP 엔드포인트, `parse.vlm: false`로 끔 |
 | Office · 텍스트 | python-pptx, openpyxl, markdown-it-py, charset-normalizer | PPTX·XLSX·Markdown 파싱, TXT 인코딩 판별 |
 | API · 워커 | FastAPI, Celery, RabbitMQ | 기존 사내 스택 |
-| 메타 DB | PostgreSQL | `jobs` 테이블 하나 |
+| 메타 DB | PostgreSQL | `jobs` 테이블 하나. 내장 PostgreSQL에 Airflow 메타데이터 DB를 별도 DB·계정으로 함께 둘 수 있다(`infra.postgres.extraDatabases`, persistence 필수) |
 | 저장소 | S3 호환 Object Storage | 로컬 파일시스템 폴백 |
 | 검색 인덱스 | OpenSearch (기본), Milvus, pgvector |  |
-| 배치 | Airflow (선택) | 예시 DAG + Compose `airflow` 프로필(개발용). 작업은 folio 컨테이너에서 실행 |
+| 배치 | Airflow (선택) | 예시 DAG + Compose `airflow` 프로필(개발용). 작업은 folio 컨테이너에서 실행. 운영 Airflow는 설치하지 않고, 공식 Apache Airflow Helm 차트용 설치 가이드·values 예시·RBAC(`deploy/airflow/`)만 제공 |
 | 배포 | Docker 이미지, Docker Compose v2, Kubernetes + Helm 3 | 지원 k8s 최소 버전은 열린 질문 |
 
 ## 마일스톤
@@ -412,9 +412,9 @@ DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 검증 상세�
 
 | 상태 | FR |
 | --- | --- |
-| 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 15(Compose Airflow + DockerOperator), 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~29 |
+| 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 15(Compose Airflow + DockerOperator, k3s에 공식 Airflow 차트 설치 후 KubernetesExecutor → KubernetesPodOperator, folio 내장 PostgreSQL을 메타데이터 DB로 공유), 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~29 |
 | 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인) |
-| 구현, 미검증 | FR-15 KubernetesPodOperator 경로(DAG import·Helm 렌더링만 확인), FR-26 Helm 사설 레지스트리 경로, PPTX `convert` 모드(LibreOffice 미포함) |
+| 구현, 미검증 | FR-15 운영 Airflow 가이드의 원격 로그 설정(예시만 제공), FR-26 Helm 사설 레지스트리 경로, PPTX `convert` 모드(LibreOffice 미포함) |
 | 보류 | FR-20, FR-21 (DOCX·HWPX) |
 
 - VLM 기본 적용은 `parse.vlm: auto`로 구현했다. `FOLIO_VLM_URL`이 있으면 VLM 경로(기본)를 쓰고, 없으면 구조 분석 OCR을 쓰며 `meta.vlm`에 사유를 남긴다. VLM 호출이 실패한 페이지만 OCR로 폴백하고 `meta.vlm_fallbacks`에 기록한다.
