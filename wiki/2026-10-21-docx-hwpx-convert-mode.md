@@ -21,7 +21,7 @@ sources:
 - 변환 순서: DOCX·PPTX는 LibreOffice, HWPX·HWP는 rhwp → 실패 시 LibreOffice + H2Orestart(설치된 경우만). 근거는 [DOCX 벤치마크](2026-10-21-docx-converter-benchmark.md)와 HWPX 벤치마크.
 - 바이너리 HWP도 같은 경로에 넣었다. 이미지 검증에서 rhwp가 `.hwp`를 변환하는 것을 확인했기 때문이다. 옵션은 `hwpx_mode`를 같이 쓴다.
 - `native` 모드(FR-21)는 범위 밖이다. `docx_mode`·`hwpx_mode="native"`는 `NotImplementedError`를 낸다.
-- 변환 PDF는 저장하지 않는다. `meta.convert.pdf_hash`는 그 파싱에서 만든 PDF를 가리킬 뿐이다. 같은 DOCX를 LibreOffice로 두 번 변환하면 바이트가 달라 해시도 다르다(타임스탬프 포함, 크기는 같음, 실행 확인). rhwp는 같은 HWPX에 같은 바이트를 냈다. 해시로 PDF를 다시 찾거나 재현할 수는 없다. 인용 하이라이트에 변환 PDF를 보관할지는 PRD 열린 질문으로 남겼다.
+- 변환 PDF는 저장하지 않는다. `meta.convert.pdf_hash`는 그 파싱에서 만든 PDF를 가리킬 뿐이다. 같은 DOCX를 LibreOffice로 두 번 변환하면 바이트가 달라 해시도 다르다(타임스탬프 포함, 크기는 같음, 실행 확인). rhwp는 같은 HWPX에 같은 바이트를 냈다. 해시로 PDF를 다시 찾거나 재현할 수는 없다. 인용 하이라이트에 변환 PDF를 보관할지는 PRD 열린 질문으로 남겼다. → 후속 결정: 보관한다(아래 "변환 PDF 보관").
 
 ## 구현
 
@@ -89,6 +89,13 @@ sources:
 - 단위 테스트(`test_words_split_on_gaps_without_space_glyphs`, 쪽 회전 0·90·270)와 전체 테스트 147개가 통과했다. 쪽 회전 0~270과 글자 회전 0~270의 16개 조합에서 `합계 금액`이 두 어절로 나오는 것도 확인했다. 이미지 안에서 `tests/test_convert.py`·`tests/test_parse.py` 29개(실제 LibreOffice DOCX·PPTX 포함)가 통과했다.
 - 이 수정은 PDF 입력 전체에 적용된다. 블록 텍스트는 어절을 공백으로 이어 붙이므로, PyMuPDF 원문에 없던 공백이 생길 수 있다(FR-01 수용 기준은 공백 정규화 후 비교로 명시). M1 PDF 벤치마크는 다시 돌리지 않았다.
 
+## 변환 PDF 보관
+
+- 결정(사용자, 2026-10-21): 인용 하이라이트를 위해 변환 PDF를 보관한다. LibreOffice는 다시 변환하면 바이트가 달라져, 저장된 bbox가 가리키는 PDF를 나중에 다시 만들 수 없기 때문이다.
+- 크기(공개 샘플, 실행 결과): 변환 PDF 합계는 원본 대비 DOCX 1.11배(13개, 파일별 중앙값 3.6배, 최대 12.2배), HWPX 2.04배(11개, 중앙값 1.6배, 최대 13.3배)다. 글 위주의 작은 문서는 PDF가 몇 배 커지고, 이미지가 많은 문서는 비슷하거나 작다. 한글 글꼴 내장이 원인이라는 것은 추정이다(미확인). PDF 입력은 추가 용량이 없다.
+- 구현: `folio.parse.default`가 변환한 PDF 바이트를 Document의 비직렬화 속성(`_converted_pdf`)으로 넘긴다. 파이프라인은 parse 단계에서 이를 `{index}/{doc_id}/converted.pdf`로 저장하고, `document.json`의 `meta.convert.pdf_key`와 `manifest.json`의 `converted_pdf`에 기록한다. 다시 parse하면 덮어쓰고, 변환 없이 parse된 경우(예: PPTX를 `native`로 다시 처리)에는 지운다. chunk·map부터의 재처리는 PDF를 건드리지 않는다. 문서 삭제는 `{index}/{doc_id}` 전체를 지우므로 함께 지워진다.
+- 검증: 단위 테스트(`test_converted_pdf_is_stored_next_to_source`)로 저장, `pdf_hash` 일치, manifest 기록, chunk 재처리 후 유지를 확인했다. 전체 단위 테스트 158개 통과. 변환 서버 컨테이너(`folio-convert:dev`)를 띄우고 `run_pipeline(..., stop_after="parse")`로 `contract.docx`(LibreOffice, 47KB)와 `form002.hwpx`(rhwp, 929KB)를 처리했다. 두 문서 모두 `converted.pdf`가 저장됐고 `pdf_hash`와 일치했다. Compose E2E와 S3 저장소로는 확인하지 않았다.
+
 ## 미확인·남은 일
 
 - arm64 이미지 빌드, `H2ORESTART=0` 빌드는 하지 않았다.
@@ -96,5 +103,5 @@ sources:
 - 동시 부하(워커 여러 개가 변환 서버를 동시에 호출)와 장시간 안정성은 측정하지 않았다.
 - 이미지 크기 중 상당 부분은 `service` extra의 의존성(celery, sqlalchemy, onnxruntime 등)이다. 변환 서버에는 fastapi·uvicorn만 필요하므로 extra를 나누면 줄일 수 있다.
 - rhwp는 fontconfig 별칭을 쓰지 않고 자체 대체(Noto CJK)를 한다. `--fallback-sans`·`--fallback-serif`로 바꿀 수 있지만 설정으로 노출하지 않았다.
-- 변환 PDF 보관 여부(PRD 열린 질문).
+- 변환 PDF를 앱에 내려주는 API는 없다. 앱은 artifact 저장소(로컬·S3)의 `converted.pdf`를 직접 읽는다.
 - 원격 저장소가 없어 로컬 `dev`에서 `feat/docx-hwpx-convert` 브랜치·worktree로 작업했다.

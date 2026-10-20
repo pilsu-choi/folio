@@ -27,7 +27,7 @@ folio.embed.http(texts: list[str], **opts) -> list[list[float]]
   converts to PDF and takes the PDF path; `pptx_mode="convert"` uses the same converter. `converter="auto"`:
   `FOLIO_CONVERT_URL` server, else local (`soffice`, `rhwp`); `"local"` | `{url, timeout}` | `"module:function"` |
   callable(data, mime) -> PDF bytes or (bytes, info). `convert_timeout` (s; env `FOLIO_CONVERT_TIMEOUT`, default 300).
-  `doc.meta["convert"] = {converter, version, ms, pdf_hash[, server, errors]}`; pages/bbox refer to the PDF made in that
+  `doc.meta["convert"] = {converter, version, ms, pdf_hash[, server, errors, pdf_key]}` (`pdf_key` added by the pipeline); pages/bbox refer to the PDF made in that
   parse (LibreOffice output is not byte-reproducible, so `pdf_hash` identifies, not rebuilds, it) while
   `mime_type`/`content_hash`/`doc_id` come from the original file. Failure -> `folio.parse.convert.ConvertError`.
   Dev VLM server: `folio.backends.vlm_stub:serve(host, port=8002)` (OpenAI-compatible, deterministic).
@@ -136,7 +136,9 @@ Storage.put_bytes(key, data) / get_bytes(key) / put_json(key, obj) / get_json(ke
 ```
 
 Artifact layout: `{index}/{doc_id}/source{ext}`, `{index}/{doc_id}/document.json`, `{index}/{doc_id}/chunks.json`
-(chunk output before map), `{index}/{doc_id}/manifest.json` (`source_uri`, `mime_type`, `pipeline`).
+(chunk output before map), `{index}/{doc_id}/manifest.json` (`source_uri`, `mime_type`, `pipeline`[, `converted_pdf`]),
+`{index}/{doc_id}/converted.pdf` (convert modes only: the PDF that pages/bbox refer to; `meta.convert.pdf_key`, checked
+by `pdf_hash`; rewritten on every re-parse, removed when a re-parse does not convert).
 
 ## Pipeline
 

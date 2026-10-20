@@ -30,6 +30,7 @@ __all__ = ["PipelineResult", "delete_document", "load_config", "load_pipeline", 
 
 STAGES = ["parse", "chunk", "map", "embed", "index"]
 DEFAULT_MAP = "folio.map:common"
+CONVERTED_PDF = "converted.pdf"
 Progress = Callable[[str, str, int], None]  # (stage, status running|done|failed, ms)
 
 _SINKS: dict[str, Any] = {}
@@ -160,10 +161,17 @@ def _execute(
         result.doc_id = doc.doc_id
         base = f"{cfg.index}/{doc.doc_id}"
         storage.put_bytes(f"{base}/source{_ext(uri)}", read_uri(uri))
+        # citation highlights need the exact PDF the bbox values refer to (re-conversion may differ)
+        if doc._converted_pdf:
+            storage.put_bytes(f"{base}/{CONVERTED_PDF}", doc._converted_pdf)
+            doc.meta.setdefault("convert", {})["pdf_key"] = CONVERTED_PDF
+        else:
+            storage.delete(f"{base}/{CONVERTED_PDF}")
         storage.put_json(f"{base}/document.json", doc.model_dump(mode="json"))
         storage.put_json(
             f"{base}/manifest.json",
-            {"source_uri": doc.source_uri, "origin_uri": uri, "mime_type": doc.mime_type, "pipeline": cfg.name},
+            {"source_uri": doc.source_uri, "origin_uri": uri, "mime_type": doc.mime_type, "pipeline": cfg.name,
+             **({"converted_pdf": CONVERTED_PDF} if doc._converted_pdf else {})},
         )
     result.doc_id = doc.doc_id
     base = f"{cfg.index}/{doc.doc_id}"
