@@ -131,13 +131,9 @@ def test_backend_failure_on_digital_page_degrades_to_text_layer():
 def test_unreadable_and_unsupported(tmp_path):
     with pytest.raises(ParseError):
         default(str(FIX / "corrupt.pdf"), backend=FakeBackend())
-    f = tmp_path / "a.docx"
-    f.write_bytes(b"PK\x03\x04 fake")
-    with pytest.raises(NotImplementedError, match="deferred"):
-        default(str(f))
-    h = tmp_path / "a.hwpx"
-    h.write_bytes(b"PK\x03\x04 fake")
-    with pytest.raises(NotImplementedError):
+    h = tmp_path / "a.hwp"
+    h.write_bytes(b"\xd0\xcf\x11\xe0 fake")
+    with pytest.raises(NotImplementedError, match="HWPX"):
         default("file://" + str(h))
 
 

@@ -8,6 +8,7 @@ import shutil
 import pytest
 
 from folio.parse import default
+from folio.parse.convert import ConvertError
 from tests._parse_helpers import FIX, FakeBackend, ocr_words_for, validate_doc
 
 TRUTH = json.loads((FIX / "formats.truth.json").read_text())
@@ -54,8 +55,8 @@ def test_pptx_notes_and_convert_mode():
     assert [b.text for b in notes] == [TRUTH["slides"]["notes"]] and notes[0].section_path == ["그림 슬라이드", "노트"]
     validate_doc(doc)
     if not (shutil.which("soffice") or shutil.which("libreoffice")):
-        with pytest.raises(NotImplementedError, match="LibreOffice"):
-            default(str(FIX / "slides.pptx"), pptx_mode="convert")
+        with pytest.raises(ConvertError, match="LibreOffice"):
+            default(str(FIX / "slides.pptx"), pptx_mode="convert", converter="local")
 
 
 def test_xlsx_native():
