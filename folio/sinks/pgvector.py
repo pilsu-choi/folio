@@ -8,9 +8,12 @@ column if the table has one, otherwise they are dropped.
 from __future__ import annotations
 
 import json
+import logging
 import os
+import time
 
 from folio.errors import ConfigError
+from folio.logging import log_event, ms_since
 
 
 class PgVectorSink:
@@ -94,6 +97,7 @@ class PgVectorSink:
 
         if not records:
             return
+        t0 = time.perf_counter()
         info = self.introspect()
         cols = info["columns"]
         doc_col = self._col("doc_id")
@@ -108,6 +112,7 @@ class PgVectorSink:
                         sql.SQL(", ").join(
                             sql.SQL("%s::vector") if c == info["vector_column"] else sql.SQL("%s") for c in row))
                     cur.execute(q, list(row.values()))
+        log_event("sink_upsert", logging.DEBUG, "folio.sinks", sink="pgvector", records=len(records), docs=len(doc_ids), ms=ms_since(t0))
 
     def delete(self, doc_id: str) -> None:
         from psycopg import sql

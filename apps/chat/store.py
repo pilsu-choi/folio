@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 import sqlalchemy as sa
+
+from folio.logging import log_event, redact_url
 
 metadata = sa.MetaData()
 users = sa.Table(
@@ -62,6 +65,7 @@ class ChatStore:
 
                 pathlib.Path(url[len("sqlite:///"):]).parent.mkdir(parents=True, exist_ok=True)
             _ENGINES[url] = sa.create_engine(url, pool_pre_ping=True)
+            log_event("db_init", logging.DEBUG, "apps.chat", database=redact_url(url))
         self.engine = _ENGINES[url]
 
     def create_all(self) -> None:

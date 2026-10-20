@@ -4,16 +4,20 @@ any chunking config. Page text = the chunker's leaf texts (`build_leaves`), so e
 from __future__ import annotations
 
 import json
+import logging
 import os
 import random
 import re
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
+import httpx
+
 from folio.chunk.structure import build_leaves
 from folio.contracts import Document
 from folio.errors import FolioError
 from folio.generation import http as chat
+from folio.logging import clip, log_event, with_context
 
 SINGLE = ("fact", "table", "section")  # one page
 SAME_DOC = ("multi_hop", "comparison", "temporal", "multi_intent")  # two pages of one document
@@ -99,7 +103,10 @@ def _parse_items(reply: str) -> list[dict]:
     m = re.search(r"\[.*\]", _THINK.sub("", reply), re.DOTALL)
     if not m:
         raise ValueError("no JSON array in reply")
-    return [x for x in json.loads(m.group(0)) if isinstance(x, dict)]
+    try:
+        return [x for x in json.loads(m.group(0)) if isinstance(x, dict)]
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"JSON decode error (reply likely truncated or malformed): {exc}") from exc
 
 
 def _heuristic(text: str) -> tuple[str, str] | None:
@@ -175,13 +182,19 @@ def generate(docs: list[Document], pages: int = 50, pairs: int = 20, method: str
         body = "\n\n".join(f"[페이지 {lb}] (문서: {k[0]}, {k[1]}쪽)\n\"\"\"\n{text[k][:5500]}\n\"\"\"" for lb, k in zip(labels, keys))
         prompt = _PROMPT.format(types="\n".join(f"- {t}: {_DESC[t]}" for t in kinds), labels=", ".join(labels),
                                 multi=_MULTI_RULE if len(keys) > 1 else "", pages=body)
-        for _ in range(2):  # one retry on a malformed reply or an LLM error
+        for attempt in (1, 2):  # one retry on a malformed reply or an LLM error
+            reply = None
             try:
-                return _parse_items(chat([{"role": "user", "content": prompt}], url=url, model=model, api_key=api_key,
-                                         temperature=0.3, max_tokens=2500, extra_body=extra_body,
-                                         timeout=timeout, retries=1))
-            except (ValueError, KeyError, FolioError):
-                pass
+                reply = chat([{"role": "user", "content": prompt}], url=url, model=model, api_key=api_key,
+                             temperature=0.3, max_tokens=2500, extra_body=extra_body, timeout=timeout, retries=1)
+                return _parse_items(reply)
+            except (ValueError, KeyError, FolioError, httpx.HTTPError) as exc:
+                log_event("testset_unit_failed", logging.WARNING, "folio.eval", doc_ids=sorted({k[0] for k in keys}),
+                          pages=[k[1] for k in keys], types=kinds, attempt=attempt, of=2,
+                          error_class=type(exc).__name__, error=clip(exc, 300))
+                if reply is not None:
+                    log_event("testset_unit_reply", logging.DEBUG, "folio.eval", attempt=attempt, reply_chars=len(reply),
+                              reply=clip(reply, 500))
         return None
 
     reasons = ("wrong_type", "no_evidence", "unlocated", "one_side_only", "header_only", "dup")
@@ -194,7 +207,7 @@ def generate(docs: list[Document], pages: int = 50, pairs: int = 20, method: str
         stats["rounds"] += 1
         used.update(u for keys, kinds in units for t in kinds for u in ((tuple(keys), t), (keys[0], t)))
         with ThreadPoolExecutor(workers if method == "llm" else 1) as ex:
-            for (keys, kinds), got in zip(units, ex.map(ask, units)):
+            for (keys, kinds), got in zip(units, ex.map(with_context(ask), units)):
                 if got is None:
                     stats["failed_units"] += 1
                     continue
@@ -254,4 +267,7 @@ def generate(docs: list[Document], pages: int = 50, pairs: int = 20, method: str
             break
         run_units(units)
     stats["short"] = {t: min_per_type - stats["kept"][t] for t in types if stats["kept"][t] < min_per_type}
+    log_event("testset_done", logging.INFO, "folio.eval", method=method, units=stats["units"],
+              failed_units=stats["failed_units"], rounds=stats["rounds"], items=len(items), kept=dict(stats["kept"]),
+              short=stats["short"])
     return items, {k: dict(v) if isinstance(v, Counter) else v for k, v in stats.items()}

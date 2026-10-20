@@ -313,6 +313,7 @@ class _Run:
             struct = self.backend.analyze(png, px)
             self.calls["structure"] += 1
         except Exception as exc:  # degrade to text-layer paragraphs
+            log.warning("structure backend failed on page %d, using text-layer paragraphs: %s: %s", n, type(exc).__name__, exc)
             self.errors.append({"page": n, "error": f"structure backend failed: {type(exc).__name__}: {exc}"})
             struct = PageStructure()
         return build_blocks(atoms, struct, scale, "pdf_text", self.o.char_match)

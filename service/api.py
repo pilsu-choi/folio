@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
+import time
+import uuid
 from contextlib import asynccontextmanager
 from typing import Literal
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from folio import logging as flog
+from folio.logging import clip, log_event, ms_since
 from service import settings
 from service.jobs import JobStore
+
+flog.configure()
+_QUIET = {"/healthz", "/readyz"}
 
 
 @asynccontextmanager
@@ -25,6 +33,27 @@ async def _lifespan(_app):
 
 
 app = FastAPI(title="folio", lifespan=_lifespan)
+
+
+@app.middleware("http")
+async def _access_log(request: Request, call_next):
+    rid = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
+    token = flog.request_id.set(rid)
+    t0 = time.perf_counter()
+    try:
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            log_event("http_error", logging.ERROR, "service", exc_info=True, method=request.method,
+                      path=request.url.path, error_class=type(exc).__name__)
+            response = JSONResponse({"detail": "internal server error"}, status_code=500)
+        response.headers["X-Request-ID"] = rid
+        level = logging.DEBUG if request.url.path in _QUIET else logging.INFO
+        log_event("http_request", level, "service", method=request.method, path=request.url.path,
+                  status=response.status_code, ms=ms_since(t0), client=request.client.host if request.client else None)
+        return response
+    finally:
+        flog.request_id.reset(token)
 
 
 def _storage():
@@ -140,10 +169,15 @@ def search(req: SearchRequest):
     from folio.pipeline import search as run_search
 
     pipeline, cfg = _pipeline(req.pipeline)
+    t0 = time.perf_counter()
     try:
         hits = run_search(cfg, req.query, k=req.k, filters=req.filters, mode=req.mode)
     except (ValueError, ConfigError) as exc:
+        log_event("search_rejected", logging.WARNING, "service", pipeline=pipeline, filter_keys=sorted(req.filters),
+                  error=str(exc))
         raise HTTPException(400, str(exc)) from exc
+    log_event("search", logging.DEBUG, "service", pipeline=pipeline, k=req.k, mode=req.mode,
+              filter_keys=sorted(req.filters), query=clip(req.query), hits=len(hits), ms=ms_since(t0))
     return {"pipeline": pipeline, "hits": [_hit(h) for h in hits]}
 
 
@@ -154,12 +188,20 @@ def chat(req: ChatRequest):
     from folio.generation import answer
 
     pipeline, cfg = _pipeline(req.pipeline)
+    t0 = time.perf_counter()
     try:
         res = answer(cfg, [m.model_dump() for m in req.messages], k=req.k, filters=req.filters, mode=req.mode)
     except GenerationError as exc:
+        log_event("chat_failed", logging.WARNING, "service", pipeline=pipeline, error=str(exc))
         raise HTTPException(502, str(exc)) from exc
     except (ValueError, ConfigError) as exc:
+        log_event("chat_rejected", logging.WARNING, "service", pipeline=pipeline, filter_keys=sorted(req.filters),
+                  error=str(exc))
         raise HTTPException(400, str(exc)) from exc
+    log_event("chat_request", logging.DEBUG, "service", k=req.k, mode=req.mode, filter_keys=sorted(req.filters),
+              message=clip(req.messages[-1].content), rewritten_query=clip(res.query))
+    log_event("chat", logging.INFO, "service", pipeline=pipeline, turns=len(req.messages), hits=len(res.hits),
+              citations=len(res.citations), ms=ms_since(t0))
     return {"pipeline": pipeline, "answer": res.answer, "query": res.query, "citations": res.citations,
             "hits": [_hit(h) for h in res.hits]}
 

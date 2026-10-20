@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import re
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from folio.errors import ConfigError
+from folio.logging import log_event, ms_since
 
 RANGE_OPS = {"gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
 _FIELD = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -85,6 +88,7 @@ class Retriever:
         if mode not in ("hybrid", "bm25", "vector"):
             raise ValueError(f"mode must be hybrid, bm25 or vector, got {mode!r}")
         filters = check_filters(filters)
+        t0 = time.perf_counter()
         n = max(self.candidates or max(k * 3, 30), k)
         keep = n if self.rerank else k
         if mode == "bm25":
@@ -97,4 +101,7 @@ class Retriever:
                 hits = rrf([self._bm25(query, n, filters), self._vector(vec, n, filters)], keep, self.rrf_k)
         if self.rerank and hits:
             hits = self.rerank(query, hits)
+        log_event("retrieve", logging.DEBUG, "folio.retrieval", mode=mode, k=k, candidates=n, filter_keys=sorted(filters),
+                  query_chars=len(query), reranked=bool(self.rerank), hits=len(hits), ms=ms_since(t0),
+                  top_scores=[round(h.score, 4) for h in hits[:3]])
         return hits[:k]
