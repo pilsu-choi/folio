@@ -314,10 +314,24 @@ HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. EWL에
 
 M1에서 디지털 PDF 하나로 처음부터 끝까지 도는 것을 먼저 만들고, OCR 폴백과 서비스는 M2로 미룬다. 일정은 열린 질문에서 정한다.
 
+## Implementation status (2026-10-20)
+
+All FRs except DOCX·HWPX (FR-20, FR-21, deferred) are implemented. Verification details are in [wiki/2026-10-20-implementation-core-pipeline.md](wiki/2026-10-20-implementation-core-pipeline.md).
+
+| Status | FR |
+| --- | --- |
+| Implemented + acceptance criteria verified by tests/E2E | FR-01–03, 05, 07–14, 16, 17, 19, 22–24, 26 (Compose offline install) |
+| Implemented, partially verified | FR-04 (rotation·CropBox·char matching with synthetic fixtures, no actual HWP-converted PDF), FR-06 (mocked VLM), FR-18 (heuristic testset; LLM generation mocked only), FR-25 (values·env switch rendering only) |
+| Implemented, not verified | FR-15 (Airflow DAG not run), FR-26 Helm private registry path |
+| Deferred | FR-20, FR-21 (DOCX·HWPX) |
+
+- Structure-analysis backend: on fixtures, heuristic·Docling·PP-StructureV3 are all identical for digital text and tables; OCR similarity is 0.72 / 0.75 / 0.91 and CPU sec/page is 0.04 / 1.75 / 20.6. The default backend is still to be decided with customer samples (Korean included).
+- `minio/minio` is no longer distributed on Docker Hub, so the bundled S3 was replaced with a digest-pinned `cgr.dev/chainguard/minio`.
+
 ## 열린 질문
 
 - [x] 레포·패키지 이름: `folio`로 확정 (knowledge-forge와 구분). CLI도 `folio`
-- [ ] 기본 구조 분석 백엔드 확정: Docling vs PP-StructureV3를 M1에서 고객사 샘플(한글 포함)로 비교. MinerU 라이선스 확인
+- [ ] 기본 구조 분석 백엔드 확정: Docling vs PP-StructureV3를 M1에서 고객사 샘플(한글 포함)로 비교. MinerU 라이선스 확인 (어댑터·벤치마크 스크립트 구현 완료, 픽스처 결과는 위 구현 현황 참고)
 - [ ] HWPX → PDF 변환기: 후보(EWL 방식 포함)를 샘플로 비교해 선택. EWL 방식을 반드시 따르지 않는다 (DOCX·HWPX는 `convert` 기본 + `native` 옵션으로 결정됨)
 - [ ] 첫 적용 고객사와 샘플 문서 세트: 수용 기준과 성능 기준선의 근거가 된다
 - [ ] 마일스톤별 일정과 담당자
