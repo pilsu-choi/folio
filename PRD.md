@@ -164,7 +164,7 @@ storage: s3://folio-artifacts/       # 중간 산출물 위치
 
 ## 파싱 백엔드
 
-결론: **DLA·TSR·OCR 3종 모델을 따로 띄우지 않는다. 레이아웃·표·OCR을 한 번에 처리하는 "구조 분석 백엔드" 1개를 기본으로 두고, 스캔·복잡 표용 VLM 백엔드는 선택 폴백으로 둔다.** 백엔드는 인터페이스 하나로 교체 가능하게 만들고, 기본값은 M1에서 고객사 샘플(한글 포함) 벤치마크로 확정한다.
+결론: **DLA·TSR·OCR 3종 모델을 따로 띄우지 않는다. 레이아웃·표·OCR을 한 번에 처리하는 "구조 분석 백엔드" 1개를 기본으로 두고, 이미지 콘텐츠(이미지 파일·스캔 페이지·그림·복잡 표)는 VLM 모델 1개로 처리한다.** 백엔드는 인터페이스 하나로 교체 가능하게 만들고, 기본값은 M1에서 고객사 샘플(한글 포함) 벤치마크로 확정한다.
 
 ### 후보
 
@@ -173,9 +173,23 @@ storage: s3://folio-artifacts/       # 중간 산출물 위치
 | [Docling](https://arxiv.org/html/2408.09869v5) | 레이아웃 모델 + TableFormer, OCR은 선택 | PDF 백엔드에서 좌표 포함 텍스트 토큰을 그대로 쓴다 | MIT | 기본 백엔드 후보 — 설계 원리가 이 PRD와 같다 |
 | [PaddleOCR PP-StructureV3](https://www.paddleocr.ai/latest/en/version3.x/pipeline_usage/PP-StructureV3.html) | 레이아웃 + OCR + 표 구조·셀 검출 파이프라인, CPU/GPU | 문서상 명시 없음 → 레이아웃·표 결과만 쓰고 글자는 우리 매칭으로 | Apache-2.0 | 기본 백엔드 후보 — 한글 OCR·스캔 비중이 높으면 유리 |
 | [MinerU](https://knightli.com:8443/en/2026/06/26/mineru-34-backend-modes-pipeline-hybrid-vlm/) (pipeline / hybrid) | pipeline은 전문 모델 조합, hybrid는 어려운 영역만 VLM | pipeline·hybrid 모두 네이티브 텍스트 추출이 먼저 | 확인 필요 | 대안 — hybrid 방식이 우리 폴백 구조와 같다 |
-| E2E VLM 파서 (PaddleOCR-VL-1.5, GLM-OCR 등) | 페이지 이미지 → 구조화 결과 한 번에 | 사용 안 함 (페이지를 이미지로 읽음) | 모델별 확인 | 스캔·복잡 표 페이지 폴백 |
+| E2E VLM 파서 (PaddleOCR-VL-1.5, GLM-OCR 등) | 페이지 이미지 → 구조화 결과 한 번에 | 사용 안 함 (페이지를 이미지로 읽음) | 모델별 확인 | VLM 후보 — 그림·차트 설명 품질을 함께 확인 |
+| 범용 VLM (Qwen-VL 계열 등) | 이미지 + 지시문 → 텍스트(Markdown·HTML 표 등) | 사용 안 함 | 모델별 확인 | VLM 후보 — 스캔 OCR 정확도를 함께 확인 |
 
-[OmniDocBench 기준(2026-05)](https://www.codesota.com/ocr/benchmark/omnidocbench) 상위권은 GLM-OCR, PaddleOCR-VL-1.5 같은 E2E VLM이다. 다만 E2E VLM은 디지털 PDF도 이미지로 다시 읽기 때문에, 텍스트 레이어로 얻는 속도·정확도 이점을 버린다. 그래서 기본 경로가 아니라 폴백으로 둔다.
+[OmniDocBench 기준(2026-05)](https://www.codesota.com/ocr/benchmark/omnidocbench) 상위권은 GLM-OCR, PaddleOCR-VL-1.5 같은 E2E VLM이다. 다만 E2E VLM은 디지털 PDF도 이미지로 다시 읽기 때문에, 텍스트 레이어로 얻는 속도·정확도 이점을 버린다. 그래서 디지털 텍스트에는 쓰지 않고 이미지 콘텐츠에만 쓴다.
+
+### VLM 모델 (1개)
+
+스캔 페이지 파싱, 그림·차트 설명, 복잡 표 재처리를 **모델 하나**로 처리한다. 서빙 모델은 구조 분석 + VLM 2개를 넘지 않는다. 작업 종류는 모델이 아니라 프롬프트(지시문)로 구분한다.
+
+E2E 문서 VLM은 OCR·표에 강하지만 그림 설명이 약할 수 있고, 범용 VLM은 반대일 수 있다. 그래서 M1에서 같은 샘플로 세 작업을 모두 평가해 하나를 고른다.
+
+| 기준 | 내용 |
+| --- | --- |
+| 스캔 파싱 | 한글 스캔 샘플의 블록 텍스트·표 구조 정답 일치율 |
+| 그림 설명 | 차트·도식 샘플에서 수치·라벨 누락 없이 검색 가능한 설명을 만드는지 (수동 평가) |
+| 속도·자원 | 페이지당 시간, GPU 1장(메모리 상한은 고객사 환경 기준)에 올라가는지 |
+| 서빙·라이선스 | OpenAI 호환 서버(vLLM 등)로 폐쇄망 서빙 가능, 고객사 배포에 문제 없는 라이선스 |
 
 ### 기본 구성 (M1 벤치마크 전 가정)
 
@@ -365,7 +379,7 @@ Document JSON의 `heading`과 `section_path`로 트리를 만든다. 헤딩이 �
 | 언어 | Python 3.11+ | 타입 힌트 필수 |
 | PDF | PyMuPDF | 텍스트 레이어·렌더링 |
 | 구조 분석 · OCR | Docling 또는 PP-StructureV3 (M1에서 확정) | 모델 교체는 `parse` 옵션의 엔드포인트로 |
-| VLM | 이미지 콘텐츠 기본 경로, 모델은 M1에서 확정 | OpenAI 호환 HTTP 엔드포인트, `parse.vlm: false`로 끔 |
+| VLM | 이미지 콘텐츠 기본 경로, 모델 1개(M1에서 확정) | OpenAI 호환 HTTP 엔드포인트, `parse.vlm: false`로 끔 |
 | Office · 텍스트 | python-pptx, openpyxl, markdown-it-py, charset-normalizer | PPTX·XLSX·Markdown 파싱, TXT 인코딩 판별 |
 | API · 워커 | FastAPI, Celery, RabbitMQ | 기존 사내 스택 |
 | 메타 DB | PostgreSQL | `jobs` 테이블 하나 |
@@ -380,12 +394,23 @@ Document JSON의 `heading`과 `section_path`로 트리를 만든다. 헤딩이 �
 
 M1에서 디지털 PDF 하나로 처음부터 끝까지 도는 것을 먼저 만들고, OCR 폴백과 서비스는 M2로 미룬다. 일정은 열린 질문에서 정한다.
 
+입력 형식·VLM·청킹 관련 요구사항은 우선순위 정의(P0는 첫 릴리스, P1은 두 번째 마일스톤)에 맞춰 아래처럼 배치한다. 위 마일스톤 표에도 같은 내용을 반영한다.
+
+| 마일스톤 | 요구사항 | 이유 |
+| --- | --- | --- |
+| M1 | FR-07 `adaptive` 청킹 | 디지털 PDF E2E에 청킹이 필요하고, 이후 형식 추가와 Eval의 기준선이 된다 |
+| M1 | 구조 분석 백엔드·VLM 모델 벤치마크 | 같은 샘플 세트로 함께 비교한다. M1에서는 VLM을 서빙하지 않는다 |
+| M2 | FR-02 이미지 경로 폴백, FR-05 이미지 입력, FR-06 VLM 기본 적용 | OCR 폴백과 같은 경로이고, M1 벤치마크로 고른 VLM을 띄운다 |
+| M2 | FR-29 Markdown·TXT | 모델 없이 구현돼 가장 작다. 청킹 테스트 입력으로도 쓴다 |
+| M2 | FR-27 PPTX, FR-28 XLSX | 그림·차트는 FR-06의 VLM을 재사용한다 |
+
 ## 열린 질문
 
 - [x] 레포·패키지 이름: `folio`로 확정 (knowledge-forge와 구분). CLI도 `folio`
 - [ ] 기본 구조 분석 백엔드 확정: Docling vs PP-StructureV3를 M1에서 고객사 샘플(한글 포함)로 비교. MinerU 라이선스 확인
 - [ ] HWPX → PDF 변환기: 후보(EWL 방식 포함)를 샘플로 비교해 선택. EWL 방식을 반드시 따르지 않는다 (DOCX·HWPX는 `convert` 기본 + `native` 옵션으로 결정됨)
-- [ ] VLM 모델: 스캔 페이지 파싱(E2E 문서 VLM)과 그림·차트 설명(범용 VLM)을 모델 하나로 할지 둘로 나눌지. 서빙 모델 2개 상한(구조 분석 + VLM)을 지키려면 하나가 유리하다 (이미지 콘텐츠에 VLM 기본 적용은 결정됨)
+- [x] VLM 모델 수: 스캔 파싱·그림 설명·복잡 표를 모델 1개로 처리 (이미지 콘텐츠에 VLM 기본 적용도 결정됨)
+- [ ] VLM 모델 선정: [VLM 모델](#vlm-모델-1개) 기준으로 M1에서 E2E 문서 VLM과 범용 VLM 후보를 비교
 - [ ] `adaptive` 청킹 기본값: `max_tokens`·`min_tokens`를 임베딩 모델과 Eval 결과로 확정
 - [ ] 첫 적용 고객사와 샘플 문서 세트: 수용 기준과 성능 기준선의 근거가 된다
 - [ ] 마일스톤별 일정과 담당자
