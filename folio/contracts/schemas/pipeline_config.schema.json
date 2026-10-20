@@ -1,0 +1,86 @@
+{
+  "$defs": {
+    "StepSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "fn": {
+          "title": "Fn",
+          "type": "string"
+        },
+        "opts": {
+          "additionalProperties": true,
+          "title": "Opts",
+          "type": "object"
+        }
+      },
+      "required": [
+        "fn"
+      ],
+      "title": "StepSpec",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "default": "default",
+      "title": "Name",
+      "type": "string"
+    },
+    "parse": {
+      "$ref": "#/$defs/StepSpec"
+    },
+    "chunk": {
+      "$ref": "#/$defs/StepSpec"
+    },
+    "map": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StepSpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "embed": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StepSpec"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sink": {
+      "additionalProperties": true,
+      "title": "Sink",
+      "type": "object"
+    },
+    "storage": {
+      "default": ".folio/artifacts",
+      "title": "Storage",
+      "type": "string"
+    },
+    "config_dir": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "dir holding schemas/ and mappers.py",
+      "title": "Config Dir"
+    }
+  },
+  "required": [
+    "sink"
+  ],
+  "title": "PipelineConfig",
+  "type": "object"
+}
