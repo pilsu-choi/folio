@@ -65,7 +65,7 @@ flowchart LR
 
 | 항목 | 방법 | 결과 |
 | --- | --- | --- |
-| 전체 단위 테스트 | `pytest -q` | 155 passed, 1 skipped |
+| 전체 단위 테스트 | `pytest -q`(dev `225796f` 기준 rebase 후) | 169 passed, 3 skipped |
 | 실제 folio와 연동 | `test_against_real_folio_chat`: App을 folio의 실제 `service.api` `/v1/chat`(memory sink, stub chat 단계, `required_filters: [tenant_id]`)에 연결 | 201과 인용-근거 일치, 로그인 ACL `t1`로 검색(클라이언트 `other` 무시), `generation:` 없는 파이프라인은 400, `embedding` 제거 |
 | UI 동작(실제 App 백엔드) | dev 모드 App과 실패 스위치가 있는 가짜 folio, Playwright | 피드백 저장, 이 질문부터 삭제(6개 → 2개), 502 시 저장 0건과 재시도 버튼, 재시도 후 저장, 이름 변경, 대화 삭제, page error 0 |
 | App API | `tests/test_chat_app.py`(9개): CRUD, 멀티턴 이력, 실패 시 미저장(502·400·500·연결 실패), 50개 상한, 파이프라인 허용 목록, OIDC 콜백(가짜 IdP 객체), 사용자 간 격리(모든 엔드포인트 404), ACL 덮어쓰기, 클레임 없음 403, 비밀키 없으면 기동 실패 | 통과 |

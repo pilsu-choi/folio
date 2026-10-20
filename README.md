@@ -341,7 +341,7 @@ folio eval testset --pipeline contracts --n 50 && folio eval run --pipeline cont
 | VLM | 🟡 연동 완료, 운영 모델 미정(개발용 stub만 있음) |
 | 검색 API | ✅ `POST /v1/search` + YAML `retrieval:` ([작업 기록](wiki/2026-10-20-implementation-search-api.md)) |
 | 생성(Chat API) | 🟡 `POST /v1/chat` 무상태 멀티턴 + YAML `generation:`. stub LLM으로만 검증, 운영 LLM 미정, 스트리밍 미지원 ([작업 기록](wiki/2026-10-21-generation-multiturn.md)) |
-| 채팅 App | 🟡 `apps/chat`: SSO(OIDC)·대화 저장·UI. 가짜 folio·로컬 테스트용 OIDC 서버로 검증, 실제 IdP·LLM·배포 미확인 ([작업 기록](wiki/2026-10-21-chat-app-sso.md)) |
+| 채팅 App | 🟡 `apps/chat`: SSO(OIDC)·대화 저장·UI. 실제 `/v1/chat`(stub LLM)·로컬 테스트용 OIDC 서버로 검증, 실제 IdP·LLM·배포 미확인 ([작업 기록](wiki/2026-10-21-chat-app-sso.md)) |
 | 구조 분석 | ✅ 기본 PP-StructureV3 GPU ([작업 기록](wiki/2026-10-21-ppstructure-gpu-default.md)) |
 | Airflow | ✅ 예시 DAG(DockerOperator 기본, KubernetesPodOperator 선택) ([작업 기록](wiki/2026-10-20-airflow-container-dag.md)) |
 
