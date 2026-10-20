@@ -13,7 +13,7 @@
 
 ```mermaid
 flowchart LR
-    F["문서<br/>PDF·이미지·PPTX·XLSX·MD·TXT"] --> P["1 parse<br/>문서 구조 읽기"]
+    F["문서<br/>PDF·이미지·DOCX·HWPX·HWP<br/>PPTX·XLSX·MD·TXT"] --> P["1 parse<br/>문서 구조 읽기"]
     P --> C["2 chunk<br/>의미 단위로 자르기"]
     C --> M["3 map<br/>도메인 필드 채우기"]
     M --> E["4 embed<br/>벡터로 바꾸기"]
@@ -87,7 +87,8 @@ Airflow에서는 예시 DAG(`project-template/dags/folio_ingest.py`)가 folio �
 flowchart TD
     In["입력 파일"] --> T{"형식?"}
     T -- "PPTX · XLSX · MD · TXT" --> N["원본 구조 그대로 읽기<br/>구조 분석·OCR 없음<br/>그림만 VLM 설명"]
-    T -- "DOCX · HWPX" --> X["아직 미지원<br/>NotImplementedError"]
+    T -- "DOCX · HWPX · HWP" --> X["PDF로 변환<br/>convert 서버(LibreOffice · rhwp)"]
+    X --> Q
     T -- "이미지" --> IMG
     T -- "PDF" --> Q{"페이지의 글자 레이어<br/>품질이 괜찮은가?"}
     Q -- "예" --> D["PDF 글자 + 구조 분석 모델<br/>text_source = pdf_text"]
@@ -98,6 +99,7 @@ flowchart TD
 ```
 
 - **구조 분석 모델**: 페이지에서 제목·문단·표 영역을 찾는 모델. 기본은 PP-StructureV3 GPU 서버다. GPU가 없으면 CPU 버전(약 40배 느림, 메모리 약 12 GB), 개발·CI는 모델 없는 `heuristic`을 쓴다. 라이브러리 단독 사용 시 `FOLIO_STRUCTURE_URL`이 없으면 `heuristic`이다.
+- **DOCX·HWPX·HWP**: 기본은 PDF로 변환한 뒤 PDF 경로를 탄다(`docx_mode`·`hwpx_mode: convert`). 페이지 번호와 bbox가 생기지만, 그 좌표는 변환된 PDF 기준이다(`meta.convert.pdf_hash`). 변환은 `folio-convert` 서버(`FOLIO_CONVERT_URL`)가 맡고, URL이 없으면 로컬 LibreOffice·rhwp를 쓴다. DOCX는 LibreOffice, HWPX·HWP는 rhwp(실패 시 LibreOffice + H2Orestart)다. 선택 근거는 [DOCX](wiki/2026-10-21-docx-converter-benchmark.md)·[HWPX](wiki/2026-10-20-hwpx-converter-benchmark.md) 벤치마크에 있다. XML을 직접 읽는 `native` 모드(FR-21)는 아직 없다.
 - **VLM**: `parse.vlm: auto`가 기본이다. `FOLIO_VLM_URL`이 없으면 VLM 대신 OCR을 쓴다. 운영용 VLM 모델은 아직 정하지 않았다(개발용 `folio vlm-stub`만 있음).
 - **청킹**: 기본 `adaptive`. 대안은 `page`, `fixed`.
 
@@ -143,10 +145,13 @@ folio reprocess --from map --index contracts     # 저장된 청크 재사용, �
 flowchart TB
     img["folio 이미지<br/>api · worker · CLI 공용"]
     st["구조 분석 서버 이미지<br/>gpu · cpu · heuristic"]
+    cv["변환 서버 이미지 folio-convert<br/>DOCX·HWPX·HWP → PDF"]
     img --> CP["Docker Compose<br/>단일 서버"]
     img --> HM["Helm<br/>Kubernetes"]
     st --> CP
     st --> HM
+    cv --> CP
+    cv --> HM
     CP --> INF[("PostgreSQL · RabbitMQ · OpenSearch · MinIO<br/>내장 또는 외부")]
     HM --> INF
     BD["폐쇄망 번들<br/>이미지 tar + 차트 + 모델"] -.-> CP
@@ -233,7 +238,7 @@ storage: ${FOLIO_STORAGE_URI:-.folio/artifacts}
 | `DELETE /v1/documents/{doc_id}?pipeline=` | 인덱스의 청크와 저장된 중간 결과 삭제 |
 | `/healthz`, `/readyz` | 상태 확인 |
 
-`folio` 이미지 실행 모드: `folio api` / `folio worker` / `folio init` / `folio structure-server` / `folio embed-stub` / `folio vlm-stub`
+`folio` 이미지 실행 모드: `folio api` / `folio worker` / `folio init` / `folio structure-server` / `folio embed-stub` / `folio vlm-stub`. 변환 서버는 별도 이미지 `folio-convert`(`folio convert-server`, :9100)다.
 
 평가(Recall@k·MRR·nDCG):
 
@@ -248,7 +253,7 @@ folio eval testset --pipeline contracts --n 50 && folio eval run --pipeline cont
 | 영역 | 상태 |
 | --- | --- |
 | 입력 형식 | ✅ PDF, 이미지(PNG·JPG·TIFF·BMP·WebP), PPTX, XLSX, Markdown, TXT(UTF-8·CP949 자동 판별) |
-| DOCX·HWPX | ⏸️ 보류(FR-20, FR-21). 넣으면 `NotImplementedError` |
+| DOCX·HWPX·HWP | ✅ `convert` 모드(PDF 변환 후 파싱, FR-20) ([작업 기록](wiki/2026-10-21-docx-hwpx-convert-mode.md)). ⏸️ `native` 모드(FR-21) 보류 |
 | VLM | 🟡 연동 완료, 운영 모델 미정(개발용 stub만 있음) |
 | 검색 API | ✅ `POST /v1/search` + YAML `retrieval:` ([작업 기록](wiki/2026-10-20-implementation-search-api.md)) |
 | 구조 분석 | ✅ 기본 PP-StructureV3 GPU ([작업 기록](wiki/2026-10-21-ppstructure-gpu-default.md)) |

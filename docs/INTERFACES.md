@@ -22,7 +22,13 @@ folio.embed.http(texts: list[str], **opts) -> list[list[float]]
   structure tables -> VLM (`figure_min_area=0.01`, `table_min_coverage=0.8`, `table_max_empty=0.6`). Disabled/failed ->
   structure-backend OCR; failures are listed in `meta.vlm_fallbacks = [{page, task, error}]`.
   Formats by MIME/extension: PDF, PNG/JPG/TIFF/BMP/WebP, PPTX (`pptx_mode="native"|"convert"`, `pptx_notes=False`),
-  XLSX (`xlsx_include_hidden=False`), Markdown, TXT (encoding auto-detect, `meta.encoding`); DOCX/HWPX raise NotImplementedError.
+  XLSX (`xlsx_include_hidden=False`), Markdown, TXT (encoding auto-detect, `meta.encoding`), DOCX/HWPX/HWP (FR-20).
+  DOCX/HWPX/HWP: `docx_mode`/`hwpx_mode="convert"` (default; `hwpx_mode` covers HWP; `"native"` = FR-21, NotImplementedError)
+  converts to PDF and takes the PDF path; `pptx_mode="convert"` uses the same converter. `converter="auto"`:
+  `FOLIO_CONVERT_URL` server, else local (`soffice`, `rhwp`); `"local"` | `{url, timeout}` | `"module:function"` |
+  callable(data, mime) -> PDF bytes or (bytes, info). `convert_timeout` (s; env `FOLIO_CONVERT_TIMEOUT`, default 300).
+  `doc.meta["convert"] = {converter, version, ms, pdf_hash[, server, errors]}`; pages/bbox refer to that PDF while
+  `mime_type`/`content_hash`/`doc_id` come from the original file. Failure -> `folio.parse.convert.ConvertError`.
   Dev VLM server: `folio.backends.vlm_stub:serve(host, port=8002)` (OpenAI-compatible, deterministic).
 - parse records model-call counts in `doc.meta["calls"] = {"structure": n, "ocr": n, "vlm": n}`
   and per-stage timings in `doc.meta["timings"]`; page failures in `doc.meta["errors"] = [{"page": n, "error": str}]`.
@@ -105,6 +111,8 @@ Stages: `parse → chunk → map → embed → index`. `PipelineResult` has `doc
 | `MILVUS_URI`, `MILVUS_TOKEN` | Milvus |
 | `PGVECTOR_DSN` | pgvector sink DB (App DB) |
 | `FOLIO_STRUCTURE_URL` | structure model server base URL |
+| `FOLIO_CONVERT_URL`, `FOLIO_CONVERT_TIMEOUT` | DOCX/HWPX/HWP -> PDF convert server base URL (unset = local binaries), timeout (s) |
+| `FOLIO_CONVERT_WORKERS`, `FOLIO_CONVERT_FONT_PATH` | convert server only: concurrent conversions, rhwp `--font-path` |
 | `FOLIO_VLM_URL`, `FOLIO_VLM_MODEL` | VLM for image content (OpenAI-compatible chat); unset = VLM off (`vlm="auto"`) |
 | `FOLIO_EMBED_URL`, `FOLIO_EMBED_MODEL`, `FOLIO_EMBED_API_KEY` | embedding endpoint |
 | `FOLIO_RERANK_URL` | optional rerank endpoint |
@@ -114,5 +122,7 @@ Stages: `parse → chunk → map → embed → index`. `PipelineResult` has `doc
 
 `folio api` (FastAPI on :8080: ingest, jobs, search), `folio worker` (Celery), `folio init`, `folio schema apply [--reindex]`,
 `folio run [--source-uri]`, `folio reprocess`, `folio eval ...`, `folio structure-server` (structure backend HTTP server on :9000),
+`folio convert-server` (`POST /v1/convert`, multipart `file` + form `mime` -> PDF, headers `x-folio-converter[-version]`;
+:9100, image `folio-convert`),
 `folio embed-stub` (deterministic OpenAI-compatible embedding server for dev/tests on :8001).
 All HTTP servers expose `/healthz` and `/readyz`.

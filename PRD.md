@@ -264,6 +264,8 @@ HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. 변환
 
 `native` 모드 후보로 [kordoc](https://github.com/chrisryugj/kordoc) 4.22.15(MIT, Node)를 같은 샘플로 확인했다. 한컴 저장 11/11·법령 9/9 성공, 문서당 0.5~0.7초, 텍스트 재현율 0.97(법령은 머리말·꼬리말을 뺀 본문 누락 없음), 블록별 쪽 번호와 병합 셀(rowSpan·colSpan)이 있는 표 구조를 주지만 bbox는 없다. 서식 문서 1개에서는 재현율이 0.89로 일부 텍스트가 빠졌다(원인 미확인). `native` 모드 구현 시 직접 파싱과 비교할 기준으로 쓴다.
 
+구현(2026-10-21): 변환은 별도 이미지 `folio-convert`(`folio convert-server`, `FOLIO_CONVERT_URL`)가 맡는다. 구조 분석 서버와 같은 사이드카 방식이고, GPL인 H2Orestart를 메인 이미지에 넣지 않는다. URL이 없으면 로컬 LibreOffice·rhwp를 쓴다. 바이너리 HWP도 rhwp로 같은 경로를 탄다. Document의 `meta.convert`에 변환기·버전·`pdf_hash`를 남기며, 쪽 번호와 bbox는 그 PDF 기준이다.
+
 결론 (2026-10-21 벤치마크, [기록](wiki/2026-10-21-docx-converter-benchmark.md)): **DOCX → PDF 기본 변환기는 LibreOffice로 한다.** HWPX 대체 변환기와 같은 이미지를 쓴다. 고객사 샘플로 다시 확인할 때까지 이 결정은 잠정이다.
 
 Word(Microsoft 365)가 저장한 PDF를 정답으로 두고, 공공기관이 공개한 한국어 DOCX 11개와 영어 테스트 문서 2개(총 319쪽)를 비교했다. 아래 수치는 공개 글꼴만 넣은 결과이고, 괄호 안은 Windows 글꼴을 마운트한 결과다.
@@ -438,16 +440,16 @@ M1에서 디지털 PDF 하나로 처음부터 끝까지 도는 것을 먼저 만
 | M2 | FR-27 PPTX, FR-28 XLSX, FR-29 Markdown·TXT | 그림·차트는 FR-06의 VLM을 재사용한다. Markdown·TXT는 모델 없이 구현돼 청킹 테스트 입력으로도 쓴다 |
 | M3 | FR-30 Search API, FR-17 `retrieval:` 설정·범위 필터 | 고객사마다 검색 래퍼를 다시 만들지 않게 한다. FR-18 Eval과 같은 검색 경로를 쓴다 |
 
-## 구현 현황 (2026-10-20)
+## 구현 현황 (2026-10-21)
 
-DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 검증 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md), [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md), [Airflow 컨테이너 DAG](wiki/2026-10-20-airflow-container-dag.md) 작업 기록에 있다.
+FR-21(DOCX·HWPX `native`, 보류)을 제외한 FR을 구현했다. FR-20(DOCX·HWPX `convert`)은 [작업 기록](wiki/2026-10-21-docx-hwpx-convert-mode.md)에 있다. 검증 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md), [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md), [Airflow 컨테이너 DAG](wiki/2026-10-20-airflow-container-dag.md) 작업 기록에 있다.
 
 | 상태 | FR |
 | --- | --- |
-| 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 15(Compose Airflow + DockerOperator, k3s에 공식 Airflow 차트 설치 후 KubernetesExecutor → KubernetesPodOperator, folio 내장 PostgreSQL을 메타데이터 DB로 공유), 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~30 |
+| 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 20(DOCX 13·HWPX 11·HWP 1개를 변환 서버로 파싱, 모든 텍스트 블록에 쪽·bbox), 15(Compose Airflow + DockerOperator, k3s에 공식 Airflow 차트 설치 후 KubernetesExecutor → KubernetesPodOperator, folio 내장 PostgreSQL을 메타데이터 DB로 공유), 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~30 |
 | 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인) |
-| 구현, 미검증 | FR-15 운영 Airflow 가이드의 원격 로그 설정(예시만 제공), FR-26 Helm 사설 레지스트리 경로, PPTX `convert` 모드(LibreOffice 미포함) |
-| 보류 | FR-20, FR-21 (DOCX·HWPX) |
+| 구현, 미검증 | FR-15 운영 Airflow 가이드의 원격 로그 설정(예시만 제공), FR-26 Helm 사설 레지스트리 경로, PPTX `convert` 모드(변환 서버에 LibreOffice Impress 포함, 실제 PPTX 변환은 미확인) |
+| 보류 | FR-21 (DOCX·HWPX `native`) |
 
 - VLM 기본 적용은 `parse.vlm: auto`로 구현했다. `FOLIO_VLM_URL`이 있으면 VLM 경로(기본)를 쓰고, 없으면 구조 분석 OCR을 쓰며 `meta.vlm`에 사유를 남긴다. VLM 호출이 실패한 페이지만 OCR로 폴백하고 `meta.vlm_fallbacks`에 기록한다.
 - 청킹 기본 전략은 `adaptive`이고 대안은 `page`·`fixed`다. 이전의 `auto`·`section`·`table` 전략은 제거했다. `max_tokens`는 임베딩 입력인 `contextualized_content` 기준으로 지킨다.
@@ -463,6 +465,7 @@ DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 검증 상세�
 - [ ] PP-StructureV3 기본값을 고객사 샘플(한글 포함)로 재확인. MinerU 라이선스 확인
 - [ ] HWPX → PDF 변환기: 공개 샘플 벤치마크로 rhwp 기본 + LibreOffice·H2Orestart 대체로 잠정 결정. 첫 고객사 샘플로 재확인 필요
 - [ ] DOCX → PDF 변환기: 공개 샘플 벤치마크(Word PDF 정답)로 LibreOffice 기본으로 잠정 결정, OnlyOffice 제외. 첫 고객사 샘플로 재확인 필요
+- [ ] 변환 PDF 보관: bbox는 변환된 PDF 기준이므로, 인용 하이라이트용으로 변환 PDF를 원본과 함께 저장·제공할지(현재는 `meta.convert.pdf_hash`만 기록)
 - [x] VLM 모델 수: 스캔 파싱·그림 설명·복잡 표를 모델 1개로 처리 (이미지 콘텐츠에 VLM 기본 적용도 결정됨)
 - [ ] VLM 모델 선정: [VLM 모델](#vlm-모델-1개) 기준으로 M1에서 E2E 문서 VLM과 범용 VLM 후보를 비교
 - [ ] `adaptive` 청킹 기본값: `max_tokens`·`min_tokens`를 임베딩 모델과 Eval 결과로 확정

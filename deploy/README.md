@@ -5,7 +5,7 @@ environment variables are listed in [docs/INTERFACES.md](../docs/INTERFACES.md).
 
 | Path | Purpose |
 | --- | --- |
-| `docker/` | `Dockerfile` (folio: api/worker/cli), `Dockerfile.structure` (model server), `Dockerfile.opensearch` (nori baked in), `Dockerfile.project` (customer image) |
+| `docker/` | `Dockerfile` (folio: api/worker/cli), `Dockerfile.structure` (model server), `Dockerfile.convert` (DOCX/HWPX/HWP -> PDF server), `Dockerfile.opensearch` (nori baked in), `Dockerfile.project` (customer image) |
 | `compose/` | `docker-compose.yml` (profiles gpu/cpu/dev) + `.offline.yml` override, `.env.example`, `e2e.sh` |
 | `helm/folio/` | Helm 3 chart (no subcharts, works offline), see its README |
 | `bundle/` | `make_bundle.sh` / `install.sh` - air-gapped bundle (FR-26) |
@@ -21,6 +21,8 @@ docker build -f deploy/docker/Dockerfile.structure --build-arg BACKEND=ppstructu
 docker build -f deploy/docker/Dockerfile.structure --build-arg BACKEND=ppstructure --build-arg DEVICE=cpu -t folio-structure:0.1.0-cpu .
 docker build -f deploy/docker/Dockerfile.structure --build-arg BACKEND=heuristic --build-arg DEVICE=cpu -t folio-structure:0.1.0-heuristic .
 docker build -f deploy/docker/Dockerfile.opensearch -t folio-opensearch:0.1.0 .
+# 변환 서버: LibreOffice + rhwp + 공개 글꼴. H2ORESTART=0이면 GPL 확장(HWPX의 LibreOffice 대체 경로)을 넣지 않는다
+docker build -f deploy/docker/Dockerfile.convert -t folio-convert:0.1.0 .
 # customer image
 docker build -f deploy/docker/Dockerfile.project --build-arg FOLIO_IMAGE=folio:0.1.0 --build-arg PROJECT_DIR=my-project -t acme/folio:1 .
 ```

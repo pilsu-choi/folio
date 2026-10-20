@@ -83,6 +83,14 @@ warm shutdown so in-flight tasks finish. Set it above your longest task. Config 
 `structure.gpu.enabled` adds `limits."nvidia.com/gpu"` and switches the default image tag to `<appVersion>-gpu`.
 Model weights mount at `/models` from `structure.models` (`emptyDir`, `pvc` (created or `existingClaim`), `hostPath`).
 
+## Document conversion
+
+`convert.enabled` (default) runs `folio-convert` (`<fullname>-convert:9100`) for DOCX/HWPX/HWP -> PDF; api/worker get
+`FOLIO_CONVERT_URL`. `convert.workers` bounds concurrent conversions per pod (keep it at or below the CPU limit); scale with
+`convert.replicas`. Customer-licensed fonts: `convert.fonts.existingClaim` mounts a PVC read-only at
+`/usr/share/fonts/custom`; otherwise open fonts substitute them. External server: `convert.enabled=false` +
+`external.convert.url`.
+
 ## Private registry
 
 `image.registry: reg.local:5000` prefixes every image (including bundled infra); add `imagePullSecrets` when needed.
