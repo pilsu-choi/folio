@@ -174,11 +174,14 @@ def test_words_split_on_gaps_without_space_glyphs(rotation):
     tw = pymupdf.TextWriter(page.rect)
     tw.append((96, 100), " ", font=font, fontsize=12)  # the space drawn later, inside the gap
     tw.append((135, 100), "품", font=font, fontsize=12)  # continues 부 in a later text run
+    tw.append((151, 100), "가", font=font, fontsize=12)  # a space-wide gap: next word, same text line
     for x, ch in zip([72, 88, 104, 120, 144], "경상북도법"):  # letter-spaced (distributed) text, then a word gap
         tw.append((x, 140), ch, font=font, fontsize=12)
     tw.write_text(page)
     page = doc.reload_page(page)
-    assert [a.text for a in extract_atoms(page)[1]] == ["본계", "약은부품", "경상북도", "법"]
+    words = extract_atoms(page)[1]
+    assert [a.text for a in words] == ["본계", "약은부품", "가", "경상북도", "법"]
+    assert words[0].line == words[2].line != words[3].line  # block text keeps "본계 약은부품 가" on one line
 
 
 def test_article_paragraphs_become_sections():
