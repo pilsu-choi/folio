@@ -26,7 +26,7 @@ MINIO_IMAGE=cgr.dev/chainguard/minio:latest@sha256:cff197fef764642223ef9f4444c90
 # Structure server variants to ship, chosen per customer: gpu (default, PP-StructureV3), cpu (hosts without a GPU),
 # heuristic (dev). e.g. STRUCTURE_VARIANTS="gpu cpu" for mixed sites.
 STRUCTURE_VARIANTS=${STRUCTURE_VARIANTS:-gpu}
-images=("folio:$VERSION" "folio-opensearch:$VERSION" "postgres:16" "rabbitmq:3-management-alpine" "$MINIO_IMAGE")
+images=("folio:$VERSION" "folio-opensearch:$VERSION" "folio-convert:$VERSION" "postgres:16" "rabbitmq:3-management-alpine" "$MINIO_IMAGE")
 for v in $STRUCTURE_VARIANTS; do images+=("folio-structure:$VERSION-$v"); done
 
 have() { docker image inspect "$1" >/dev/null 2>&1; }
@@ -38,6 +38,7 @@ ensure() {
         --build-arg BACKEND=heuristic --build-arg DEVICE=cpu -t "$1" "$root" ;;
     folio-structure:*) [ $BUILD = 1 ] && docker build -f "$root/deploy/docker/Dockerfile.structure" \
         --build-arg BACKEND=ppstructure --build-arg DEVICE="${1##*-}" -t "$1" "$root" ;;
+    folio-convert:*) [ $BUILD = 1 ] && docker build -f "$root/deploy/docker/Dockerfile.convert" -t "$1" "$root" ;;
     folio-opensearch:*) [ $BUILD = 1 ] && docker build -f "$root/deploy/docker/Dockerfile.opensearch" -t "$1" "$root" ;;
     *) [ $PULL = 1 ] && docker pull "$1" ;;
   esac

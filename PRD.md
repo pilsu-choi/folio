@@ -84,7 +84,7 @@ P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 �
 
 | ID | 영역 | 요구사항 | 우선순위 | 수용 기준 |
 | --- | --- | --- | --- | --- |
-| FR-01 | Parse | 디지털 PDF를 텍스트 레이어 + 구조 분석 백엔드 결과의 좌표 매칭으로 Document JSON으로 변환 | P0 | 디지털 PDF 샘플에서 OCR 호출 0회, 블록 텍스트가 PyMuPDF 추출 원문과 일치 |
+| FR-01 | Parse | 디지털 PDF를 텍스트 레이어 + 구조 분석 백엔드 결과의 좌표 매칭으로 Document JSON으로 변환 | P0 | 디지털 PDF 샘플에서 OCR 호출 0회, 블록 텍스트가 PyMuPDF 추출 원문과 일치(공백 정규화 후. 공백 글리프 없이 간격으로 띄운 어절은 공백으로 나눈다) |
 | FR-02 | Parse | 페이지별 텍스트 레이어 품질 판정, 기준 미달 페이지만 이미지 경로(VLM 기본, VLM을 끄면 구조 분석 OCR)로 폴백 | P0 | 스캔·깨진 폰트 페이지만 `text_source=vlm`(VLM을 끄면 `ocr`), 나머지는 `pdf_text` |
 | FR-03 | Parse | 구조 분석 백엔드의 표 구조로 셀 단위 `cells` 구성 | P0 | 샘플 표의 행·열 수와 셀 텍스트가 정답 파일과 일치 |
 | FR-04 | Parse | 회전·CropBox 보정, char 단위 매칭 옵션(한글 변환 PDF) | P1 | 회전 페이지·HWP 변환 PDF 샘플에서 블록 텍스트 누락 없음 |
@@ -287,6 +287,8 @@ HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. 변환
 
 `native` 모드 후보로 [kordoc](https://github.com/chrisryugj/kordoc) 4.22.15(MIT, Node)를 같은 샘플로 확인했다. 한컴 저장 11/11·법령 9/9 성공, 문서당 0.5~0.7초, 텍스트 재현율 0.97(법령은 머리말·꼬리말을 뺀 본문 누락 없음), 블록별 쪽 번호와 병합 셀(rowSpan·colSpan)이 있는 표 구조를 주지만 bbox는 없다. 서식 문서 1개에서는 재현율이 0.89로 일부 텍스트가 빠졌다(원인 미확인). `native` 모드 구현 시 직접 파싱과 비교할 기준으로 쓴다.
 
+구현(2026-10-21): 변환은 별도 이미지 `folio-convert`(`folio convert-server`, `FOLIO_CONVERT_URL`)가 맡는다. 구조 분석 서버와 같은 사이드카 방식이고, GPL인 H2Orestart를 메인 이미지에 넣지 않는다. URL이 없으면 로컬 LibreOffice·rhwp를 쓴다. 바이너리 HWP도 rhwp로 같은 경로를 탄다. Document의 `meta.convert`에 변환기·버전·`pdf_hash`를 남기며, 쪽 번호와 bbox는 그 PDF 기준이다. LibreOffice 출력은 실행마다 바이트가 달라(타임스탬프) 해시로 PDF를 재현할 수는 없다.
+
 결론 (2026-10-21 벤치마크, [기록](wiki/2026-10-21-docx-converter-benchmark.md)): **DOCX → PDF 기본 변환기는 LibreOffice로 한다.** HWPX 대체 변환기와 같은 이미지를 쓴다. 고객사 샘플로 다시 확인할 때까지 이 결정은 잠정이다.
 
 Word(Microsoft 365)가 저장한 PDF를 정답으로 두고, 공공기관이 공개한 한국어 DOCX 11개와 영어 테스트 문서 2개(총 319쪽)를 비교했다. 아래 수치는 공개 글꼴만 넣은 결과이고, 괄호 안은 Windows 글꼴을 마운트한 결과다.
@@ -294,10 +296,11 @@ Word(Microsoft 365)가 저장한 PDF를 정답으로 두고, 공공기관이 공
 | 후보 | 성공 | 쪽수 일치 | 텍스트 재현율 | 어절 재현율 | 단어 위치 일치(6pt 이내) | 쪽당 시간(DGX Spark) | 이미지 | 판단 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | LibreOffice 24.2 | 13/13 | 5/13 (6/13) | 0.99 | 0.87 (0.93) | 0.05 (0.13) | 0.05초 | 773MB | **기본값**. 실패·큰 누락 없음. 다단·가로 구역 문서는 쪽이 줄어든다 |
-| [OnlyOffice DocumentBuilder](https://github.com/ONLYOFFICE/DocumentBuilder) 9.4.0 | 13/13 | 4/13 (6/13) | 0.97 | 0.38 (0.40) | 0.04 (0.16) | 0.07초 | 364MB | 제외. 한국어 텍스트 레이어에 공백 문자가 없어 pymupdf 추출 시 어절이 붙는다. 공개 글꼴에서 쪽수가 최대 +26%. AGPL |
+| [OnlyOffice DocumentBuilder](https://github.com/ONLYOFFICE/DocumentBuilder) 9.4.0 | 13/13 | 4/13 (6/13) | 0.97 | 0.38 (0.40) | 0.04 (0.16) | 0.07초 | 364MB | 제외. 한국어 텍스트 레이어에 공백 문자가 없다(글자 간격 기반 어절 분리 추가 후 어절 재현율 0.90). 공개 글꼴에서 쪽수가 최대 +26%. AGPL |
 | Word, Aspose 등 | 미시험 | | | | | | | Windows 의존 또는 상용 |
 
 - 텍스트 재현율은 순서 무관 2-gram 재현율이다. 어절 재현율은 공백 단위 토큰 재현율로, 띄어쓰기 손실을 잡는다.
+- 표의 어절 재현율은 공백 문자만으로 단어를 나누던 추출기 기준이다. LibreOffice(대체 한글 글꼴), rhwp, 한컴, OnlyOffice가 만든 PDF는 한국어 어절 사이에 공백 글리프가 없거나 다른 위치에 그려진다. 그래서 텍스트 레이어 추출기가 글자 간격으로도 어절을 나누도록 바꿨다([작업 기록](wiki/2026-10-21-docx-hwpx-convert-mode.md)). 바꾼 추출기로 정답·후보를 다시 읽으면 어절 재현율은 LibreOffice 0.93, OnlyOffice 0.90, rhwp(HWPX) 0.97이다.
 - 정답 PDF는 맑은 고딕·바탕 등 Windows 글꼴을 쓴다. 고객사 MS 글꼴은 이미지에 넣지 못할 수 있으므로 대체 글꼴 매핑을 설정으로 둔다.
 - `native` 기준인 kordoc은 DOCX 13/13 성공, 텍스트 재현율 0.91, 정밀도 0.95다. 쪽마다 반복되는 표 머리행과 머리말·꼬리말이 없어서 재현율이 낮게 나온다.
 
@@ -464,16 +467,16 @@ M1에서 디지털 PDF 하나로 처음부터 끝까지 도는 것을 먼저 만
 | M3 | FR-30 Search API, FR-17 `retrieval:` 설정·범위 필터 | 고객사마다 검색 래퍼를 다시 만들지 않게 한다. FR-18 Eval과 같은 검색 경로를 쓴다 |
 | M3 | FR-31 Chat API (무상태 멀티턴 생성) | FR-30 검색 경로를 그대로 쓰고, 운영 LLM은 VLM처럼 고객사 환경에서 정한다 |
 
-## 구현 현황 (2026-10-20)
+## 구현 현황 (2026-10-21)
 
-DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 검증 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md), [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md), [Airflow 컨테이너 DAG](wiki/2026-10-20-airflow-container-dag.md) 작업 기록에 있다.
+FR-21(DOCX·HWPX `native`, 보류)을 제외한 FR을 구현했다. FR-20(DOCX·HWPX `convert`)은 [작업 기록](wiki/2026-10-21-docx-hwpx-convert-mode.md)에 있다. 검증 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md), [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md), [Airflow 컨테이너 DAG](wiki/2026-10-20-airflow-container-dag.md) 작업 기록에 있다.
 
 | 상태 | FR |
 | --- | --- |
-| 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 15(Compose Airflow + DockerOperator, k3s에 공식 Airflow 차트 설치 후 KubernetesExecutor → KubernetesPodOperator, folio 내장 PostgreSQL을 메타데이터 DB로 공유), 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~30 |
-| 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인), FR-31(stub LLM으로 재작성·인용·오류 코드만 확인, 실제 LLM 모델 미선정) |
-| 구현, 미검증 | FR-15 운영 Airflow 가이드의 원격 로그 설정(예시만 제공), FR-26 Helm 사설 레지스트리 경로, PPTX `convert` 모드(LibreOffice 미포함) |
-| 보류 | FR-20, FR-21 (DOCX·HWPX) |
+| 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 20(DOCX 13·HWPX 11·HWP 1개를 변환 서버로 파싱, 모든 텍스트 블록에 쪽·bbox), 15(Compose Airflow + DockerOperator, k3s에 공식 Airflow 차트 설치 후 KubernetesExecutor → KubernetesPodOperator, folio 내장 PostgreSQL을 메타데이터 DB로 공유), 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~30 |
+| 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), PPTX `convert` 모드(픽스처 4장을 변환 서버와 이미지 안 LibreOffice로 변환, 쪽·bbox 확인. 실제 고객 슬라이드 미확인), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인), FR-31(stub LLM으로 재작성·인용·오류 코드만 확인, 실제 LLM 모델 미선정) |
+| 구현, 미검증 | FR-15 운영 Airflow 가이드의 원격 로그 설정(예시만 제공), FR-26 Helm 사설 레지스트리 경로 |
+| 보류 | FR-21 (DOCX·HWPX `native`) |
 
 - VLM 기본 적용은 `parse.vlm: auto`로 구현했다. `FOLIO_VLM_URL`이 있으면 VLM 경로(기본)를 쓰고, 없으면 구조 분석 OCR을 쓰며 `meta.vlm`에 사유를 남긴다. VLM 호출이 실패한 페이지만 OCR로 폴백하고 `meta.vlm_fallbacks`에 기록한다.
 - 청킹 기본 전략은 `adaptive`이고 대안은 `page`·`fixed`다. 이전의 `auto`·`section`·`table` 전략은 제거했다. `max_tokens`는 임베딩 입력인 `contextualized_content` 기준으로 지킨다.
@@ -492,6 +495,7 @@ DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 검증 상세�
 - [ ] ARM GPU 호스트(예: DGX Spark GB10, aarch64 sm_121): paddlepaddle-gpu 3.3.1(cu129)·3.5 nightly(cu130)가 `run_check()`에서 실패해 PP-StructureV3가 CPU로만 돈다. 이런 고객사 환경을 지원할지, 그때 Docling(GPU 동작 확인)을 기본으로 쓸지
 - [ ] HWPX → PDF 변환기: 공개 샘플 벤치마크로 rhwp 기본 + LibreOffice·H2Orestart 대체로 잠정 결정. 첫 고객사 샘플로 재확인 필요
 - [ ] DOCX → PDF 변환기: 공개 샘플 벤치마크(Word PDF 정답)로 LibreOffice 기본으로 잠정 결정, OnlyOffice 제외. 첫 고객사 샘플로 재확인 필요
+- [ ] 변환 PDF 보관: bbox는 그 파싱에서 만든 PDF 기준이므로, 인용 하이라이트용으로 변환 PDF를 원본과 함께 저장·제공할지(현재는 `meta.convert.pdf_hash`만 기록, LibreOffice 재변환은 바이트가 달라짐)
 - [x] VLM 모델 수: 스캔 파싱·그림 설명·복잡 표를 모델 1개로 처리 (이미지 콘텐츠에 VLM 기본 적용도 결정됨)
 - [ ] VLM 모델 선정: 공개 샘플로 Qwen3.5-9B 잠정 선택([VLM 모델](#vlm-모델-1개)). 고객사 샘플 재확인, HTML 표 파서, FP8 속도 확인 필요
 - [ ] `adaptive` 청킹 기본값: 공개 샘플로 `max_tokens=512`·`min_tokens=64`가 잠정 최적([파라미터](#파라미터)). 현재 기본값 1024/128을 바꿀지 사용자 결정 필요

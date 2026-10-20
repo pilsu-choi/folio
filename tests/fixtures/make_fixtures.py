@@ -215,6 +215,27 @@ def make_pptx():
     prs.save(OUT / "slides.pptx")
 
 
+DOCX_LINES = ["공급 계약서", "제1조 목적: 본 계약은 부품 공급 조건을 정한다.", "제2조 단가: 단가는 아래 표를 따른다."]
+
+
+def make_docx():
+    """FR-20 convert-mode sample (needs python-docx, dev extra)."""
+    import docx
+
+    d = docx.Document()
+    d.core_properties.created = d.core_properties.modified = __import__("datetime").datetime(2026, 1, 1)
+    d.add_heading(DOCX_LINES[0], 1)
+    for line in DOCX_LINES[1:]:
+        d.add_paragraph(line)
+    t = d.add_table(rows=3, cols=3)
+    t.style = "Table Grid"
+    for r, row in enumerate([["품목", "단가", ""], ["볼트", "120", "원"], ["너트", "80", "원"]]):
+        for c, v in enumerate(row):
+            t.cell(r, c).text = v
+    t.cell(0, 1).merge(t.cell(0, 2)).text = "단가"
+    d.save(OUT / "contract.docx")
+
+
 def make_xlsx():
     from openpyxl import Workbook
 
@@ -344,6 +365,7 @@ endcmap CMapName currentdict /CMap defineresource pop end end"""
     im.convert("RGB").save(OUT / "image.webp", lossless=True)
     make_pptx()
     make_xlsx()
+    make_docx()
     make_figure_pdf()
     (OUT / "doc.md").write_text(MD, encoding="utf-8")
     (OUT / "legacy_cp949.txt").write_bytes(TXT_KO.encode("cp949"))

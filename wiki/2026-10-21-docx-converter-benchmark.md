@@ -57,6 +57,8 @@ sources:
 - kordoc: 원문 기준이라 쪽마다 반복되는 표 머리행과 머리말·꼬리말이 없어 Word PDF 대비 재현율이 낮게 나온다(nrra_cap 0.72, kangwonland_outlook 0.83). nrra_cap은 본문의 `<element …>` 예시를 평가 스크립트가 HTML 태그로 지운 영향도 있다. 정밀도는 0.95다.
 - Word 자동화: 내보낼 경로를 `Join-Path` 결과(PSObject) 그대로 넘기면 `ExportAsFixedFormat`이 대화상자 없이 멈췄다. `[string]`으로 바꿔 해결했다. Word를 처음 쓰는 계정은 로그인 등 대화상자를 한 번 처리해야 한다.
 
+- 후속(2026-10-21): 텍스트 레이어 추출기가 글자 간격으로도 어절을 나누도록 바뀌었다. 같은 PDF를 다시 읽으면 어절 재현율은 OnlyOffice 0.38 → 0.90, LibreOffice(이미지 25.2) 0.927 → 0.933이다. 위 표는 기존 추출기 기준으로 그대로 둔다. OnlyOffice 제외 결정은 쪽수 증가와 AGPL 때문에 유지한다. 상세는 [convert 모드 작업 기록](2026-10-21-docx-hwpx-convert-mode.md).
+
 ## 한계와 미확인
 
 - 샘플이 공공기관 공개 문서와 영어 테스트 문서다. 고객사 문서로 반복해야 한다.

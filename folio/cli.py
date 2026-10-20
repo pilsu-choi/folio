@@ -142,6 +142,13 @@ def cmd_structure_server(args) -> int:
     return 0
 
 
+def cmd_convert_server(args) -> int:
+    from folio.parse.convert_server import serve
+
+    serve(port=args.port)
+    return 0
+
+
 def cmd_embed_stub(args) -> int:
     from folio.embed.stub import serve
 
@@ -231,6 +238,10 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("structure-server")
     s.add_argument("--port", type=int, default=9000)
     s.set_defaults(fn=cmd_structure_server)
+
+    s = sub.add_parser("convert-server", help="DOCX/HWPX/PPTX -> PDF server (LibreOffice, rhwp)")
+    s.add_argument("--port", type=int, default=9100)
+    s.set_defaults(fn=cmd_convert_server)
 
     s = sub.add_parser("embed-stub")
     s.add_argument("--port", type=int, default=8001)
