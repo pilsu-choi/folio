@@ -114,7 +114,7 @@ sources:
 ## 개선 후 재실행 (2026-10-21, OpenRouter)
 
 - 변경: 쪽 쌍당 유형 1개, `comparison`은 같은 문서 쌍에만 배정(다른 문서 비교가 억지 질문이 됐기 때문), `--min-per-type` 추가.
-- 명령: `folio-openrouter eval testset --docs <m1docs> --pages 10 --pairs 10 --min-per-type 3 --llm-extra '{"reasoning": {"enabled": false}}'`. 2라운드, 호출 40회, 실패 3회(원인 미확인: 응답 형식 오류 또는 타임아웃), 48초. 질문 38개가 남았고 8개 유형 모두 3개 이상이다(`short` 없음).
+- 명령: `folio-openrouter eval testset --docs <m1docs> --pages 10 --pairs 10 --min-per-type 3 --llm-extra '{"reasoning": {"enabled": false}}'`. 2라운드, 호출 40회, 실패 3회(이후 로그로 확인한 원인: 모델이 바깥 배열의 닫는 `]`를 빠뜨림. 파서 보완 후 실패 0, [로그 작업 기록](./2026-10-21-logging.md)), 48초. 질문 38개가 남았고 8개 유형 모두 3개 이상이다(`short` 없음).
 
 | 유형 | 생성 | 남음 | 버린 사유 |
 | --- | --- | --- | --- |

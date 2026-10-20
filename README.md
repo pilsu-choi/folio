@@ -245,6 +245,27 @@ flowchart TB
 
 자세한 내용은 [deploy/README.md](deploy/README.md)에 있다.
 
+## 로그: JSON 한 줄, `request_id`로 추적
+
+```mermaid
+flowchart LR
+    U["브라우저"] -->|X-Request-ID| APP["채팅 App"]
+    APP -->|같은 X-Request-ID| API["folio API"]
+    API -->|job_id| W["worker"]
+    APP & API & W --> OUT["stdout JSON 한 줄<br/>ts · level · logger · event · request_id · job_id"]
+    OUT --> DC["Compose: local 드라이버<br/>20MB x 5 로테이션"]
+    OUT --> K8["k8s: kubelet 로테이션<br/>+ 클러스터 수집기(Fluent Bit, Loki 등)"]
+    CLI["CLI·노트북"] --> F["FOLIO_LOG_FILE<br/>로테이션 파일(선택)"]
+```
+
+| 레벨 | 내용 |
+| --- | --- |
+| INFO (기본) | 요청당 한 줄(method·path·status·ms), job 시작·단계·완료, 채팅 요약, eval 요약 |
+| DEBUG | 외부 호출 상세(endpoint·모델·크기·ms·finish_reason·usage), 잘린 질의·LLM 응답. 장애 분석용, 운영 상시 사용 금지 |
+| WARNING / ERROR | 재시도·대체 경로(VLM→OCR 등)·실패한 생성 단위 / 최종 실패와 traceback |
+
+`FOLIO_LOG_LEVEL=DEBUG` 또는 `folio --log-level DEBUG <명령>`. API 키·토큰·쿠키·URL 안의 비밀번호는 어느 레벨에서도 남기지 않는다. ([작업 기록](wiki/2026-10-21-logging.md))
+
 ## 빠른 시작 (로컬)
 
 ```bash
@@ -361,6 +382,7 @@ folio eval compare eval-out/<a>.json eval-out/<b>.json
 | 생성(Chat API) | 🟡 `POST /v1/chat` 무상태 멀티턴 + YAML `generation:`. stub LLM으로만 검증, 운영 LLM 미정, 스트리밍 미지원 ([작업 기록](wiki/2026-10-21-generation-multiturn.md)) |
 | 채팅 App | 🟡 `apps/chat`: SSO(OIDC)·대화 저장·UI. 실제 `/v1/chat`(stub LLM)·로컬 테스트용 OIDC 서버로 검증, 실제 IdP·LLM·배포 미확인 ([작업 기록](wiki/2026-10-21-chat-app-sso.md)) |
 | 구조 분석 | ✅ 기본 PP-StructureV3 GPU ([작업 기록](wiki/2026-10-21-ppstructure-gpu-default.md)) |
+| 로그 | ✅ 라이브러리·API·worker·채팅 App JSON 로그, `request_id`·`job_id` 추적, 기본 INFO, Compose 로테이션. OpenRouter 실제 실행으로 testset 실패 원인 확인 ([작업 기록](wiki/2026-10-21-logging.md)) |
 | Airflow | ✅ 예시 DAG(DockerOperator 기본, KubernetesPodOperator 선택) ([작업 기록](wiki/2026-10-20-airflow-container-dag.md)) |
 
 검증한 것: 단위 테스트, Sink 통합 테스트(OpenSearch·Milvus·pgvector), Compose E2E(전 형식, VLM stub 포함, DOCX·HWPX 변환 서버 경로), Compose Airflow DAG E2E, k3s 공식 Airflow 차트 + KubernetesPodOperator, kind + Helm E2E(업그레이드·워커 강제 종료 포함), 오프라인 번들 설치. 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md), [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md) 작업 기록에 있다.

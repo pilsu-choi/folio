@@ -100,13 +100,18 @@ def _partner(key, cands, grams):
 
 
 def _parse_items(reply: str) -> list[dict]:
-    m = re.search(r"\[.*\]", _THINK.sub("", reply), re.DOTALL)
-    if not m:
+    text = _THINK.sub("", reply)
+    start = text.find("[")
+    if start < 0:
         raise ValueError("no JSON array in reply")
-    try:
-        return [x for x in json.loads(m.group(0)) if isinstance(x, dict)]
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"JSON decode error (reply likely truncated or malformed): {exc}") from exc
+    body = text[start:].rstrip()
+    for cand in (body, body + "]"):  # models sometimes drop the outer closing bracket
+        try:
+            data, _ = json.JSONDecoder().raw_decode(cand)
+            return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
+        except json.JSONDecodeError as exc:
+            err = exc
+    raise ValueError(f"JSON decode error (reply likely truncated or malformed): {err}") from err
 
 
 def _heuristic(text: str) -> tuple[str, str] | None:

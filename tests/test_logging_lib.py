@@ -6,6 +6,7 @@ import pytest
 from folio import logging as flog
 from folio.contracts import Document
 from folio.embed.http import post_json
+from folio.errors import FolioError
 from folio.eval import testset
 from folio.generation import http as chat
 
@@ -85,23 +86,18 @@ def _doc():
     return Document(doc_id="d1", source_uri="file:///x.pdf", content_hash="sha256:0", mime_type="application/pdf", pages=[Page(page=1, blocks=[Block(type="paragraph", text=text, text_source="native")])])
 
 
-@pytest.mark.parametrize("reply,reason", [("not json", "no JSON array"), ('[{"type": "fact", "question": "q"', "no JSON array"),
+@pytest.mark.parametrize("reply,reason", [("not json", "no JSON array"), ('[{"type": "fact", "question": "q"', "JSON decode"),
                                            ('[{"type": "fact", "question": ]', "JSON decode")])
 def test_testset_unit_failed(lines, monkeypatch, reply, reason):
     flog.configure("DEBUG", force=True)
     monkeypatch.setattr(testset, "chat", lambda *a, **k: reply)
-    try:
-        _, stats = testset.generate([_doc()], pages=1, pairs=0, types=("fact",), llm_url="http://x", workers=1,
-                                        min_chars=10)
-    except Exception as exc:  # every unit failed
-        assert "every LLM call failed" in str(exc)
-        stats = None
+    with pytest.raises(FolioError, match="every LLM call failed"):
+        testset.generate([_doc()], pages=1, pairs=0, types=("fact",), llm_url="http://x", workers=1, min_chars=10)
     rows = lines()
     failed = [r for r in rows if r["event"] == "testset_unit_failed"]
     assert len(failed) == 2 and failed[0]["attempt"] == 1 and failed[0]["doc_ids"] == ["d1"]
     assert reason in failed[0]["error"]
     assert any(r["event"] == "testset_unit_reply" for r in rows)
-    assert stats is None
 
 
 def test_testset_http_error_counts_failed(lines, monkeypatch):
@@ -113,3 +109,9 @@ def test_testset_http_error_counts_failed(lines, monkeypatch):
     with pytest.raises(Exception, match="every LLM call failed"):
         testset.generate([_doc()], pages=1, pairs=0, types=("fact",), llm_url="http://x", workers=1, min_chars=10)
     assert next(r for r in lines() if r["event"] == "testset_unit_failed")["error_class"] == "HTTPStatusError"
+
+
+def test_parse_items_missing_outer_bracket():
+    reply = 'ok: [{"type": "comparison", "question": "q", "evidence": [{"page": "A", "quote": "x"}]}'
+    assert testset._parse_items(reply)[0]["question"] == "q"
+    assert testset._parse_items('<think>[x]</think>[{"a": 1}] trailing') == [{"a": 1}]
