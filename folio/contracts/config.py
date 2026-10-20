@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from folio.errors import ConfigError
 
 DEFAULT_PARSE = "folio.parse:default"
-DEFAULT_CHUNK = "folio.chunk:auto"
+DEFAULT_CHUNK = "folio.chunk:adaptive"
 DEFAULT_EMBED = "folio.embed:http"
 
 

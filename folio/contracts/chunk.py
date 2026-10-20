@@ -6,6 +6,7 @@ Records are plain dicts so mappers can add any domain key. Only the keys below a
 from __future__ import annotations
 
 import hashlib
+import json
 from typing import Any, NotRequired, TypedDict
 
 from folio.errors import ContractError
@@ -15,9 +16,10 @@ class ChunkRecord(TypedDict):
     doc_id: str
     chunk_id: str
     content: str
-    page: int | None
+    page: int | None  # first page of the chunk
     section_path: list[str]
     source_uri: str
+    pages: NotRequired[list[int]]  # full page range of a chunk spanning pages
     embedding: NotRequired[list[float]]
     chunk_type: NotRequired[str]
     bbox: NotRequired[list[float] | None]
@@ -54,7 +56,17 @@ def validate_chunk_record(record: Any, *, require_embedding: bool = False, where
         raise ContractError(f"{prefix}chunk {chunk}: " + "; ".join(problems))
 
 
-def make_chunk_id(doc_id: str, index: int, content: str) -> str:
-    """Deterministic id: same doc, position and text → same id."""
-    digest = hashlib.sha256(f"{doc_id}\n{index}\n{content}".encode()).hexdigest()[:12]
-    return f"{doc_id}-{index:05d}-{digest}"
+def settings_hash(strategy: str, opts: dict[str, Any]) -> str:
+    """Stable short hash of the chunk strategy and its parameters."""
+    payload = json.dumps({"strategy": strategy, **opts}, sort_keys=True, default=str, ensure_ascii=False)
+    return hashlib.sha256(payload.encode()).hexdigest()[:8]
+
+
+def make_chunk_id(doc_id: str, block_range: str, settings: str) -> str:
+    """Deterministic id from `doc_id` + the block range the chunk covers + strategy/parameter hash.
+
+    `block_range` is produced by the chunker (e.g. ``"p1b0-p1b4"``, ``"p2b3#r10-19"`` for a split block);
+    `settings` is :func:`settings_hash`. Same input and config → same id.
+    """
+    digest = hashlib.sha256(f"{doc_id}\n{block_range}\n{settings}".encode()).hexdigest()[:16]
+    return f"{doc_id}-{digest}"

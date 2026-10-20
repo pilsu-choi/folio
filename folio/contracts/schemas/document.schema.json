@@ -133,6 +133,7 @@
         "kv",
         "figure",
         "caption",
+        "code",
         "header",
         "footer"
       ],
@@ -187,7 +188,7 @@
             }
           ],
           "default": null,
-          "description": "1-based; may be None for native parsing",
+          "description": "1-based: PDF/image page, PPTX slide, XLSX sheet order, 1 for Markdown/TXT",
           "title": "Page"
         },
         "width": {
@@ -200,6 +201,7 @@
             }
           ],
           "default": null,
+          "description": "pt; None for XLSX/Markdown/TXT/native DOCX·HWPX",
           "title": "Width"
         },
         "height": {

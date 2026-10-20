@@ -1,6 +1,14 @@
 import pytest
 
-from folio.contracts import Block, Document, make_chunk_id, make_doc_id, parse_config, validate_chunk_record
+from folio.contracts import (
+    Block,
+    Document,
+    make_chunk_id,
+    make_doc_id,
+    parse_config,
+    settings_hash,
+    validate_chunk_record,
+)
 from folio.contracts.__main__ import main as schema_main
 from folio.errors import ConfigError, ContractError
 
@@ -13,6 +21,7 @@ def test_block_type_rules():
     Block(type="paragraph", text="a", bbox=[0, 0, 1, 1], text_source="pdf_text")
     Block(type="figure", bbox=[0, 0, 1, 1], text_source="pdf_text")
     Block(type="heading", text="h", text_source="native")
+    Block(type="code", text="print(1)", text_source="native")
     with pytest.raises(ValueError):
         Block(type="table", bbox=[0, 0, 1, 1], text_source="ocr")
     with pytest.raises(ValueError):
@@ -24,7 +33,9 @@ def test_block_type_rules():
 def test_ids_deterministic():
     a = make_doc_id("s3://b/x.pdf", "sha256:1")
     assert a == make_doc_id("s3://b/x.pdf", "sha256:1") != make_doc_id("s3://b/y.pdf", "sha256:1")
-    assert make_chunk_id(a, 3, "t") == make_chunk_id(a, 3, "t")
+    h = settings_hash("adaptive", {"max_tokens": 1024})
+    assert make_chunk_id(a, "p1b0-p1b3", h) == make_chunk_id(a, "p1b0-p1b3", h)
+    assert make_chunk_id(a, "p1b0-p1b3", h) != make_chunk_id(a, "p1b0-p1b3", settings_hash("adaptive", {"max_tokens": 512}))
     doc = Document(doc_id=a, source_uri="x", content_hash="h", mime_type="application/pdf")
     assert Document.model_validate_json(doc.model_dump_json()) == doc
 

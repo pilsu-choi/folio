@@ -4,7 +4,13 @@ JSON Schemas live in `folio/contracts/schemas/` and are regenerated with
 `python -m folio.contracts` (tests fail if they drift).
 """
 
-from folio.contracts.chunk import REQUIRED_FIELDS, ChunkRecord, make_chunk_id, validate_chunk_record
+from folio.contracts.chunk import (
+    REQUIRED_FIELDS,
+    ChunkRecord,
+    make_chunk_id,
+    settings_hash,
+    validate_chunk_record,
+)
 from folio.contracts.config import PipelineConfig, StepSpec, load_config, parse_config
 from folio.contracts.document import (
     Block,
@@ -35,5 +41,6 @@ __all__ = [
     "make_chunk_id",
     "make_doc_id",
     "parse_config",
+    "settings_hash",
     "validate_chunk_record",
 ]

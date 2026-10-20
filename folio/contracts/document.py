@@ -19,6 +19,7 @@ class BlockType(str, Enum):
     kv = "kv"
     figure = "figure"
     caption = "caption"
+    code = "code"
     header = "header"
     footer = "footer"
 
@@ -73,8 +74,11 @@ class Block(BaseModel):
 class Page(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    page: int | None = Field(default=None, ge=1, description="1-based; may be None for native parsing")
-    width: float | None = None
+    page: int | None = Field(
+        default=None, ge=1,
+        description="1-based: PDF/image page, PPTX slide, XLSX sheet order, 1 for Markdown/TXT",
+    )
+    width: float | None = Field(default=None, description="pt; None for XLSX/Markdown/TXT/native DOCX·HWPX")
     height: float | None = None
     blocks: list[Block] = Field(default_factory=list)
 
