@@ -1,0 +1,14 @@
+# name|url|zip member (optional). Korean public documents authored in MS Word, plus two English test files.
+gitc_forms|https://www.gitc.or.kr/uploads/board/table53/A_66206656bf243/2024041866206656c1a19.docx
+yonsei_thesis|https://research.yonsei.ac.kr/_res/graduate/etc/Master_250529_v2.zip|국문 MSword_석사학위논문_양식(250529).docx
+gkl_csr|https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_000000001283181&fileDetailSn=1
+kogas_ip|https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_000000003565875&fileDetailSn=1
+kogas_h2_spec|https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_000000002787232&fileDetailSn=1
+kogas_beacon|https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_000000003564168&fileDetailSn=1
+kolid_trends|https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_000000002497270&fileDetailSn=1
+nrra_cap|https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_000000003510817&fileDetailSn=1
+nrra_phone_sec|https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_000000003510813&fileDetailSn=1
+knfc_brief|https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_000000002788973&fileDetailSn=1
+kangwonland_outlook|https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_000000002805121&fileDetailSn=1
+en_poi_tables|https://raw.githubusercontent.com/apache/poi/d91a76448f0963a93b6cd95fb97fbe1d8bad82c6/test-data/document/bug57031.docx
+en_business_plan|https://raw.githubusercontent.com/dotnet/Open-XML-SDK/431ab05cf160248cc3885a4a766026d4f8243792/test/DocumentFormat.OpenXml.Tests.Assets/assets/TestDataStorage/v2FxTestFiles/wordprocessing/footer%20%26%20header/Business%20Plan%20for%20a%20Startup%20Business_July.docx

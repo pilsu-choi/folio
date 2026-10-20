@@ -5,7 +5,7 @@
 ```bash
 bash fetch.sh          # samples/, ref/, fonts/ 생성 (Git에 넣지 않음)
 bash run.sh            # 이미지 빌드 후 도구별 순차 변환, out/<tool>/
-python evaluate.py .   # pymupdf, rapidfuzz 필요. eval.json + 표 출력
+python evaluate.py .   # pymupdf, rapidfuzz 필요. out/eval.json + 표 출력 (--ext, --pdf-tools, --native-tools, --out)
 ```
 
 고객사 샘플로 비교할 때는 `samples/<name>.hwpx`와 한컴에서 저장한 `ref/<name>.pdf`를 같은 이름으로 넣는다.

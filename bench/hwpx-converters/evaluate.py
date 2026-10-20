@@ -1,20 +1,27 @@
-"""Compare converter outputs against Hancom-exported reference PDFs.
+"""Compare converter outputs against reference PDFs exported by the authoring app (Hancom, Word).
 
-usage: python evaluate.py BENCH_DIR
-PDF tools: out/<tool>/<name>.pdf ; native tools (kordoc): out/<tool>/<name>.md
+usage: python evaluate.py BENCH_DIR [--ext hwpx] [--pdf-tools a,b] [--native-tools kordoc] [--out out]
+PDF tools: <out>/<tool>/<name>.pdf ; native tools (kordoc): <out>/<tool>/<name>.md
 """
+import argparse
 import json
 import re
 import statistics
-import sys
 from pathlib import Path
 
 import pymupdf
 from rapidfuzz.distance import Indel
 
-BENCH = Path(sys.argv[1])
-PDF_TOOLS = ["libreoffice", "rhwp", "hwpforge"]
-NATIVE_TOOLS = ["kordoc"]
+ap = argparse.ArgumentParser()
+ap.add_argument("bench", type=Path)
+ap.add_argument("--ext", default="hwpx")
+ap.add_argument("--pdf-tools", default="libreoffice,rhwp,hwpforge")
+ap.add_argument("--native-tools", default="kordoc")
+ap.add_argument("--out", default="out")
+ARGS = ap.parse_args()
+BENCH, EXT, OUT = ARGS.bench, ARGS.ext, ARGS.bench / ARGS.out
+PDF_TOOLS = [t for t in ARGS.pdf_tools.split(",") if t]
+NATIVE_TOOLS = [t for t in ARGS.native_tools.split(",") if t]
 WS = re.compile(r"\s+")
 POS_TOL = 6.0  # pt
 
@@ -42,6 +49,13 @@ def bag_recall(ref: str, out: str) -> float:
     """Order-insensitive character-bigram recall."""
     from collections import Counter
     a, b = Counter(zip(ref, ref[1:])), Counter(zip(out, out[1:]))
+    return sum((a & b).values()) / max(1, sum(a.values()))
+
+
+def word_recall(ref: str, out: str) -> float:
+    """Whitespace-token bag recall: drops when a converter loses or merges word spacing."""
+    from collections import Counter
+    a, b = Counter(ref.split()), Counter(out.split())
     return sum((a & b).values()) / max(1, sum(a.values()))
 
 
@@ -81,67 +95,73 @@ def page_similarity(ref_doc, out_doc) -> float:
 
 
 def md_text(path: Path) -> str:
+    """Markdown with markup removed; word spacing kept."""
     s = path.read_text(encoding="utf-8")
     s = re.sub(r"</?[A-Za-z][^>]*>", " ", s)  # HTML tags only; keep text like <개정 2020.1.1.>
-    s = re.sub(r"[#*|>`\-]+", " ", s)
-    return norm(s)
+    return re.sub(r"[#*|>`\-]+", " ", s)
 
 
 def main():
-    names = sorted(p.stem for p in (BENCH / "samples").glob("*.hwpx"))
+    names = sorted(p.stem for p in (BENCH / "samples").glob(f"*.{EXT}"))
     rows = []
     for name in names:
         ref = pymupdf.open(BENCH / "ref" / f"{name}.pdf")
-        ref_text = norm("".join(p.get_text() for p in ref))
+        ref_raw = "\n".join(p.get_text() for p in ref)
+        ref_text = norm(ref_raw)
         for tool in PDF_TOOLS:
-            f = BENCH / "out" / tool / f"{name}.pdf"
+            f = OUT / tool / f"{name}.pdf"
             row = {"name": name, "tool": tool, "ref_pages": len(ref), "ok": f.exists()}
             if f.exists():
                 out = pymupdf.open(f)
-                out_text = norm("".join(p.get_text() for p in out))
+                out_raw = "\n".join(p.get_text() for p in out)
+                out_text = norm(out_raw)
                 rec, prec = lcs_scores(ref_text, out_text)
                 pos, med = position_match(ref, out)
                 row.update(pages=len(out), text_recall=rec, bag_recall=bag_recall(ref_text, out_text), text_precision=prec,
-                           page_sim=page_similarity(ref, out), pos_match=pos, pos_median_pt=med)
+                           word_recall=word_recall(ref_raw, out_raw), page_sim=page_similarity(ref, out),
+                           pos_match=pos, pos_median_pt=med)
             rows.append(row)
         for tool in NATIVE_TOOLS:
-            f = BENCH / "out" / tool / f"{name}.md"
+            f = OUT / tool / f"{name}.md"
             row = {"name": name, "tool": tool, "ref_pages": len(ref), "ok": f.exists()}
             if f.exists():
                 # markdown emphasis uses '*', so drop it on both sides (references contain '*' redaction masks)
-                r_txt, o_txt = ref_text.replace("*", ""), md_text(f)
+                o_raw = md_text(f)
+                r_txt, o_txt = ref_text.replace("*", ""), norm(o_raw)
                 rec, prec = lcs_scores(r_txt, o_txt)
-                row.update(text_recall=rec, text_precision=prec, bag_recall=bag_recall(r_txt, o_txt))
+                row.update(text_recall=rec, text_precision=prec, bag_recall=bag_recall(r_txt, o_txt),
+                           word_recall=word_recall(ref_raw.replace("*", ""), o_raw))
             rows.append(row)
     for tool in PDF_TOOLS + NATIVE_TOOLS:
-        res = BENCH / "out" / tool / "results.json"
+        res = OUT / tool / "results.json"
         secs = {r["name"]: r.get("seconds") for r in json.loads(res.read_text())} if res.exists() else {}
         for r in rows:
             if r["tool"] == tool:
                 r["seconds"] = secs.get(r["name"])
-    (BENCH / "eval.json").write_text(json.dumps(rows, ensure_ascii=False, indent=1))
+    (OUT / "eval.json").write_text(json.dumps(rows, ensure_ascii=False, indent=1))
 
     def mean(vals):
         vals = [v for v in vals if v is not None]
         return sum(vals) / len(vals) if vals else None
 
-    print(f"{'tool':12} ok  pages=  recall  prec  bag_rec  page_sim  pos@6pt  med_pt  sec/doc")
+    print(f"{'tool':12} ok  pages=  recall  prec  bag_rec word_rec  page_sim  pos@6pt  med_pt  sec/doc")
     for tool in PDF_TOOLS + NATIVE_TOOLS:
         rs = [r for r in rows if r["tool"] == tool]
         ok = [r for r in rs if r["ok"]]
         pm = sum(1 for r in ok if r.get("pages") == r["ref_pages"])
         f = lambda k: mean([r.get(k) for r in ok])
         fmt = lambda v, w=6: f"{v:{w}.3f}" if v is not None else " " * (w - 1) + "-"
-        print(f"{tool:12} {len(ok):2}/{len(rs)} {pm:2}  {fmt(f('text_recall'))} {fmt(f('text_precision'))} {fmt(f('bag_recall'),7)} {fmt(f('page_sim'),8)} {fmt(f('pos_match'),8)} {fmt(f('pos_median_pt'),7)} {fmt(f('seconds'),7)}")
+        print(f"{tool:12} {len(ok):2}/{len(rs)} {pm:2}  {fmt(f('text_recall'))} {fmt(f('text_precision'))} {fmt(f('bag_recall'),7)} {fmt(f('word_recall'),8)} {fmt(f('page_sim'),8)} {fmt(f('pos_match'),8)} {fmt(f('pos_median_pt'),7)} {fmt(f('seconds'),7)}")
     print()
-    print(f"{'name':18}" + "".join(f"{t:>26}" for t in PDF_TOOLS) + f"{'kordoc':>10}")
+    print(f"{'name':18}" + "".join(f"{t:>26}" for t in PDF_TOOLS) + "".join(f"{t:>10}" for t in NATIVE_TOOLS))
     for name in names:
         line = f"{name:18}"
         for tool in PDF_TOOLS:
             r = next(r for r in rows if r["name"] == name and r["tool"] == tool)
             line += (f"  p{r['pages']:>3}/{r['ref_pages']:<3} rec{r['text_recall']:.2f} pos{r['pos_match']:.2f}" if r["ok"] else f"{'FAIL':>26}")
-        r = next(r for r in rows if r["name"] == name and r["tool"] == "kordoc")
-        line += f"   rec{r['text_recall']:.2f}" if r["ok"] else "      FAIL"
+        for tool in NATIVE_TOOLS:
+            r = next(r for r in rows if r["name"] == name and r["tool"] == tool)
+            line += f"   rec{r['text_recall']:.2f}" if r["ok"] else "      FAIL"
         print(line)
 
 
