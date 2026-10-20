@@ -27,7 +27,8 @@ folio.embed.http(texts: list[str], **opts) -> list[list[float]]
   converts to PDF and takes the PDF path; `pptx_mode="convert"` uses the same converter. `converter="auto"`:
   `FOLIO_CONVERT_URL` server, else local (`soffice`, `rhwp`); `"local"` | `{url, timeout}` | `"module:function"` |
   callable(data, mime) -> PDF bytes or (bytes, info). `convert_timeout` (s; env `FOLIO_CONVERT_TIMEOUT`, default 300).
-  `doc.meta["convert"] = {converter, version, ms, pdf_hash[, server, errors]}`; pages/bbox refer to that PDF while
+  `doc.meta["convert"] = {converter, version, ms, pdf_hash[, server, errors]}`; pages/bbox refer to the PDF made in that
+  parse (LibreOffice output is not byte-reproducible, so `pdf_hash` identifies, not rebuilds, it) while
   `mime_type`/`content_hash`/`doc_id` come from the original file. Failure -> `folio.parse.convert.ConvertError`.
   Dev VLM server: `folio.backends.vlm_stub:serve(host, port=8002)` (OpenAI-compatible, deterministic).
 - parse records model-call counts in `doc.meta["calls"] = {"structure": n, "ocr": n, "vlm": n}`

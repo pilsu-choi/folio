@@ -264,7 +264,7 @@ HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. 변환
 
 `native` 모드 후보로 [kordoc](https://github.com/chrisryugj/kordoc) 4.22.15(MIT, Node)를 같은 샘플로 확인했다. 한컴 저장 11/11·법령 9/9 성공, 문서당 0.5~0.7초, 텍스트 재현율 0.97(법령은 머리말·꼬리말을 뺀 본문 누락 없음), 블록별 쪽 번호와 병합 셀(rowSpan·colSpan)이 있는 표 구조를 주지만 bbox는 없다. 서식 문서 1개에서는 재현율이 0.89로 일부 텍스트가 빠졌다(원인 미확인). `native` 모드 구현 시 직접 파싱과 비교할 기준으로 쓴다.
 
-구현(2026-10-21): 변환은 별도 이미지 `folio-convert`(`folio convert-server`, `FOLIO_CONVERT_URL`)가 맡는다. 구조 분석 서버와 같은 사이드카 방식이고, GPL인 H2Orestart를 메인 이미지에 넣지 않는다. URL이 없으면 로컬 LibreOffice·rhwp를 쓴다. 바이너리 HWP도 rhwp로 같은 경로를 탄다. Document의 `meta.convert`에 변환기·버전·`pdf_hash`를 남기며, 쪽 번호와 bbox는 그 PDF 기준이다.
+구현(2026-10-21): 변환은 별도 이미지 `folio-convert`(`folio convert-server`, `FOLIO_CONVERT_URL`)가 맡는다. 구조 분석 서버와 같은 사이드카 방식이고, GPL인 H2Orestart를 메인 이미지에 넣지 않는다. URL이 없으면 로컬 LibreOffice·rhwp를 쓴다. 바이너리 HWP도 rhwp로 같은 경로를 탄다. Document의 `meta.convert`에 변환기·버전·`pdf_hash`를 남기며, 쪽 번호와 bbox는 그 PDF 기준이다. LibreOffice 출력은 실행마다 바이트가 달라(타임스탬프) 해시로 PDF를 재현할 수는 없다.
 
 결론 (2026-10-21 벤치마크, [기록](wiki/2026-10-21-docx-converter-benchmark.md)): **DOCX → PDF 기본 변환기는 LibreOffice로 한다.** HWPX 대체 변환기와 같은 이미지를 쓴다. 고객사 샘플로 다시 확인할 때까지 이 결정은 잠정이다.
 
@@ -465,7 +465,7 @@ FR-21(DOCX·HWPX `native`, 보류)을 제외한 FR을 구현했다. FR-20(DOCX·
 - [ ] PP-StructureV3 기본값을 고객사 샘플(한글 포함)로 재확인. MinerU 라이선스 확인
 - [ ] HWPX → PDF 변환기: 공개 샘플 벤치마크로 rhwp 기본 + LibreOffice·H2Orestart 대체로 잠정 결정. 첫 고객사 샘플로 재확인 필요
 - [ ] DOCX → PDF 변환기: 공개 샘플 벤치마크(Word PDF 정답)로 LibreOffice 기본으로 잠정 결정, OnlyOffice 제외. 첫 고객사 샘플로 재확인 필요
-- [ ] 변환 PDF 보관: bbox는 변환된 PDF 기준이므로, 인용 하이라이트용으로 변환 PDF를 원본과 함께 저장·제공할지(현재는 `meta.convert.pdf_hash`만 기록)
+- [ ] 변환 PDF 보관: bbox는 그 파싱에서 만든 PDF 기준이므로, 인용 하이라이트용으로 변환 PDF를 원본과 함께 저장·제공할지(현재는 `meta.convert.pdf_hash`만 기록, LibreOffice 재변환은 바이트가 달라짐)
 - [x] VLM 모델 수: 스캔 파싱·그림 설명·복잡 표를 모델 1개로 처리 (이미지 콘텐츠에 VLM 기본 적용도 결정됨)
 - [ ] VLM 모델 선정: [VLM 모델](#vlm-모델-1개) 기준으로 M1에서 E2E 문서 VLM과 범용 VLM 후보를 비교
 - [ ] `adaptive` 청킹 기본값: `max_tokens`·`min_tokens`를 임베딩 모델과 Eval 결과로 확정

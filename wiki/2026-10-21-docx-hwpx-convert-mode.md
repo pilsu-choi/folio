@@ -21,7 +21,7 @@ sources:
 - 변환 순서: DOCX·PPTX는 LibreOffice, HWPX·HWP는 rhwp → 실패 시 LibreOffice + H2Orestart(설치된 경우만). 근거는 [DOCX 벤치마크](2026-10-21-docx-converter-benchmark.md)와 HWPX 벤치마크.
 - 바이너리 HWP도 같은 경로에 넣었다. 이미지 검증에서 rhwp가 `.hwp`를 변환하는 것을 확인했기 때문이다. 옵션은 `hwpx_mode`를 같이 쓴다.
 - `native` 모드(FR-21)는 범위 밖이다. `docx_mode`·`hwpx_mode="native"`는 `NotImplementedError`를 낸다.
-- 변환 PDF는 저장하지 않는다. `meta.convert.pdf_hash`만 남긴다. 인용 하이라이트에 변환 PDF가 필요한지는 PRD 열린 질문으로 남겼다.
+- 변환 PDF는 저장하지 않는다. `meta.convert.pdf_hash`는 그 파싱에서 만든 PDF를 가리킬 뿐이다. 같은 DOCX를 LibreOffice로 두 번 변환하면 바이트가 달라 해시도 다르다(타임스탬프 포함, 크기는 같음, 실행 확인). rhwp는 같은 HWPX에 같은 바이트를 냈다. 해시로 PDF를 다시 찾거나 재현할 수는 없다. 인용 하이라이트에 변환 PDF를 보관할지는 PRD 열린 질문으로 남겼다.
 
 ## 구현
 
@@ -44,7 +44,7 @@ sources:
 
 ## 검증 (실행 결과)
 
-- 단위 테스트: 143개 통과, 1개 생략. 생략된 것은 로컬에 LibreOffice가 없어 건너뛴 실제 변환 시험이다. 새 `tests/test_convert.py`는 다음을 검증한다.
+- 단위 테스트: 144개 통과, 1개 생략. 생략된 것은 로컬에 LibreOffice가 없어 건너뛴 실제 변환 시험이다. 새 `tests/test_convert.py`는 다음을 검증한다.
   - 변환 → 쪽·bbox, 원본 기준 식별자(DOCX·HWPX·HWP)
   - 확장자 없는 HWPX 판별
   - `native`·잘못된 모드
@@ -65,12 +65,15 @@ sources:
 - HWPX 쪽수는 11개 모두 한컴 정답 PDF와 같았다(HWPX 벤치마크와 같은 결과).
 - 이미지의 LibreOffice 25.2와 글꼴 별칭으로 DOCX를 다시 평가했다(Word PDF 정답, `evaluate.py --out out-image`). 쪽수 일치 6/13, 텍스트 재현율 0.985, 어절 재현율 0.927, 위치 일치 0.110이다. 벤치마크의 LibreOffice 24.2·별칭 없는 공개 글꼴(5/13, 0.979, 0.869, 0.053)보다 모두 좋고, Windows 글꼴 실행(6/13, 0.983, 0.926, 0.126)에 가깝다.
 - Compose: `docker compose config`(기본·offline) 통과. `convert` 서비스만 띄워 healthy, 읽기 전용 루트, CPU 2, 메모리 3GB를 확인했다.
+- Compose E2E(`deploy/compose/e2e.sh`, profile `infra,dev`): 새 `convert_scenario`가 API로 `tests/fixtures/contract.docx`와 `E2E_HWPX`(form002.hwpx)를 올렸다. worker가 `convert` 서비스를 거쳐 처리해 두 작업 모두 `succeeded`였다. 저장된 `document.json`에 `meta.convert`(LibreOffice 25.2.3.2 / rhwp v0.8.7)가 있었고, figure를 뺀 모든 블록에 bbox가 있었다(DOCX 1쪽 3블록, HWPX 10쪽 99블록). 기존 PDF 시나리오도 통과했다.
+- 변환 실패: worker는 모든 예외를 job `failed` + 메시지로 기록하고 재시도하지 않는다(`service/worker.py`). 서버에 연결할 수 없으면 `ConvertError("convert server ...: ConnectError ...")`가 나는 것을 단위 테스트로 확인했다. 실제 스택에서 변환 서버를 멈춘 시험은 하지 않았다.
+- 연결 누락 수정: Airflow 예시 DAG의 DockerOperator 전달 env에 `FOLIO_CONVERT_URL`·`FOLIO_CONVERT_TIMEOUT`을 추가했다. KubernetesPodOperator는 Helm ConfigMap을 그대로 쓰므로 이미 들어 있다. `deploy/kind/e2e.sh` 이미지 목록과 태그에 `folio-convert`를 추가했다(kind E2E는 실행하지 않음).
 - Helm: `helm lint`, `helm template`(values-dev)으로 기본·`convert.enabled=false`+`external.convert.url`·글꼴 PVC 렌더링을 확인했다.
 
 ## 미확인·남은 일
 
 - arm64 이미지 빌드, `H2ORESTART=0` 빌드는 하지 않았다.
-- 전체 Compose E2E, kind·k3s 위 Helm 배포, 번들 빌드·설치는 하지 않았다. 번들 시험은 사용자 지시로 보류 중이다.
+- kind·k3s 위 Helm 배포, 번들 빌드·설치는 하지 않았다. 번들 시험은 사용자 지시로 보류 중이다.
 - PPTX를 변환 서버로 보내는 경로는 시험하지 않았다. 이미지에 Impress는 들어 있다.
 - 동시 부하(워커 여러 개가 변환 서버를 동시에 호출)와 장시간 안정성은 측정하지 않았다.
 - 이미지 크기 중 상당 부분은 `service` extra의 의존성(celery, sqlalchemy, onnxruntime 등)이다. 변환 서버에는 fastapi·uvicorn만 필요하므로 extra를 나누면 줄일 수 있다.

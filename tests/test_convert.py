@@ -159,3 +159,10 @@ def test_real_libreoffice_docx(tmp_path):
     assert doc.meta["convert"]["converter"] == "libreoffice"
     assert "한글 본문 문단입니다." in " ".join(b.text for _, b in doc.iter_blocks())
     validate_doc(doc)
+
+
+def test_unreachable_server_is_a_convert_error(tmp_path):
+    src = tmp_path / "a.docx"
+    src.write_bytes(office_zip("word/document.xml"))
+    with pytest.raises(ConvertError, match="convert server http://127.0.0.1:9: ConnectError"):
+        default(str(src), converter={"url": "http://127.0.0.1:9", "timeout": 2})
