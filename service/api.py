@@ -110,7 +110,8 @@ def _pipeline(name: str | None):
 
 
 def _hit(h) -> dict:
-    return {"chunk_id": h.chunk_id, "doc_id": h.doc_id, "score": h.score, "content": h.content, "record": h.record}
+    record = {k: v for k, v in h.record.items() if k != "embedding"}  # vectors are useless to callers and large
+    return {"chunk_id": h.chunk_id, "doc_id": h.doc_id, "score": h.score, "content": h.content, "record": record}
 
 
 @app.post("/v1/search")

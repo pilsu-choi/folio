@@ -76,7 +76,8 @@ Retriever.search(query, k=None, filters=None, mode=None) -> list[Hit]   # Hit(ch
   bounds). `None` values are dropped. Field names must be identifiers; violations raise `ValueError`.
   pgvector: range on a real column compares the column, on `metadata` casts to numeric for number bounds, text otherwise;
   range on an array column is a `ConfigError`.
-- Service: `POST /v1/search` maps `ValueError`/`ConfigError` to 400; `k` is capped at 100.
+- Service: `POST /v1/search` maps `ValueError`/`ConfigError` to 400; `k` is capped at 100. Response `hits[].record` is
+  the stored chunk record without `embedding` (same for `/v1/chat`).
 
 ## Generation
 

@@ -73,3 +73,10 @@ sources:
 - 스트리밍 응답(SSE).
 - 생성 품질 평가(faithfulness, 인용 정확도)를 `folio eval`에 추가.
 - 개발용 결정적 LLM stub 서버(Compose 프로필).
+
+## 추가 변경 (2026-10-21): 응답에서 임베딩 제거
+
+- 결정(사용자 승인): `/v1/search`와 `/v1/chat` 응답의 `hits[].record`에서 `embedding`을 뺀다. 벡터는 호출 측에서 쓰지 않는데 응답 크기만 키운다. 채팅 App(FR-32)도 저장하기 전에 따로 지우고 있었다.
+- 범위: `service/api.py`의 `_hit()`만 바꿨다. 라이브러리 `folio.pipeline.search()`와 `folio.generation.answer()`의 `Hit.record`는 그대로다.
+- 조율: 채팅 App 세션(folio-f7)에 미리 알렸고 확인을 받았다. App 쪽 제거 코드는 예전 folio를 쓸 때를 대비해 남긴다.
+- 검증: `pytest -q`에서 169 passed, 3 skipped. `test_search_endpoint`와 `test_chat_endpoint`에 `embedding`이 없는지 확인하는 검사를 추가했다.
