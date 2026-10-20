@@ -273,10 +273,11 @@ Word(Microsoft 365)가 저장한 PDF를 정답으로 두고, 공공기관이 공
 | 후보 | 성공 | 쪽수 일치 | 텍스트 재현율 | 어절 재현율 | 단어 위치 일치(6pt 이내) | 쪽당 시간(DGX Spark) | 이미지 | 판단 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | LibreOffice 24.2 | 13/13 | 5/13 (6/13) | 0.99 | 0.87 (0.93) | 0.05 (0.13) | 0.05초 | 773MB | **기본값**. 실패·큰 누락 없음. 다단·가로 구역 문서는 쪽이 줄어든다 |
-| [OnlyOffice DocumentBuilder](https://github.com/ONLYOFFICE/DocumentBuilder) 9.4.0 | 13/13 | 4/13 (6/13) | 0.97 | 0.38 (0.40) | 0.04 (0.16) | 0.07초 | 364MB | 제외. 한국어 텍스트 레이어에 공백 문자가 없어 pymupdf 추출 시 어절이 붙는다. 공개 글꼴에서 쪽수가 최대 +26%. AGPL |
+| [OnlyOffice DocumentBuilder](https://github.com/ONLYOFFICE/DocumentBuilder) 9.4.0 | 13/13 | 4/13 (6/13) | 0.97 | 0.38 (0.40) | 0.04 (0.16) | 0.07초 | 364MB | 제외. 한국어 텍스트 레이어에 공백 문자가 없다(글자 간격 기반 어절 분리 추가 후 어절 재현율 0.89). 공개 글꼴에서 쪽수가 최대 +26%. AGPL |
 | Word, Aspose 등 | 미시험 | | | | | | | Windows 의존 또는 상용 |
 
 - 텍스트 재현율은 순서 무관 2-gram 재현율이다. 어절 재현율은 공백 단위 토큰 재현율로, 띄어쓰기 손실을 잡는다.
+- 표의 어절 재현율은 공백 문자만으로 단어를 나누던 추출기 기준이다. LibreOffice(대체 한글 글꼴), rhwp, 한컴, OnlyOffice가 만든 PDF는 한국어 어절 사이에 공백 글리프가 없거나 다른 위치에 그려진다. 그래서 텍스트 레이어 추출기가 글자 간격으로도 어절을 나누도록 바꿨다([작업 기록](wiki/2026-10-21-docx-hwpx-convert-mode.md)). 바꾼 추출기로 정답·후보를 다시 읽으면 어절 재현율은 LibreOffice 0.93, OnlyOffice 0.89, rhwp(HWPX) 0.96이다.
 - 정답 PDF는 맑은 고딕·바탕 등 Windows 글꼴을 쓴다. 고객사 MS 글꼴은 이미지에 넣지 못할 수 있으므로 대체 글꼴 매핑을 설정으로 둔다.
 - `native` 기준인 kordoc은 DOCX 13/13 성공, 텍스트 재현율 0.91, 정밀도 0.95다. 쪽마다 반복되는 표 머리행과 머리말·꼬리말이 없어서 재현율이 낮게 나온다.
 
@@ -447,8 +448,8 @@ FR-21(DOCX·HWPX `native`, 보류)을 제외한 FR을 구현했다. FR-20(DOCX·
 | 상태 | FR |
 | --- | --- |
 | 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 20(DOCX 13·HWPX 11·HWP 1개를 변환 서버로 파싱, 모든 텍스트 블록에 쪽·bbox), 15(Compose Airflow + DockerOperator, k3s에 공식 Airflow 차트 설치 후 KubernetesExecutor → KubernetesPodOperator, folio 내장 PostgreSQL을 메타데이터 DB로 공유), 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~30 |
-| 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인) |
-| 구현, 미검증 | FR-15 운영 Airflow 가이드의 원격 로그 설정(예시만 제공), FR-26 Helm 사설 레지스트리 경로, PPTX `convert` 모드(변환 서버에 LibreOffice Impress 포함, 실제 PPTX 변환은 미확인) |
+| 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), PPTX `convert` 모드(픽스처 4장을 변환 서버와 이미지 안 LibreOffice로 변환, 쪽·bbox 확인. 실제 고객 슬라이드 미확인), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인) |
+| 구현, 미검증 | FR-15 운영 Airflow 가이드의 원격 로그 설정(예시만 제공), FR-26 Helm 사설 레지스트리 경로 |
 | 보류 | FR-21 (DOCX·HWPX `native`) |
 
 - VLM 기본 적용은 `parse.vlm: auto`로 구현했다. `FOLIO_VLM_URL`이 있으면 VLM 경로(기본)를 쓰고, 없으면 구조 분석 OCR을 쓰며 `meta.vlm`에 사유를 남긴다. VLM 호출이 실패한 페이지만 OCR로 폴백하고 `meta.vlm_fallbacks`에 기록한다.

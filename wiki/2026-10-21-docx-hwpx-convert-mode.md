@@ -44,7 +44,7 @@ sources:
 
 ## 검증 (실행 결과)
 
-- 단위 테스트: 144개 통과, 1개 생략. 생략된 것은 로컬에 LibreOffice가 없어 건너뛴 실제 변환 시험이다. 새 `tests/test_convert.py`는 다음을 검증한다.
+- 단위 테스트(어절 분리 수정 전): 144개 통과, 1개 생략. 생략된 것은 로컬에 LibreOffice가 없어 건너뛴 실제 변환 시험이다. 새 `tests/test_convert.py`는 다음을 검증한다.
   - 변환 → 쪽·bbox, 원본 기준 식별자(DOCX·HWPX·HWP)
   - 확장자 없는 HWPX 판별
   - `native`·잘못된 모드
@@ -70,11 +70,29 @@ sources:
 - 연결 누락 수정: Airflow 예시 DAG의 DockerOperator 전달 env에 `FOLIO_CONVERT_URL`·`FOLIO_CONVERT_TIMEOUT`을 추가했다. KubernetesPodOperator는 Helm ConfigMap을 그대로 쓰므로 이미 들어 있다. `deploy/kind/e2e.sh` 이미지 목록과 태그에 `folio-convert`를 추가했다(kind E2E는 실행하지 않음).
 - Helm: `helm lint`, `helm template`(values-dev)으로 기본·`convert.enabled=false`+`external.convert.url`·글꼴 PVC 렌더링을 확인했다.
 
+- PPTX `convert` 모드: `tests/fixtures/slides.pptx`를 변환 서버 컨테이너(`FOLIO_CONVERT_URL`)로 보내 `pptx_mode="convert"`, `backend="heuristic"`으로 파싱했다. 4쪽 모두 720×540pt, 슬라이드 제목이 모두 나왔고 모든 블록에 bbox가 있었다. 휴리스틱 백엔드는 표를 조각내고 막대 차트를 빈 표로 잡았다. 이는 변환이 아니라 구조 분석 백엔드의 한계다. 슬라이드 원본 구조를 쓰는 `native`가 기본값으로 맞다. 이미지 안 실제 LibreOffice로 같은 변환을 하는 테스트(`test_real_libreoffice_pptx_convert_mode`)를 추가했다.
+
+## 어절 분리 수정 (텍스트 레이어 추출기)
+
+- 발견: 이미지 안에서 실제 LibreOffice DOCX 테스트가 실패했다. python-docx로 만든 문서(동아시아 글꼴 미지정, 테마 `ea typeface=""`)는 한글이 은바탕·은돋움 대체 글꼴로 그려진다. 이때 LibreOffice는 한글 어절을 공백 없이 한 글리프 묶음으로 그리고, 공백은 DejaVuSerif로 따로 그린다. PyMuPDF는 공백을 다른 줄로 묶어 `본계약은부품공급조건을정한다.`처럼 어절이 붙었다. `tests/fixtures/contract.docx`의 Compose E2E 결과도 같은 영향을 받았다.
+- 같은 방식으로 rhwp·한컴·OnlyOffice PDF를 확인했다. 한컴 정답 PDF와 rhwp PDF도 한국어 어절 사이에 공백 글리프가 없는 곳이 많았다(`밑줄친㉠∼㉤과같은현상의…`). 기존 추출기는 공백 문자로만 단어를 나눴다.
+- 수정: `folio.parse.textlayer.extract_atoms`가 글자 사이 간격으로도 어절을 나눈다. 기준은 그 줄의 보통 글자 간격(중앙값)보다 0.24em 넘게 벌어진 경우다. 그래서 균등 분배된 글자(`경 상 북 도`)는 한 어절로 남는다. 압축 글꼴은 글자 상자가 겹치므로 0.5em까지 뒤로 겹쳐도 같은 어절로 본다. PyMuPDF가 어절 중간에서 줄을 나눈 경우, 앞 어절 끝에 바로 붙는 다음 줄은 그 어절을 이어 간다. 글자 단위(`chars`) 출력은 그대로라 PyMuPDF 원문과 같다.
+- 결과(어절 재현율, 같은 추출기로 정답·후보를 읽음, 실행 결과):
+
+| 후보 / 정답 | 기존 추출기 | 수정 추출기 |
+| --- | --- | --- |
+| LibreOffice 25.2 이미지 / Word PDF (DOCX 13) | 0.927 | 0.933 |
+| OnlyOffice 9.4 / Word PDF (DOCX 13) | 0.380 | 0.893 |
+| rhwp v0.8.7 이미지 / 한컴 PDF (HWPX 11) | 0.405 | 0.964 |
+
+- 정답 PDF 자체의 단어 변화: Word PDF는 0.3%, 한컴 PDF는 8%가 바뀌었다. 한컴 PDF의 변화는 대부분 붙어 있던 어절이 나뉜 것이다. 남은 차이는 `□업종별` → `□` `업종별`, `개시*하였다.` → `개시` `*` `하였다.`, `김현철(053-…)` → 이름과 번호 분리 같은 경우다.
+- 단위 테스트(`test_words_split_on_gaps_without_space_glyphs`)와 전체 테스트 145개가 통과했다. 이미지 안에서 `tests/test_convert.py`·`tests/test_parse.py` 29개(실제 LibreOffice DOCX·PPTX 포함)가 통과했다.
+- 이 수정은 PDF 입력 전체에 적용된다. M1 PDF 벤치마크는 다시 돌리지 않았다.
+
 ## 미확인·남은 일
 
 - arm64 이미지 빌드, `H2ORESTART=0` 빌드는 하지 않았다.
 - kind·k3s 위 Helm 배포, 번들 빌드·설치는 하지 않았다. 번들 시험은 사용자 지시로 보류 중이다.
-- PPTX를 변환 서버로 보내는 경로는 시험하지 않았다. 이미지에 Impress는 들어 있다.
 - 동시 부하(워커 여러 개가 변환 서버를 동시에 호출)와 장시간 안정성은 측정하지 않았다.
 - 이미지 크기 중 상당 부분은 `service` extra의 의존성(celery, sqlalchemy, onnxruntime 등)이다. 변환 서버에는 fastapi·uvicorn만 필요하므로 extra를 나누면 줄일 수 있다.
 - rhwp는 fontconfig 별칭을 쓰지 않고 자체 대체(Noto CJK)를 한다. `--fallback-sans`·`--fallback-serif`로 바꿀 수 있지만 설정으로 노출하지 않았다.

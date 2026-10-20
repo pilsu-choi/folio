@@ -157,3 +157,23 @@ def test_resolve_backend_specs(monkeypatch):
     assert b.heading_ratio == 1.5
     obj = FakeBackend()
     assert resolve_backend(obj) is obj
+
+
+def test_words_split_on_gaps_without_space_glyphs():
+    """LibreOffice/rhwp/Hancom PDFs may draw Korean words without space glyphs, or draw the spaces out of order."""
+    from folio.parse.textlayer import extract_atoms
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    tw, font = pymupdf.TextWriter(page.rect), pymupdf.Font("korea")
+    for x, ch in zip([72, 84, 99, 111, 123], "본계약은부"):  # a space-wide gap after 계, no space glyph
+        tw.append((x, 100), ch, font=font, fontsize=12)
+    tw.write_text(page)
+    tw = pymupdf.TextWriter(page.rect)
+    tw.append((96, 100), " ", font=font, fontsize=12)  # the space drawn later, inside the gap
+    tw.append((135, 100), "품", font=font, fontsize=12)  # continues 부 in a later text run
+    for x, ch in zip([72, 88, 104, 120, 144], "경상북도법"):  # letter-spaced (distributed) text, then a word gap
+        tw.append((x, 140), ch, font=font, fontsize=12)
+    tw.write_text(page)
+    page = doc.reload_page(page)
+    assert [a.text for a in extract_atoms(page)[1]] == ["본계", "약은부품", "경상북도", "법"]

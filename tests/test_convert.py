@@ -166,3 +166,14 @@ def test_unreachable_server_is_a_convert_error(tmp_path):
     src.write_bytes(office_zip("word/document.xml"))
     with pytest.raises(ConvertError, match="convert server http://127.0.0.1:9: ConnectError"):
         default(str(src), converter={"url": "http://127.0.0.1:9", "timeout": 2})
+
+
+@pytest.mark.skipif(not (shutil.which("soffice") or shutil.which("libreoffice")), reason="LibreOffice not installed")
+def test_real_libreoffice_pptx_convert_mode():
+    from tests._parse_helpers import FIX
+
+    doc = default(str(FIX / "slides.pptx"), pptx_mode="convert", converter="local", backend=FakeBackend())
+    assert doc.meta["convert"]["converter"] == "libreoffice"
+    assert [(p.width, p.height) for p in doc.pages] == [(720.0, 540.0)] * 4
+    assert all(b.bbox for _, b in doc.iter_blocks())
+    validate_doc(doc)
