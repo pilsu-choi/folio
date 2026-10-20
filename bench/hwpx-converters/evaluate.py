@@ -82,7 +82,7 @@ def page_similarity(ref_doc, out_doc) -> float:
 
 def md_text(path: Path) -> str:
     s = path.read_text(encoding="utf-8")
-    s = re.sub(r"<[^>]+>", " ", s)
+    s = re.sub(r"</?[A-Za-z][^>]*>", " ", s)  # HTML tags only; keep text like <개정 2020.1.1.>
     s = re.sub(r"[#*|>`\-]+", " ", s)
     return norm(s)
 

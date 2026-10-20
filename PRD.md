@@ -222,7 +222,7 @@ class StructureBackend(Protocol):
 
 `native` 모드는 bbox와 페이지 번호가 없을 수 있으므로 Document JSON에서 해당 필드를 선택 값으로 둔다.
 
-HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. EWL에서 쓰는 방식은 비교 후보 중 하나이고, 더 나은 방식이 있으면 그것을 쓴다. 변환기도 `convert` 옵션의 `module:function`으로 교체할 수 있게 둔다.
+HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. 변환기도 `convert` 옵션의 `module:function`으로 교체할 수 있게 둔다.
 
 | 기준 | 내용 |
 | --- | --- |
@@ -231,7 +231,7 @@ HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. EWL에
 | 속도·안정성 | 페이지당 변환 시간, 동시 실행 시 프로세스 충돌·멈춤 여부 |
 | 라이선스 | 고객사 배포에 문제 없는지 |
 
-결론 (2026-10-20 벤치마크, [기록](wiki/2026-10-20-hwpx-converter-benchmark.md)): **HWPX → PDF 기본 변환기는 rhwp CLI로 하고, LibreOffice + H2Orestart를 대체 변환기로 둔다.** 고객사 샘플로 다시 확인할 때까지 이 결정은 잠정이다.
+결론 (2026-10-20 벤치마크, [기록](wiki/2026-10-20-hwpx-converter-benchmark.md)): **HWPX → PDF 기본 변환기는 rhwp CLI로 하고, LibreOffice + H2Orestart를 대체 변환기로 둔다.** 고객사 샘플로 다시 확인할 때까지 이 결정은 잠정이다. 대체 변환기는 한컴에서 저장한 HWPX에만 쓴다. 한컴 레이아웃 정보가 없는 서버 생성 HWPX(예: 국가법령정보센터의 `hwpxlib` 출력)는 H2Orestart가 열지 못하고 rhwp만 변환했다.
 
 한컴 오피스가 직접 저장한 PDF를 정답으로 두고 공문서·보도자료·서식·시험지·RFP 등 HWPX 11개(총 217쪽)를 비교했다. 글꼴은 모든 후보에 같은 공개 글꼴(Noto CJK, 나눔, 은)만 넣었다.
 
@@ -241,13 +241,12 @@ HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. EWL에
 | LibreOffice 24.2 + [H2Orestart](https://extensions.libreoffice.org/en/extensions/show/27504) 0.8.0 | 11/11 | 5/11 | 0.97 | 0.05 | 11.5pt | 0.09초 | 773MB | 대체 변환기. 쪽수 최대 +20%, 서식 표의 체크박스 행 누락 사례. GPL이라 별도 프로세스로만 호출 |
 | [hwpforge](https://pypi.org/project/hwpforge/) 0.16.11 | 0/11 | - | - | - | - | - | 434MB | 제외. 비기본 위치 표·일부 XML을 아직 처리하지 못한다 |
 | [한컴 한글 SDK](https://www.hancom.com/product/sdk/hwpSdk) | 미시험 | | | | | | | 상용. 고객사가 라이선스를 가진 경우에만 검토 |
-| EWL 방식 | 미시험 | | | | | | | 방식이 확인되면 같은 스크립트로 비교 |
 
 - 텍스트 재현율은 한컴 PDF 텍스트와의 순서 무관 2-gram 재현율이다. 위치 지표는 같은 쪽의 같은 단어 중심점 거리를 정답 쪽 크기로 정규화해 쟀다. 대체 글꼴을 쓰므로 rhwp도 줄 안 위치는 1~2pt씩 어긋난다.
 - 샘플은 rhwp 저장소의 회귀 테스트 문서이므로 rhwp에 유리할 수 있다. 첫 고객사 샘플로 같은 비교를 반복한다 (`bench/hwpx-converters/`).
 - 고객사 문서가 쓰는 한컴 글꼴(한컴바탕, 휴먼명조, HY 계열 등)은 라이선스상 이미지에 넣을 수 없는 경우가 많다. 대체 글꼴 매핑을 설정으로 둔다.
 
-`native` 모드 후보로 [kordoc](https://github.com/chrisryugj/kordoc) 4.22.15(MIT, Node)를 같은 샘플로 확인했다. 11/11 성공, 문서당 0.7초, 텍스트 재현율 0.95, 블록별 쪽 번호와 병합 셀(rowSpan·colSpan)이 있는 표 구조를 주지만 bbox는 없다. 일부 글상자·각주 텍스트를 빠뜨린다(재현율 0.89~0.90 문서 2개). `native` 모드 구현 시 직접 파싱과 비교할 기준으로 쓴다.
+`native` 모드 후보로 [kordoc](https://github.com/chrisryugj/kordoc) 4.22.15(MIT, Node)를 같은 샘플로 확인했다. 한컴 저장 11/11·법령 9/9 성공, 문서당 0.5~0.7초, 텍스트 재현율 0.97(법령은 머리말·꼬리말을 뺀 본문 누락 없음), 블록별 쪽 번호와 병합 셀(rowSpan·colSpan)이 있는 표 구조를 주지만 bbox는 없다. 서식 문서 1개에서는 재현율이 0.89로 일부 텍스트가 빠졌다(원인 미확인). `native` 모드 구현 시 직접 파싱과 비교할 기준으로 쓴다.
 
 ### 입력 형식별 경로
 
@@ -412,7 +411,7 @@ M1에서 디지털 PDF 하나로 처음부터 끝까지 도는 것을 먼저 만
 
 - [x] 레포·패키지 이름: `folio`로 확정 (knowledge-forge와 구분). CLI도 `folio`
 - [ ] 기본 구조 분석 백엔드 확정: Docling vs PP-StructureV3를 M1에서 고객사 샘플(한글 포함)로 비교. MinerU 라이선스 확인
-- [ ] HWPX → PDF 변환기: 공개 샘플 벤치마크로 rhwp 기본 + LibreOffice·H2Orestart 대체로 잠정 결정. 첫 고객사 샘플로 재확인 필요, EWL 방식은 확인되면 같은 스크립트로 비교
+- [ ] HWPX → PDF 변환기: 공개 샘플 벤치마크로 rhwp 기본 + LibreOffice·H2Orestart 대체로 잠정 결정. 첫 고객사 샘플로 재확인 필요
 - [x] VLM 모델 수: 스캔 파싱·그림 설명·복잡 표를 모델 1개로 처리 (이미지 콘텐츠에 VLM 기본 적용도 결정됨)
 - [ ] VLM 모델 선정: [VLM 모델](#vlm-모델-1개) 기준으로 M1에서 E2E 문서 VLM과 범용 VLM 후보를 비교
 - [ ] `adaptive` 청킹 기본값: `max_tokens`·`min_tokens`를 임베딩 모델과 Eval 결과로 확정
