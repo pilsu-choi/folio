@@ -13,8 +13,9 @@ in its own image, so nothing from folio is installed into Airflow.
 
 ## Install with the official chart
 
-Checked: chart `apache-airflow/airflow` 1.22.0 (Airflow 3.2.2) renders with these values and the DAG imports on 3.2.2;
-the install itself is not tested yet. Airflow in namespace `airflow`, folio release
+Tested 2026-10-20: chart `apache-airflow/airflow` 1.22.0 (Airflow 3.2.2) installed with these values on single-node k3s
+(aarch64); git-sync -> scheduler -> KubernetesExecutor -> KubernetesPodOperator ran `folio_ingest` and indexed the
+document (in-cluster auth + the RBAC below). Airflow in namespace `airflow`, folio release
 `folio` in namespace `folio` (installed with `deploy/helm/folio`; it creates the `folio-env` ConfigMap and the Secret).
 
 ```bash
@@ -33,7 +34,8 @@ helm install airflow apache-airflow/airflow --version 1.22.0 -n airflow -f deplo
 kubectl apply -n folio -f deploy/airflow/rbac-folio-namespace.yaml
 ```
 
-Trigger `folio_ingest` with `{"uri": "s3://bucket/key.pdf", "pipeline": "contracts", "source_uri": ""}`.
+New DAGs are paused at creation (chart default): unpause `folio_ingest` in the UI or with `airflow dags unpause
+folio_ingest`, then trigger it with `{"uri": "s3://bucket/key.pdf", "pipeline": "contracts", "source_uri": ""}`.
 
 ## Env read by the DAG
 
@@ -52,6 +54,12 @@ Trigger `folio_ingest` with `{"uri": "s3://bucket/key.pdf", "pipeline": "contrac
   external PostgreSQL via `data.metadataSecretName`.
 - RBAC: the chart's worker SA (`<release>-worker`) runs the task with KubernetesExecutor. The Role grants pods
   create/get/list/watch/delete/patch, pods/log get and events list/watch in the folio namespace only.
+- `helm install --wait` / Argo CD: the values run DB migration and user creation as plain Jobs
+  (`useHelmHooks: false`); with the chart's default post-install hooks the install deadlocks (pods wait for the
+  migration, the hook waits for the pods).
+- Task logs: with KubernetesExecutor the log lives on the worker pod, which is deleted after the task. Configure
+  remote logging (e.g. `config.logging.remote_logging` to S3) or `logs.persistence` (RWX PVC) to keep them; the
+  example values leave this to the site (not tested).
 - Failed folio pods are kept for debugging (`on_finish_action="delete_succeeded_pod"`); successful ones are deleted.
 - Task result: with the kubernetes runner the result JSON is in the task log (no XCom); with the docker runner the
   last log line is also pushed as XCom.

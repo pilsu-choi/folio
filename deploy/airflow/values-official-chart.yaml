@@ -41,3 +41,14 @@ jwtSecretName: airflow-jwt-secret                  # key `jwt-secret`
 config:
   core:
     load_examples: "False"
+  # Task logs disappear with the KubernetesExecutor worker pod: enable remote logging for your site, e.g.
+  # logging: {remote_logging: "True", remote_base_log_folder: "s3://CHANGE_ME/airflow-logs", remote_log_conn_id: s3_logs}
+
+# Run DB migration / admin-user creation as plain Jobs, not post-install hooks: with `helm install --wait`
+# (or Argo CD) the hooks only start after every pod is ready, while the pods wait for the migration -> deadlock.
+migrateDatabaseJob:
+  useHelmHooks: false
+  applyCustomEnv: false
+createUserJob:
+  useHelmHooks: false
+  applyCustomEnv: false

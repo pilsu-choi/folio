@@ -76,9 +76,21 @@ sources:
 - `rbac-folio-namespace.yaml`: Role(pods create/get/list/watch/delete/patch, pods/log get, events list/watch)과 RoleBinding(subject `airflow/airflow-worker`).
 - 검증: `helm template airflow apache-airflow/airflow --version 1.22.0 -f values-official-chart.yaml` 렌더링이 성공했다. worker SA 이름이 `airflow-worker`이고, task pod template에 `FOLIO_*` env가 들어가는 것을 확인했다. 차트 기본 이미지 `apache/airflow:3.2.2`(2.27GB, 확인 후 삭제)에서 DAG import도 확인했다. kubernetes·docker runner 모두 `import_errors` 없음. 실제 설치·실행은 하지 않았다(미검증).
 
+## 공식 Airflow 차트 설치 검증 (2026-10-20, pgx spark k3s)
+
+- 구성: namespace `folio-aftest`에 folio 차트(dev values, structure·vlm stub 끔), namespace `airflow-aftest`에 공식 차트 `apache-airflow/airflow` 1.22.0(Airflow 3.2.2)을 설치했다. values는 `deploy/airflow/values-official-chart.yaml`이고, 테스트용 override는 FOLIO env와 git-sync repo뿐이다.
+- 테스트용 대체물: "외부" PostgreSQL로 `postgres:16` Deployment를, git-sync 원격으로 `alpine/git:2.47.2` + `git-daemon` 패키지를 쓰는 git 서버(DAG 파일 하나를 담은 repo)를 띄웠다. 이미지는 pgx 임시 레지스트리(`localhost:5000`)에 다시 빌드해서 올렸다.
+- 문제와 수정: 처음 `helm install --wait`가 멈췄다. 공식 차트의 migration·create-user Job은 post-install hook인데, `--wait`가 끝날 때까지 hook이 시작되지 않고 파드는 `wait-for-airflow-migrations`에서 CrashLoop했다. values에 `migrateDatabaseJob/createUserJob.useHelmHooks: false`를 추가하고 `helm upgrade`했더니 정상 배포됐다.
+- 결과:
+  - git-sync로 `folio_ingest`가 로드됐다(`/opt/airflow/dags/repo/dags/folio_ingest.py`, import 오류 없음). 기본값대로 paused 상태로 생성됐다.
+  - RBAC: `airflow-aftest:airflow-worker`는 `folio-aftest`에서 pods create/delete, pods/log get, events list가 yes, `default` namespace의 pods create는 no다.
+  - unpause 후 `dags trigger`: `af-ok`는 success. KubernetesExecutor 워커 Pod가 클러스터 내부 인증으로 `folio-aftest`에 KPO Pod를 만들었고, OpenSearch에 `source_uri=af://pgx/official-chart` 청크 1개가 적재됐다. `af-fail`(없는 키)은 failed이고, folio Pod는 Error 상태로 남았다. 워커 Pod는 모두 정리됐다.
+  - task 로그: 원격 로그·로그 PVC를 설정하지 않으면 워커 Pod와 함께 사라진다. 가이드와 values에 원격 로그 설정 예시를 주석으로 넣었다(미검증).
+- 정리: helm release 2개와 namespace 2개, 레지스트리 컨테이너, push한 이미지, `~/folio-af-test`, 터널, kubeconfig 복사본을 삭제했다. k3s containerd에 남은 이미지(`apache/airflow:3.2.2`, git-sync, postgres 등)는 sudo가 없어 지우지 못했다.
+
 ## 미완료와 한계
 
-- 운영 Airflow 가이드는 렌더링만 확인했다. 공식 차트를 실제로 설치하고, git-sync·RBAC로 folio Pod를 띄우는 것은 미검증이다.
-- KPO는 단일 노드 k3s에서 `dags test`로만 검증했다. 스케줄러·KubernetesExecutor 경로는 미검증이다. Pod에 프로젝트 ConfigMap을 마운트하지 않으므로 프로젝트가 들어 있는 이미지가 필요하다.
+- 운영 Airflow 가이드의 원격 로그 설정, 외부 PostgreSQL 실서버, git-sync 인증(credentialsSecret)은 미검증이다.
+- 다중 노드 클러스터에서는 검증하지 않았다(단일 노드 k3s만). KPO Pod에는 프로젝트 ConfigMap을 마운트하지 않으므로 프로젝트가 들어 있는 이미지가 필요하다.
 - Compose Airflow는 개발용이다. SQLite를 쓰는 standalone이고, docker.sock 마운트는 호스트 root 권한과 같다.
 - 오프라인 번들(`make_bundle.sh`)에는 Airflow 이미지가 들어 있지 않다.
