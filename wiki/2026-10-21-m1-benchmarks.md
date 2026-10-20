@@ -50,8 +50,22 @@ PyPI 4.0.12(2026-10-11) 기준 Apache-2.0에 추가 조건이 붙는다. 계열�
 상세: [backends/RESULTS.md](../bench/m1/backends/RESULTS.md).
 
 - pgx(aarch64, sm_121)에서 Docling은 GPU로 돈다(torch 2.14.1+cu130). PP-StructureV3는 paddlepaddle-gpu 3.3.1(cu129)·3.5 nightly(cu130) 모두 `run_check()`에서 "Unsupported GPU architecture"로 실패해 CPU로만 쟀다.
-- 첫 측정에서 PP-StructureV3가 116쪽 실패했다. 원인은 어댑터 버그였다(아래). 수정 전 수치는 PP-StructureV3에 불리하게 오염돼 있다.
-- 수정 후 재측정 결과와 결론은 backends/RESULTS.md의 "어댑터 버그 수정 후" 절을 따른다.
+- 첫 측정에서 PP-StructureV3는 어댑터 버그 두 개(아래) 때문에 116쪽이 실패하고 실제 표가 뒤집혔다. 두 버그를 고친 뒤 다시 쟀다.
+- 잠정 권고는 Docling이다(확신도 중간). 기존 기본값(PP-StructureV3 GPU)은 바꾸지 않았다.
+
+| 지표 (버그 수정 후) | Docling | PP-StructureV3 (CPU) |
+| --- | --- | --- |
+| 디지털 텍스트 일치 | 0.9997 | 0.9997 |
+| 스캔 OCR 유사도 (합성 10) | 0.63 | **0.816** |
+| 표 셀 정확도 10개 평균 | **0.843** | 0.735 |
+| 합성 표 t01~t06 | 0.86~1.0 | **1.0** |
+| 실제 약관 표 t07~t10 평균 | **0.67** | 0.34 |
+| 쪽 단위 실패 | 0 | 0 |
+| CPU s/page (부하 없을 때 재측정, 디지털 / 스캔 / 표) | **1.07 / 3.22 / 1.55** | 18.95 / 29.1 / 10.2 |
+| 최대 메모리 | 약 5.5 GB | 샤드당 12 GB, 한 샤드 66 GB (원인 미확인) |
+
+- Docling GPU(GB10) 전체 실행 중앙값은 디지털 0.47, 스캔 3.15, 표 0.16 s/page다(다른 세션 vLLM과 GPU 공유 중). PP-StructureV3 GPU 속도는 이 장비에서 잴 수 없었다.
+- 한글 스캔 OCR이 중요하면 PP-StructureV3가 낫다. Docling 구조 + PP OCR 조합은 시험하지 않았다.
 
 ### VLM 모델 1개
 
@@ -90,6 +104,7 @@ PyPI 4.0.12(2026-10-11) 기준 Apache-2.0에 추가 조건이 붙는다. 계열�
 | 문제 | 상태 |
 | --- | --- |
 | `folio/backends/ppstructure.py`가 paddle의 numpy 배열(`cell_box_list`)에 `or []`를 써서 표가 있는 페이지에서 `ValueError` | pgx에서 재현 후 수정, 회귀 테스트 추가(`tests/test_backends.py::test_ppstructure_numpy_results`). 같은 패턴의 `rec_scores`도 수정 |
+| `ppstructure.py`가 `cell_box_list`를 `<td>` 순서와 그대로 짝지어, 상자가 오른쪽 아래부터 오는 실제 표가 행·열 모두 뒤집힘 | 수정(`_reading_order`), 회귀 테스트 `test_ppstructure_cell_reading_order`. 실제 표 셀 정확도 0.0~0.12 → 0.28~0.42. 상자 수와 `<td>` 수가 다르면 여전히 어긋남 |
 | 표 헤더 행 하나가 `max_tokens`보다 길면 `adaptive`가 상한을 넘는 중복 청크를 수천 개 만든다(d01 31쪽, Docling의 139열 표) | 미수정. 벤치마크에서는 해당 표 2개를 모든 설정에서 제외 |
 | 약관 d12·d13의 `제N조` 줄이 헤딩으로 인식되지 않아 청킹이 페이지 단위로 내려간다 | 미수정, 미시험 |
 

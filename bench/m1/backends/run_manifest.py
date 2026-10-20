@@ -9,11 +9,16 @@ so torch/paddle allocator stats are added when available.
 """
 from __future__ import annotations
 
-import argparse, difflib, json, resource, sys, time, traceback
+import argparse, difflib, json, os, resource, sys, time, traceback
 from pathlib import Path
 
-sys.path.insert(0, str(Path.home() / "folio-m1-bench/folio-src/scripts"))
-sys.path.insert(0, str(Path.home() / "folio-m1-bench/folio-src"))
+try:
+    import paddle  # noqa: F401  (must load before pymupdf on aarch64, else segfault)
+except ImportError:
+    pass
+ROOT = Path(os.environ.get("FOLIO_ROOT", Path.home() / "folio-m1-bench/folio-src"))  # folio-dev for the post-fix rerun
+sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT))
 from bench_backends import norm, table_scores, text_match  # noqa: E402
 from folio.parse import default  # noqa: E402
 
