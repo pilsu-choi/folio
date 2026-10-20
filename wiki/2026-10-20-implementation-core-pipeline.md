@@ -91,6 +91,10 @@ sources:
 ## 미완료·미검증
 
 - DOCX·HWPX(FR-20, FR-21): 보류.
+- 작업 중 dev에 PRD 개정(형식·VLM·청킹)이 들어왔다. 병합한 뒤 확인한 개정 PRD와의 차이는 다음과 같다. 이번 작업에서 반영하지 않았다.
+  - FR-27~29(PPTX·XLSX·Markdown·TXT): 미구현.
+  - FR-02·05·06: 지금은 이미지·품질 미달 페이지가 OCR 경로가 기본이고, VLM은 옵션이다. 개정 PRD는 VLM을 기본으로 둔다.
+  - FR-07: 지금은 `auto` 전략이다. 개정 PRD는 `adaptive`를 기본으로 둔다.
 - 미검증:
   - FR-15 Airflow DAG(로컬 Airflow로 실행하지 않음).
   - docling·ppstructure·GPU 구조 분석 백엔드로 실제 이미지 빌드.

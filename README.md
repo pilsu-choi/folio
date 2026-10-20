@@ -9,6 +9,7 @@ parse (PDF 텍스트 레이어 + 구조 분석 백엔드, OCR·VLM 폴백) → c
 ## 현재 상태 (2026-10-20)
 
 - DOCX·HWPX(FR-20, FR-21)를 제외한 PRD FR을 구현했다. DOCX·HWPX는 보류 중이며, parse에 넣으면 `NotImplementedError`가 난다.
+- 구현은 형식·VLM·청킹 개정 이전의 PRD를 따른다. 개정 PRD의 FR-27~29(PPTX·XLSX·Markdown·TXT), VLM 기본 적용(FR-02·05·06), `adaptive` 청킹(FR-07)은 아직 반영하지 않았다. 차이는 [PRD 구현 현황](PRD.md#구현-현황-2026-10-20-featcore-pipeline)에 정리했다.
 - 검증한 것: 단위 테스트, Sink 통합 테스트(OpenSearch·Milvus·pgvector), Compose E2E, kind + Helm E2E(업그레이드·워커 강제 종료 포함), 오프라인 번들 설치. 상세는 [wiki/2026-10-20-implementation-core-pipeline.md](wiki/2026-10-20-implementation-core-pipeline.md)에 있다.
 - 미정: 기본 구조 분석 백엔드(Docling vs PP-StructureV3)는 고객사 샘플 벤치마크 후 정한다. `FOLIO_STRUCTURE_URL`이 없으면 모델 없는 `heuristic` 백엔드를 쓴다.
 
