@@ -28,7 +28,7 @@ NAMESPACES = ("folio", "service", "apps")
 request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("request_id", default=None)
 job_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("job_id", default=None)
 _CONFIGURED: dict[str, Any] = {}
-_STD = set(vars(logging.LogRecord("", 0, "", 0, "", None, None))) | {"message", "asctime", "taskName"}
+_STD = set(vars(logging.LogRecord("", 0, "", 0, "", None, None))) | {"message", "asctime", "taskName", "color_message"}
 _CRED = re.compile(r"(?<=://)[^/@\s]+:[^/@\s]*@")
 
 
@@ -89,6 +89,16 @@ def configure(level: str | int | None = None, force: bool = False) -> int:
         logger.propagate = False
     _CONFIGURED.update(level=lvl, handlers=handlers)
     return lvl
+
+
+def adopt(*names: str) -> None:
+    """Route third-party loggers (``uvicorn``, ``celery``) through the same JSON handlers and level."""
+    lvl = configure()
+    for name in names:
+        log = logging.getLogger(name)
+        log.handlers = list(_CONFIGURED["handlers"])
+        log.setLevel(lvl)
+        log.propagate = False
 
 
 def log_event(event: str, level: int = logging.INFO, logger: str = "folio", exc_info=None, **fields) -> None:

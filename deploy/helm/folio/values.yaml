@@ -37,7 +37,7 @@ secrets:
 
 # Non-secret application settings
 config:
-  logLevel: INFO          # FOLIO_LOG_LEVEL. Logs are JSON lines on stdout: kubelet rotates them (containerLogMaxSize);
+  logLevel: INFO          # FOLIO_LOG_LEVEL. Logs are JSON lines on stderr: kubelet rotates them (containerLogMaxSize);
                           # ship/retain them with the cluster collector (Fluent Bit, Promtail/Alloy -> Loki, ...).
   storageUri: ""          # FOLIO_STORAGE_URI; empty = bundled MinIO bucket or the pipeline's own value
   awsRegion: us-east-1

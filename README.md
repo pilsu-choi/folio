@@ -252,7 +252,7 @@ flowchart LR
     U["브라우저"] -->|X-Request-ID| APP["채팅 App"]
     APP -->|같은 X-Request-ID| API["folio API"]
     API -->|job_id| W["worker"]
-    APP & API & W --> OUT["stdout JSON 한 줄<br/>ts · level · logger · event · request_id · job_id"]
+    APP & API & W --> OUT["stderr JSON 한 줄<br/>ts · level · logger · event · request_id · job_id"]
     OUT --> DC["Compose: local 드라이버<br/>20MB x 5 로테이션"]
     OUT --> K8["k8s: kubelet 로테이션<br/>+ 클러스터 수집기(Fluent Bit, Loki 등)"]
     CLI["CLI·노트북"] --> F["FOLIO_LOG_FILE<br/>로테이션 파일(선택)"]

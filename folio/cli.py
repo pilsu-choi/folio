@@ -122,10 +122,10 @@ def cmd_reprocess(args) -> int:
 def cmd_api(args) -> int:
     import uvicorn
 
-    from folio.logging import configure
+    from folio.logging import adopt
 
-    level = logging.getLevelName(configure()).lower()  # the middleware logs requests: one access line, not two
-    uvicorn.run("service.api:app", host=args.host, port=args.port, log_level=level, access_log=False)
+    adopt("uvicorn", "uvicorn.error")  # JSON lines; the API middleware logs requests, so no uvicorn access log
+    uvicorn.run("service.api:app", host=args.host, port=args.port, log_config=None, access_log=False)
     return 0
 
 

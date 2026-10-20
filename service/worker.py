@@ -30,11 +30,7 @@ celery_app.conf.update(
 @setup_logging.connect
 def _setup_logging(**_):
     """Connecting here stops Celery from configuring root logging; our JSON handlers also carry its own records."""
-    flog.configure()
-    celery_log = logging.getLogger("celery")
-    celery_log.handlers = list(logging.getLogger("service").handlers)
-    celery_log.setLevel(logging.getLogger("service").level)
-    celery_log.propagate = False
+    flog.adopt("celery")
 
 
 def source_key(pipeline: str, filename: str) -> str:

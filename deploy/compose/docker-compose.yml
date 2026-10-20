@@ -51,7 +51,7 @@ x-folio-env: &folio-env
   FOLIO_LLM_MODEL: ${FOLIO_LLM_MODEL:-}
   FOLIO_LLM_API_KEY: ${FOLIO_LLM_API_KEY:-}
 
-# Container logs: every service writes JSON lines to stdout; Docker keeps them per container with rotation
+# Container logs: folio services write JSON lines to stderr; Docker keeps them per container with rotation
 # (`docker compose logs -f api`, files under /var/lib/docker/containers). Size/count via FOLIO_LOG_MAX_SIZE/FILES.
 x-logging: &logging
   driver: local

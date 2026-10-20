@@ -101,16 +101,23 @@ def _partner(key, cands, grams):
 
 def _parse_items(reply: str) -> list[dict]:
     text = _THINK.sub("", reply)
-    start = text.find("[")
-    if start < 0:
+    starts = [m.start() for m in re.finditer(r"\[", text)]
+    if not starts:
         raise ValueError("no JSON array in reply")
-    body = text[start:].rstrip()
-    for cand in (body, body + "]"):  # models sometimes drop the outer closing bracket
-        try:
-            data, _ = json.JSONDecoder().raw_decode(cand)
-            return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
-        except json.JSONDecodeError as exc:
-            err = exc
+    err = None
+    for start in starts:  # skip leading non-item arrays such as "[1]"
+        body = text[start:].rstrip()
+        for cand in (body, body + "]"):  # models sometimes drop the outer closing bracket
+            try:
+                data, _ = json.JSONDecoder().raw_decode(cand)
+            except json.JSONDecodeError as exc:
+                err = err or exc
+                continue
+            if isinstance(data, list) and (not data or any(isinstance(x, dict) for x in data)):
+                return [x for x in data if isinstance(x, dict)]
+            break
+    if err is None:
+        raise ValueError("no JSON array of objects in reply")
     raise ValueError(f"JSON decode error (reply likely truncated or malformed): {err}") from err
 
 

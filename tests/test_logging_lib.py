@@ -115,3 +115,6 @@ def test_parse_items_missing_outer_bracket():
     reply = 'ok: [{"type": "comparison", "question": "q", "evidence": [{"page": "A", "quote": "x"}]}'
     assert testset._parse_items(reply)[0]["question"] == "q"
     assert testset._parse_items('<think>[x]</think>[{"a": 1}] trailing') == [{"a": 1}]
+    assert testset._parse_items('see [1] and [2]: [{"a": 1}]') == [{"a": 1}]
+    with pytest.raises(ValueError, match="no JSON array of objects"):
+        testset._parse_items("only [1]")
