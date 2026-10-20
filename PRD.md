@@ -298,7 +298,7 @@ HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. 변환
 
 ### 구조 트리
 
-Document JSON의 `heading`과 `section_path`로 트리를 만든다. 헤딩이 없는 형식은 슬라이드(PPTX)·시트(XLSX)·페이지를 상위 노드로 쓴다. 리프는 원자 단위인 `paragraph`, `list`, `table`, `kv`, `figure`, `code` 블록이다. `header`·`footer`는 청크에 넣지 않는다.
+Document JSON의 `heading`과 `section_path`로 트리를 만든다. 헤딩이 없는 형식은 슬라이드(PPTX)·시트(XLSX)·페이지를 상위 노드로 쓴다. 리프는 원자 단위인 `paragraph`, `list`, `table`, `kv`, `figure`, `code` 블록이다. `header`·`footer`는 청크에 넣지 않는다. 파싱 단계에서 `제N조(제목)`로 시작하는 문단은 조 섹션으로 `section_path`에 들어간다(조 표시만 있는 문단은 `heading`).
 
 ### 알고리즘
 
@@ -312,7 +312,7 @@ Document JSON의 `heading`과 `section_path`로 트리를 만든다. 헤딩이 �
 | --- | --- | --- |
 | `paragraph` | 문장 | 문장 중간에서 자르지 않음 |
 | `list` | 항목 | 하위 항목은 상위 항목과 함께 |
-| `table` | 행 묶음 | 각 청크에 헤더 행 반복, 병합 셀(`spans`)이 걸친 행은 함께 |
+| `table` | 행 묶음 | 각 청크에 헤더 행 반복(헤더가 `max_tokens`의 절반을 넘으면 반복하지 않고 본문 행처럼 나눔), 병합 셀(`spans`)이 걸친 행은 함께 |
 | `code` | 줄 | 빈 줄 경계를 우선 |
 | `figure` | 나누지 않음 | 캡션(`caption`)과 함께 |
 
