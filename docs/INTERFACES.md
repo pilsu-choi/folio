@@ -122,6 +122,8 @@ from `folio`. Login (OIDC code flow + PKCE via Authlib, or a fixed `dev` user) s
 | `POST /api/conversations/{id}/messages` | `{content, k?, mode?, filters?}` → 201 `{messages: [user, assistant], conversation}` |
 | `PATCH /api/messages/{id}` | `{feedback: up\|down\|null}` (assistant messages only) |
 | `DELETE /api/conversations/{id}/messages/{mid}` | 204, deletes `mid` and every later message |
+| `GET /api/conversations/{id}/messages/{mid}/sources/{n}/page.png` | source `n` of that answer: its `page`, bbox highlighted, cropped to bbox + 36pt (2 px/pt); 404 without page or PDF |
+| `GET /api/conversations/{id}/messages/{mid}/sources/{n}/pdf` | the whole PDF (proxied from folio `GET /v1/documents/{doc_id}/pdf`); only documents in that stored answer's hits |
 
 - Every query is scoped by the login `sub`; another user's ids return 404.
 - Send: history is rebuilt from the database (newest 50, starting with a user turn), `filters = {**client, **acl}`

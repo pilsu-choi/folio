@@ -25,6 +25,8 @@ from apps.chat.store import ChatStore
 
 MAX_MESSAGES = 50  # folio /v1/chat limits
 MAX_CONTENT = 20000
+PAGE_ZOOM = 2  # page preview: 2 px per pt (an A4 page is 1190 px wide)
+PAGE_MARGIN = 36  # pt of context around the cited area
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 router = APIRouter()
 User = Annotated[dict, Depends(current_user)]
@@ -196,6 +198,59 @@ def _ask_folio(client: httpx.Client, req: dict) -> dict:
     if r.status_code == 502:
         raise HTTPException(502, detail or "answer generation failed")
     raise HTTPException(503, f"search service error {r.status_code}")
+
+
+def _hit_record(request: Request, user: dict, cid: str, mid: int, n: int) -> tuple[dict, dict]:
+    """Source n of a stored answer: users only open documents that their own (ACL-filtered) answers returned."""
+    conv = _owned(request, user, cid)
+    msg = next((m for m in _store(request).list_messages(user["sub"], cid) if m["id"] == mid), None)
+    hits = (msg or {}).get("hits") or []
+    if msg is None or msg["role"] != "assistant" or not 1 <= n <= len(hits):
+        raise HTTPException(404, "source not found")
+    return conv, {**(hits[n - 1].get("record") or {}), "doc_id": hits[n - 1].get("doc_id")}
+
+
+def _source_pdf(request: Request, conv: dict, record: dict) -> bytes:
+    params = {"pipeline": conv["pipeline"]} if conv["pipeline"] else {}
+    try:
+        r = request.app.state.folio.get(f"/v1/documents/{record['doc_id']}/pdf", params=params)
+    except httpx.HTTPError as exc:
+        raise HTTPException(503, f"search service unavailable: {type(exc).__name__}") from exc
+    if r.status_code in (400, 404):
+        raise HTTPException(404, "the original PDF is not available for this source")
+    if r.status_code != 200:
+        raise HTTPException(503, f"search service error {r.status_code}")
+    return r.content
+
+
+@router.get("/api/conversations/{cid}/messages/{mid}/sources/{n}/pdf")
+def source_pdf(cid: str, mid: int, n: int, request: Request, user: User):
+    conv, record = _hit_record(request, user, cid, mid, n)
+    return Response(_source_pdf(request, conv, record), media_type="application/pdf",
+                    headers={"Cache-Control": "private, max-age=600"})
+
+
+@router.get("/api/conversations/{cid}/messages/{mid}/sources/{n}/page.png")
+def source_page(cid: str, mid: int, n: int, request: Request, user: User):
+    """The cited area of the page, highlighted: the chunk's bbox (pt, top-left origin of the visible page) plus context."""
+    import pymupdf
+
+    conv, record = _hit_record(request, user, cid, mid, n)
+    if not record.get("page"):
+        raise HTTPException(404, "this source has no page")
+    doc = pymupdf.open(stream=_source_pdf(request, conv, record), filetype="pdf")
+    if not 1 <= record["page"] <= doc.page_count:
+        raise HTTPException(404, "page not in the PDF")
+    page = doc[record["page"] - 1]
+    clip = None
+    if record.get("bbox"):
+        box = pymupdf.Rect(record["bbox"])
+        page.draw_rect((box + (-2, -2, 2, 2)) * page.derotation_matrix, color=(0.95, 0.55, 0), fill=(1, 0.85, 0.2),
+                       fill_opacity=0.3, width=1.5)
+        # the source panel is narrow: show the cited area with some context, not the whole page
+        clip = (box + (-PAGE_MARGIN, -PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)) & page.rect  # visible-page coords
+    png = page.get_pixmap(matrix=pymupdf.Matrix(PAGE_ZOOM, PAGE_ZOOM), clip=clip).tobytes("png")
+    return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=600"})
 
 
 @router.patch("/api/messages/{mid}")

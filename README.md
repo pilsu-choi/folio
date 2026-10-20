@@ -164,6 +164,7 @@ flowchart LR
     A -- "코드 교환·ID 토큰 검증" --> IdP
     A <--> DB[("App DB<br/>users·conversations·messages")]
     A -- "POST /v1/chat<br/>이력 + 권한 필터(클레임)" --> F["folio API<br/>(내부망)"]
+    A -- "GET /v1/documents/{id}/pdf<br/>근거 원문" --> F
     F --> S[("검색 저장소")]
     F --> L["LLM<br/>vLLM(OpenAI 호환)·Claude"]
 ```
@@ -185,6 +186,7 @@ sequenceDiagram
 - **로그인**: `FOLIO_APP_AUTH=oidc`면 OIDC 코드 플로(PKCE, ID 토큰 서명·nonce 검증)로 로그인한다. 세션은 서명된 쿠키(HttpOnly, SameSite=Lax)다. 기본값은 `oidc`이고, 로그인 없는 개발용 `dev` 모드(고정 사용자)는 명시해야 켜진다
 - **권한**: `FOLIO_APP_ACL_CLAIMS='{"tenant_id": "tenant"}'`이면 토큰의 `tenant` 클레임이 검색 필터 `tenant_id`가 된다. 클라이언트가 같은 키를 보내도 덮어쓰고, 클레임이 없는 사용자는 검색할 수 없다(403)
 - **대화 API**: 대화 목록·생성·조회·이름 변경·삭제, 메시지 전송, 답변 피드백(`up`·`down`), "이 질문부터 삭제". 다른 사용자의 대화는 404
+- **원문 하이라이트**: 근거 카드의 "원문 보기"를 누르면 App이 folio에서 그 문서의 PDF를 받아, 인용된 쪽의 근거 영역(`bbox`)을 칠하고 주변까지 잘라 이미지로 보여 준다. 이미지를 누르면 PDF가 그 쪽에서 열린다. 사용자는 자기 답변의 근거로 나온 문서만 열 수 있다. 변환한 DOCX·HWPX·HWP도 저장된 변환 PDF로 표시된다
 - **UI**: 대화 목록, `[n]` 인용을 누르면 근거 청크(문서·섹션·페이지·점수)를 보여 주는 패널, 재작성된 검색어 표시, 라이트·다크, 모바일. 외부 리소스를 쓰지 않아 폐쇄망에서 그대로 쓴다
 
 ```bash

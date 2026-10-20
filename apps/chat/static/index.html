@@ -126,6 +126,12 @@ aside.right .head .close { display: none; }
 .src .body { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 7.5em; overflow: hidden; position: relative; }
 .src.expanded .body { max-height: none; }
 .src .more { border: 0; background: none; color: var(--accent); font-size: 12px; padding: 4px 0 0; }
+.src .acts { display: flex; gap: 12px; }
+.src .page { margin-top: 8px; }
+.src .page:empty { display: none; }
+.src .page a { display: block; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #fff; }
+.src .page img { display: block; width: 100%; height: auto; }
+.src .page .none { font-size: 12px; color: var(--muted); }
 .src .badge { font-size: 10px; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 4px; }
 
 #sourcesBtn { display: none; }
@@ -338,6 +344,7 @@ aside.right .head .close { display: none; }
   }
 
   const SKIP = new Set(["doc_id", "chunk_id", "content", "contextualized_content", "embedding", "bbox", "page", "pages", "section_path", "source_uri", "chunk_type"]);
+  const NO_PDF = /\.(png|jpe?g|tiff?|bmp|webp|xlsx|md|markdown|txt)$/i;  // formats folio keeps no PDF for
   const NO_SOURCES = `<div class="none">답변을 받으면 검색된 문서 조각이 여기에 표시됩니다.</div>`;
 
   function renderSources(idx, flashN) {
@@ -359,7 +366,9 @@ aside.right .head .close { display: none; }
       el.innerHTML = `<div class="top"><span class="n">[${n}]</span><span class="title">${esc(title)}</span>` +
         `${cited.has(n) ? `<span class="badge">인용</span>` : ""}<span class="score">${Number(h.score).toFixed(3)}</span></div>` +
         `${where ? `<div class="where">${esc(where)}</div>` : ""}${tags ? `<div class="tags">${tags}</div>` : ""}` +
-        `<div class="body">${esc(h.content)}</div><button class="more" type="button">펼치기</button>`;
+        `<div class="body">${esc(h.content)}</div><div class="acts"><button class="more" type="button">펼치기</button>` +
+        `${r.page && t.id && !NO_PDF.test(String(r.source_uri || "")) ? `<button class="more view" type="button" data-n="${n}" data-mid="${t.id}" data-page="${esc(r.page)}">원문 보기</button>` : ""}</div>` +
+        `<div class="page"></div>`;
       box.appendChild(el);
     });
     if (flashN) {
@@ -497,6 +506,17 @@ aside.right .head .close { display: none; }
     if (bot && !window.getSelection().toString()) select(+bot.dataset.idx);
   });
   $("sources").addEventListener("click", (e) => {
+    const view = e.target.closest(".view");
+    if (view) {  // cited page rendered by the server with the chunk's area highlighted; click opens the PDF there
+      const box = view.closest(".src").querySelector(".page");
+      if (box.innerHTML) { box.innerHTML = ""; view.textContent = "원문 보기"; return; }
+      const base = `api/conversations/${encodeURIComponent(cur)}/messages/${view.dataset.mid}/sources/${view.dataset.n}`;
+      box.innerHTML = `<a href="${base}/pdf#page=${view.dataset.page}" target="_blank" rel="noopener" title="PDF에서 열기">` +
+        `<img src="${base}/page.png" alt="${view.dataset.page}쪽, 근거 위치 표시"></a>`;
+      box.querySelector("img").onerror = () => { box.innerHTML = `<div class="none">원문 PDF가 없습니다. PDF로 변환해 처리한 문서만 볼 수 있습니다(PPTX는 convert 모드).</div>`; };
+      view.textContent = "원문 닫기";
+      return;
+    }
     const more = e.target.closest(".more"); if (!more) return;
     const src = more.closest(".src"); src.classList.toggle("expanded");
     more.textContent = src.classList.contains("expanded") ? "접기" : "펼치기";

@@ -41,7 +41,7 @@ def extract_atoms(page: pymupdf.Page) -> tuple[list[Atom], list[Atom]]:
     rhwp, Hancom, OnlyOffice) draw Korean text without space glyphs or with the spaces drawn elsewhere, which
     also breaks PyMuPDF lines inside a word. A gap counts when it exceeds the line's usual letter gap by a
     space width, so letter-spaced (distributed) text stays one word. A line that starts right where the previous
-    word ended continues that word.
+    word ended continues that word, and one that continues the previous line on its baseline keeps its line id.
     """
     rm = page.rotation_matrix
     turn = pymupdf.Matrix(rm.a, rm.b, rm.c, rm.d, 0, 0)
@@ -50,6 +50,7 @@ def extract_atoms(page: pymupdf.Page) -> tuple[list[Atom], list[Atom]]:
     words: list[Atom] = []
     tail: list[Atom] = []  # chars of the last word if it ended at a line end, not at a space or gap
     tail_dir = None
+    last = None  # (last non-space atom, its direction) for keeping line ids of runs split by PyMuPDF
     line_id = 0
     for blk in raw["blocks"]:
         if blk.get("type") != 0:
@@ -66,7 +67,11 @@ def extract_atoms(page: pymupdf.Page) -> tuple[list[Atom], list[Atom]]:
             d = _DIRS.get((round(v.x), round(v.y))) if abs(v.x) < 0.01 or abs(v.y) < 0.01 else None
             gaps = sorted(max(0.0, _gap(a, b, d)) for a, b in zip(atoms, atoms[1:])
                           if d and not (a.text.isspace() or b.text.isspace()))
-            base = gaps[(len(gaps) - 1) // 2] if gaps else 0.0
+            base = gaps[(len(gaps) - 1) // 2] if len(gaps) > 1 else 0.0  # one gap says nothing about spacing
+            first = next((a for a in atoms if not a.text.isspace()), None)
+            if first and last and last[1] == d and _adjacent(last[0], first, d, 0.16 * first.size):  # <= a space apart
+                for a in atoms:
+                    a.line = last[0].line
             if d != tail_dir:
                 tail = []
             cur: list[Atom] = []
@@ -89,6 +94,8 @@ def extract_atoms(page: pymupdf.Page) -> tuple[list[Atom], list[Atom]]:
             if cur:
                 words.append(_word(cur))
                 tail, tail_dir = (cur, d) if d else ([], None)
+            if first:
+                last = (next(a for a in reversed(atoms) if not a.text.isspace()), d)
     return chars, words
 
 
