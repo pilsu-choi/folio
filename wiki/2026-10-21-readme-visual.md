@@ -28,3 +28,5 @@ sources:
 - README의 상대 링크 9개가 모두 존재함을 `test -e`로 확인했다.
 - 이전 README의 명령·환경변수·엔드포인트·프로필 키워드가 새 README에 남아 있는지 grep으로 확인했다.
 - GitHub 등 실제 호스팅 화면에서의 렌더링은 확인하지 않았다.
+- 이전 README의 백틱 토큰 전체를 새 README와 대조했다. 빠진 것은 `project-template/dags/folio_ingest.py` 하나였고 Airflow 설명에 다시 넣었다. 나머지는 표기만 바뀐 것(예: `cp .env.example .env`가 한 줄 명령에 합쳐짐)이다.
+- 검토 후 수정: 원본 형식 파싱 라벨을 "구조 분석·OCR 없음, 그림만 VLM 설명"으로 바로잡고(PPTX·XLSX 그림은 VLM 호출), 검색 400 조건을 `required_filters` 기준으로 고쳤다. 단계 간 계약(Document JSON, Chunk Record, Sink)만 고정한다는 설명과 PRD 링크를 추가했다.

@@ -30,7 +30,7 @@ flowchart LR
 | embed | OpenAI 호환 임베딩 서버로 청크를 벡터로 변환 | `embedding` 필드 |
 | index | 검색 저장소(Sink)에 저장. 같은 문서를 다시 넣으면 이전 청크를 교체 | 검색 인덱스 |
 
-어느 단계든 `module:function` 하나로 바꿀 수 있다. 상속이나 플러그인 등록은 필요 없다.
+단계 사이에서 주고받는 데이터 형식(Document JSON, Chunk Record, Sink)만 고정돼 있다([PRD 계약 명세](PRD.md#계약-명세)). 그래서 어느 단계든 `module:function` 하나로 바꿀 수 있다. 상속이나 플러그인 등록은 필요 없다.
 
 ## 구축은 파일 3개
 
@@ -74,19 +74,19 @@ sequenceDiagram
     W->>W: run_pipeline (parse → chunk → map → embed)
     W->>S3: document.json · chunks.json 저장
     W->>Idx: 청크 upsert
-    W->>DB: 단계별 상태 · 소요 시간 기록
+    W->>DB: 단계마다 상태 · 소요 시간 기록
     App->>API: GET /v1/jobs/{id}
     API-->>App: succeeded | partial | failed
 ```
 
-Airflow에서는 DAG가 folio 이미지로 `folio run`을 실행한다. Airflow 쪽에 folio를 설치할 필요가 없다.
+Airflow에서는 예시 DAG(`project-template/dags/folio_ingest.py`)가 folio 이미지로 `folio run`을 실행한다. Airflow 쪽에 folio를 설치할 필요가 없다.
 
 ## 파싱: 페이지마다 가장 싼 방법을 고른다
 
 ```mermaid
 flowchart TD
     In["입력 파일"] --> T{"형식?"}
-    T -- "PPTX · XLSX · MD · TXT" --> N["원본 구조 그대로 읽기<br/>모델 호출 0회"]
+    T -- "PPTX · XLSX · MD · TXT" --> N["원본 구조 그대로 읽기<br/>구조 분석·OCR 없음<br/>그림만 VLM 설명"]
     T -- "DOCX · HWPX" --> X["아직 미지원<br/>NotImplementedError"]
     T -- "이미지" --> IMG
     T -- "PDF" --> Q{"페이지의 글자 레이어<br/>품질이 괜찮은가?"}
@@ -94,7 +94,7 @@ flowchart TD
     Q -- "아니오 (스캔·깨진 폰트)" --> IMG{"VLM 서버가 있나?<br/>FOLIO_VLM_URL"}
     IMG -- "예" --> V["VLM으로 읽기<br/>text_source = vlm"]
     IMG -- "아니오" --> O["OCR로 읽기<br/>text_source = ocr"]
-    D --> EN["그림 설명 · 구조가 약한 표만<br/>VLM으로 보강 (VLM 있을 때)"]
+    D --> EN["그림·약한 표만 VLM 보강<br/>VLM 있을 때"]
 ```
 
 - **구조 분석 모델**: 페이지에서 제목·문단·표 영역을 찾는 모델. 기본은 PP-StructureV3 GPU 서버다. GPU가 없으면 CPU 버전(약 40배 느림, 메모리 약 12 GB), 개발·CI는 모델 없는 `heuristic`을 쓴다. 라이브러리 단독 사용 시 `FOLIO_STRUCTURE_URL`이 없으면 `heuristic`이다.
@@ -105,10 +105,10 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    Q["질의 + 필터"] --> F{"필수 필터<br/>있나?"}
-    F -- "없음" --> E400["400 에러"]
-    F -- "있음" --> B["키워드 검색<br/>BM25"]
-    F -- "있음" --> V["의미 검색<br/>벡터"]
+    Q["질의 + 필터"] --> F{"required_filters<br/>충족?"}
+    F -- "아니오" --> E400["400 에러"]
+    F -- "예" --> B["키워드 검색<br/>BM25"]
+    F -- "예" --> V["의미 검색<br/>벡터"]
     B --> R["순위 합치기<br/>RRF"]
     V --> R
     R --> RR["재정렬 (선택)<br/>rerank"]
