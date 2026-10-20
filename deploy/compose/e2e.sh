@@ -20,6 +20,6 @@ cleanup() { [ "${KEEP:-0}" = 1 ] || "${dc[@]}" down -v --remove-orphans >/dev/nu
 trap 'cleanup; [ -z "${TMP_ENV:-}" ] || rm -f "$TMP_ENV"' EXIT
 
 port=${FOLIO_API_PORT:-8080}
-"${dc[@]}" up -d --build ${NO_BUILD:+--no-build}
+if [ -n "${NO_BUILD:-}" ]; then "${dc[@]}" up -d --no-build; else "${dc[@]}" up -d --build; fi
 basic_scenario "http://127.0.0.1:${port}"
 log "compose E2E passed"

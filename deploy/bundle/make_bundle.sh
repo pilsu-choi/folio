@@ -20,9 +20,9 @@ while [ $# -gt 0 ]; do
   esac
 done
 HELM=${HELM:-helm}
-MINIO_TAG=RELEASE.2025-04-22T22-12-26Z
+MINIO_IMAGE=cgr.dev/chainguard/minio:latest@sha256:cff197fef764642223ef9f4444c903d51aee9b544a7be8bc007fef6b7b00d136
 images=("folio:$VERSION" "folio-structure:$VERSION-cpu" "folio-opensearch:$VERSION"
-        "postgres:16" "rabbitmq:3-management-alpine" "minio/minio:$MINIO_TAG")
+        "postgres:16" "rabbitmq:3-management-alpine" "$MINIO_IMAGE")
 
 have() { docker image inspect "$1" >/dev/null 2>&1; }
 ensure() {
@@ -42,11 +42,17 @@ work=$(mktemp -d); stage="$work/$name"
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$stage/images" "$stage/compose" "$stage/helm" "$OUT"
 
+# A digest-pinned ref is verified here, then saved under its tag: `docker load` drops digests, so the
+# offline compose/helm values reference the tag (see docker-compose.offline.yml, values-offline.yaml).
+saved=()
 for img in "${images[@]}"; do
   ensure "$img"
-  f="$stage/images/$(echo "$img" | tr '/:' '__').tar"
-  echo "saving $img" >&2
-  docker save -o "$f" "$img"
+  ref=${img%@*}
+  [ "$ref" = "$img" ] || docker tag "$img" "$ref"
+  f="$stage/images/$(echo "$ref" | tr '/:' '__').tar"
+  echo "saving $ref" >&2
+  docker save -o "$f" "$ref"
+  saved+=("$ref")
 done
 
 "$HELM" package "$root/deploy/helm/folio" --version "$VERSION" --app-version "$VERSION" -d "$stage/helm" >/dev/null
@@ -59,7 +65,7 @@ if [ -n "$MODELS" ]; then
   mkdir -p "$stage/models"; cp -r "$MODELS"/. "$stage/models/"
 fi
 
-python3 - "$stage" "$VERSION" "${images[@]}" <<'PY'
+python3 - "$stage" "$VERSION" "${saved[@]}" <<'PY'
 import hashlib, json, os, subprocess, sys
 stage, version, *images = sys.argv[1:]
 out = []
@@ -77,6 +83,10 @@ json.dump({"name": "folio-bundle", "version": version, "images": out,
            "models": os.path.isdir(os.path.join(stage, "models")),
            "chart": sorted(os.listdir(os.path.join(stage, "helm")))}, open(os.path.join(stage, "manifest.json"), "w"), indent=2)
 PY
+
+# Plain-text copies so install.sh needs only POSIX sh + docker on the target host.
+printf '%s\n' "${saved[@]}" > "$stage/images.txt"
+echo "$VERSION" > "$stage/VERSION"
 
 tar -C "$work" -czf "$OUT/$name.tar.gz" "$name"
 echo "bundle: $OUT/$name.tar.gz ($(du -h "$OUT/$name.tar.gz" | cut -f1))" >&2

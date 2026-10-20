@@ -1,8 +1,8 @@
-#!/usr/bin/env bash
-# Install from the offline bundle (no internet needed).
+#!/bin/sh
+# Install from the offline bundle (no internet needed). Needs only POSIX sh and docker (+ compose plugin).
 #   ./install.sh                     # docker load + docker compose up -d (images local, FOLIO_REGISTRY empty)
 #   ./install.sh --registry REG      # docker load, retag + push to private registry REG, print the helm command
-set -euo pipefail
+set -eu
 cd "$(dirname "$0")"
 REGISTRY=""
 while [ $# -gt 0 ]; do
@@ -14,7 +14,7 @@ while [ $# -gt 0 ]; do
 done
 
 for t in images/*.tar; do docker load -i "$t"; done
-VERSION=$(python3 -c 'import json; print(json.load(open("manifest.json"))["version"])')
+VERSION=$(cat VERSION)
 
 if [ -z "$REGISTRY" ]; then
   cd compose
@@ -29,12 +29,11 @@ if [ -z "$REGISTRY" ]; then
   exit 0
 fi
 
-python3 - "$REGISTRY" <<'PY' | while read -r src dst; do docker tag "$src" "$dst" && docker push "$dst"; done
-import json, sys
-reg = sys.argv[1]
-for i in json.load(open("manifest.json"))["images"]:
-    print(i["image"], f"{reg}/{i['image']}")
-PY
+while read -r src; do
+  [ -n "$src" ] || continue
+  dst="$REGISTRY/$src"
+  docker tag "$src" "$dst" && docker push "$dst"
+done < images.txt
 cat <<MSG
 
 Images pushed to $REGISTRY. Install with Helm (create the Secret first, e.g.

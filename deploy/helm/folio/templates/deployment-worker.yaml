@@ -28,7 +28,9 @@ spec:
           image: {{ include "folio.appImage" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: {{- toYaml .Values.worker.args | nindent 12 }}
-          env: {{- include "folio.env" . | nindent 12 }}
+          env:
+            {{- include "folio.env" . | nindent 12 }}
+            - {name: FOLIO_WORKER_CONCURRENCY, value: {{ .Values.worker.concurrency | quote }}}
           envFrom:
             - secretRef: {name: {{ include "folio.secretName" . }}}
           livenessProbe:

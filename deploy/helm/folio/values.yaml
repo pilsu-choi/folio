@@ -78,7 +78,7 @@ infra:
     resources: {}
   minio:
     enabled: false
-    image: {repository: minio/minio, tag: "RELEASE.2025-04-22T22-12-26Z"}
+    image: {repository: cgr.dev/chainguard/minio, tag: "latest@sha256:cff197fef764642223ef9f4444c903d51aee9b544a7be8bc007fef6b7b00d136"}  # minio/minio is no longer published on Docker Hub
     rootUser: folio
     password: ""
     bucket: folio-artifacts
@@ -117,6 +117,8 @@ api:
 worker:
   replicas: 1
   args: ["worker"]
+  # Parallel tasks per pod (FOLIO_WORKER_CONCURRENCY). Parse holds page images in memory; scale replicas first.
+  concurrency: 2
   # Celery warm shutdown on SIGTERM: finish the running task. Must exceed the longest task.
   terminationGracePeriodSeconds: 300
   resources: {}

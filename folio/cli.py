@@ -123,8 +123,8 @@ def cmd_worker(args) -> int:
     from service.worker import celery_app
 
     argv = ["worker", "--loglevel", os.environ.get("FOLIO_LOG_LEVEL", "INFO").lower(), "-O", "fair"]
-    if args.concurrency:
-        argv += ["--concurrency", str(args.concurrency)]
+    concurrency = args.concurrency or int(os.environ.get("FOLIO_WORKER_CONCURRENCY", "2"))
+    argv += ["--concurrency", str(concurrency)]
     celery_app.worker_main(argv)
     return 0
 

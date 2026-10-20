@@ -10,3 +10,8 @@ structure:
   models:
     type: pvc
     existingClaim: folio-models
+# Bundled-infra images (only if infra.*.enabled): the bundle ships them by tag (docker load drops digests;
+# make_bundle.sh verified the digest).
+infra:
+  minio:
+    image: {repository: cgr.dev/chainguard/minio, tag: "latest"}

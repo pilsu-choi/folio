@@ -189,6 +189,7 @@ spec:
     metadata:
       labels: {{- include "folio.selector" (dict "root" $ "component" "minio") | nindent 8 }}
     spec:
+      securityContext: {fsGroup: 65532}  # chainguard minio runs as uid 65532
       {{- include "folio.imagePullSecrets" $ | nindent 6 }}
       containers:
         - name: minio

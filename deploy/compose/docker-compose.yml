@@ -109,7 +109,7 @@ services:
     volumes:
       - os-data:/usr/share/opensearch/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=3s >/dev/null"]
+      test: ["CMD-SHELL", "curl -fs 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=3s' >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -118,7 +118,7 @@ services:
 
   minio:
     profiles: [infra]
-    image: ${FOLIO_REGISTRY:-}minio/minio:RELEASE.2025-04-22T22-12-26Z
+    image: ${FOLIO_REGISTRY:-}cgr.dev/chainguard/minio:latest@sha256:cff197fef764642223ef9f4444c903d51aee9b544a7be8bc007fef6b7b00d136  # minio/minio is no longer published on Docker Hub
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-folio}
@@ -223,6 +223,9 @@ services:
   worker:
     <<: *app
     command: ["worker"]
+    environment:
+      <<: *folio-env
+      FOLIO_WORKER_CONCURRENCY: ${FOLIO_WORKER_CONCURRENCY:-2}
     # SIGTERM = Celery warm shutdown: finish the running task before exiting.
     stop_grace_period: 120s
     healthcheck:

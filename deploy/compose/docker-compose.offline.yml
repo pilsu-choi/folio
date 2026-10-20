@@ -4,7 +4,7 @@
 services:
   postgres:       {pull_policy: never}
   rabbitmq:       {pull_policy: never}
-  minio:          {pull_policy: never}
+  minio:          {image: "${FOLIO_REGISTRY:-}cgr.dev/chainguard/minio:latest", pull_policy: never}  # digest verified by make_bundle.sh
   opensearch:     {build: !reset null, pull_policy: never}
   structure:      {build: !reset null, pull_policy: never}
   structure-gpu:  {build: !reset null, pull_policy: never}

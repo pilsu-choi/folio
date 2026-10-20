@@ -19,7 +19,7 @@ fi
 kubectl config use-context "kind-$CLUSTER" >/dev/null
 
 images=("folio:$TAG" "folio-structure:$TAG-cpu" "folio-opensearch:$TAG"
-        postgres:16 rabbitmq:3-management-alpine minio/minio:RELEASE.2025-04-22T22-12-26Z)
+        postgres:16 rabbitmq:3-management-alpine cgr.dev/chainguard/minio:latest@sha256:cff197fef764642223ef9f4444c903d51aee9b544a7be8bc007fef6b7b00d136)
 for i in "${images[@]}"; do
   docker image inspect "$i" >/dev/null 2>&1 || docker pull "$i"
   kind load docker-image --name "$CLUSTER" "$i"
