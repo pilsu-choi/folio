@@ -32,8 +32,8 @@ Oct 20, 2026 · @pilsu
 - 선언형 매핑 DSL, 플러그인 마켓·레지스트리
 - 단계별 큐 분리, 오토스케일링 정책
 - Kubernetes Operator·CRD, 클러스터·GPU 노드 프로비저닝 — 이미 준비된 클러스터에 Helm으로 올리는 것까지만 다룬다
-- 대화 세션 저장, 에이전트 도구 호출 루프, 질문에서 필터 자동 추출 — `POST /v1/chat`은 무상태다. App이 매 요청에 대화 이력 전체와 권한 필터를 넣고, 대화 저장·에이전트 로직은 App이나 별도 레포가 맡는다
-- API 인증·인가 — folio API는 내부망 서비스로 둔다. 테넌트·ACL 필터 값은 App이 사용자 권한으로 정해 넘기고, folio는 `required_filters`로 누락만 막는다
+- folio API 안의 대화 저장, 에이전트 도구 호출 루프, 질문에서 필터 자동 추출 — `POST /v1/chat`은 무상태다. App이 매 요청에 대화 이력 전체와 권한 필터를 넣는다. 대화 저장·로그인은 참조 App `apps/chat`(FR-32)이 맡고, 에이전트 로직은 App이나 별도 레포가 맡는다
+- folio API 인증·인가 — folio API는 내부망 서비스로 둔다. 테넌트·ACL 필터 값은 App이 사용자 권한으로 정해 넘기고, folio는 `required_filters`로 누락만 막는다. 사용자 로그인(SSO)은 참조 App `apps/chat`이 맡는다
 - SaaS 커넥터(Slack, Notion 등) — 수집은 파일·URI 입력까지만 다룬다
 
 ## 사용자와 핵심 시나리오
@@ -78,6 +78,12 @@ Oct 20, 2026 · @pilsu
 2. App이 `POST /v1/chat`으로 `{messages, pipeline, k, filters}`를 보낸다. `messages`는 지금까지의 `user`·`assistant` 대화 전체이고 마지막은 `user`다. 대화 이력은 App이 보관한다.
 3. folio는 후속 질문을 독립 검색어로 바꿔(`query`) 검색하고, 번호 붙인 근거로 답한다. 응답 `answer`의 `[n]`은 `citations[]`와 `hits[n-1]`로 원문 청크를 가리킨다.
 
+### 시나리오 6 — 사내 사용자가 채팅 App으로 질문
+
+1. 운영자가 `apps/chat`을 OIDC IdP(Keycloak, Entra ID 등)에 등록하고, 토큰 클레임과 검색 필터의 매핑(`FOLIO_APP_ACL_CLAIMS`, 예: `tenant` → `tenant_id`)을 정한다. folio API는 내부망에 둔다.
+2. 사용자가 SSO로 로그인해 대화를 만들고 질문한다. App은 저장된 이력과 로그인으로 정해진 권한 필터를 붙여 `POST /v1/chat`을 호출하고, 성공한 턴만 저장한다.
+3. 사용자는 답변의 `[n]`을 눌러 근거 청크(문서·섹션·페이지)를 확인하고, 대화 목록에서 이전 대화를 이어 가거나 이름 변경·삭제·피드백을 남긴다.
+
 ## 기능 요구사항
 
 P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 요구가 확인되면 한다. 수용 기준은 레포의 샘플 문서 세트(`tests/fixtures/`)로 검증한다.
@@ -110,6 +116,7 @@ P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 �
 | FR-18 | Eval | Testset 생성, Recall@k·MRR·nDCG 평가. 서비스와 같은 `retrieval:` 설정으로 검색 | P2 | 설정 파일의 Git 커밋별로 결과 비교 가능 |
 | FR-30 | Service | Search API `POST /v1/search` (`query`, `pipeline`, `k`≤100, `mode`, `filters`) → `hits[]`. 파이프라인의 임베딩 단계·`retrieval:` 설정을 그대로 사용. 잘못된 필터·모드·누락된 필수 필터는 400 | P1 | 업로드 후 검색 결과가 반환되는 E2E 통과, `required_filters` 누락 시 400 |
 | FR-31 | Service | Chat API `POST /v1/chat` (`messages`, `pipeline`, `k`, `mode`, `filters`) → `{answer, query, citations[], hits[]}`. 무상태 멀티턴: 이력은 요청에 포함, 후속 질문은 검색 전에 독립 검색어로 재작성(첫 턴은 생략), 이전 답변의 `[n]` 표시는 제거. 근거·이력은 토큰 예산 안에서 자름. LLM 단계는 `generation.chat`(`module:function`, 기본 OpenAI 호환). `system` 역할 거부(422), `generation:` 없는 파이프라인·필수 필터 누락 400, LLM 실패 502 | P2 | 멀티턴 요청에서 재작성된 `query`로 검색, 인용 번호가 `hits`의 청크와 일치, 오류 코드가 명세대로 반환 |
+| FR-32 | App | 참조 채팅 App `apps/chat`: OIDC SSO(코드 플로 + PKCE, 개발용 `dev` 모드), 사용자별 대화·메시지 저장과 CRUD API(`/api/conversations`, 메시지 전송·피드백·"이 질문부터 삭제"), 외부 리소스 없는 단일 HTML UI(근거 패널, 인용 클릭). folio는 HTTP(`POST /v1/chat`)로만 호출하고, 권한 필터는 토큰 클레임에서 정해 클라이언트 값을 덮어씀. 실패한 턴은 저장하지 않음. Claude 사용 시 chat 단계 `folio.generation.anthropic:chat` | P2 | SSO 로그인 후 멀티턴 대화가 저장·재개됨, 다른 사용자의 대화 접근 404, 클라이언트가 보낸 ACL 필터 무시, 매핑된 클레임이 없으면 403 |
 | FR-22 | Deploy | 컨테이너 이미지: `folio`(API·워커·CLI 공용, 실행 명령으로 역할 선택), 구조 분석 모델 서버, 고객사 이미지 빌드용 베이스 | P0 | 같은 이미지 태그가 Compose와 k8s 양쪽에서 E2E 통과, non-root 실행, 이미지 안에 비밀값 없음 |
 | FR-23 | Deploy | Docker Compose 배포(앱 + PostgreSQL·RabbitMQ·OpenSearch·S3 호환 스토리지·모델 서버), GPU 서비스 선택 | P0 | 빈 서버에서 `docker compose up` 후 시나리오 3 통과 |
 | FR-24 | Deploy | Helm 차트: API·워커·모델 서버 Deployment, `folio init`·`schema apply` 실행 Job(hook), ConfigMap(파이프라인 YAML)·Secret(접속 정보), GPU 리소스·nodeSelector·toleration 설정 | P0 | kind(또는 k3s) 클러스터에서 `helm install` 후 시나리오 3 통과, `helm upgrade` 중 진행 중인 job 유실 없음 |
@@ -427,6 +434,7 @@ M1 벤치마크(2026-10-21, 공개 한글 디지털 문서 16개, 질의 249개,
 │  ├─ retrieval/  eval/      # 독립 모듈
 │  └─ cli.py                 # folio init / schema / run / reprocess
 ├─ service/                  # FastAPI + Celery 래퍼
+├─ apps/chat/                # 참조 채팅 App (SSO·대화 저장·UI). folio는 HTTP로만 호출
 ├─ project-template/         # schemas/ pipelines/ mappers.py dags/ samples/
 ├─ deploy/
 │  ├─ docker/                # Dockerfile (folio, folio-structure, 고객사 베이스)
@@ -449,6 +457,7 @@ M1 벤치마크(2026-10-21, 공개 한글 디지털 문서 16개, 질의 249개,
 | 검색 인덱스 | OpenSearch (기본), Milvus, pgvector |  |
 | 배치 | Airflow (선택) | 예시 DAG + Compose `airflow` 프로필(개발용). 작업은 folio 컨테이너에서 실행. 운영 Airflow는 설치하지 않고, 공식 Apache Airflow Helm 차트용 설치 가이드·values 예시·RBAC(`deploy/airflow/`)만 제공 |
 | 배포 | Docker 이미지, Docker Compose v2, Kubernetes + Helm 3 | 지원 k8s 최소 버전은 열린 질문 |
+| 채팅 App | FastAPI, Authlib(OIDC), SQLAlchemy(SQLite·PostgreSQL), 단일 HTML | `folio[app]` extra. 이미지·Compose·Helm에는 아직 넣지 않았다 |
 
 ## 마일스톤
 
@@ -466,6 +475,7 @@ M1에서 디지털 PDF 하나로 처음부터 끝까지 도는 것을 먼저 만
 | M2 | FR-27 PPTX, FR-28 XLSX, FR-29 Markdown·TXT | 그림·차트는 FR-06의 VLM을 재사용한다. Markdown·TXT는 모델 없이 구현돼 청킹 테스트 입력으로도 쓴다 |
 | M3 | FR-30 Search API, FR-17 `retrieval:` 설정·범위 필터 | 고객사마다 검색 래퍼를 다시 만들지 않게 한다. FR-18 Eval과 같은 검색 경로를 쓴다 |
 | M3 | FR-31 Chat API (무상태 멀티턴 생성) | FR-30 검색 경로를 그대로 쓰고, 운영 LLM은 VLM처럼 고객사 환경에서 정한다 |
+| M3 | FR-32 참조 채팅 App (SSO, 대화 저장) | FR-31 위에 얇게 둔다. 고객사 App이 있으면 그 App이 같은 계약으로 `/v1/chat`을 호출한다 |
 
 ## 구현 현황 (2026-10-21)
 
@@ -474,7 +484,7 @@ FR-21(DOCX·HWPX `native`, 보류)을 제외한 FR을 구현했다. FR-20(DOCX·
 | 상태 | FR |
 | --- | --- |
 | 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 20(DOCX 13·HWPX 11·HWP 1개를 변환 서버로 파싱, 모든 텍스트 블록에 쪽·bbox), 15(Compose Airflow + DockerOperator, k3s에 공식 Airflow 차트 설치 후 KubernetesExecutor → KubernetesPodOperator, folio 내장 PostgreSQL을 메타데이터 DB로 공유), 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~30 |
-| 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), PPTX `convert` 모드(픽스처 4장을 변환 서버와 이미지 안 LibreOffice로 변환, 쪽·bbox 확인. 실제 고객 슬라이드 미확인), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인), FR-31(stub LLM으로 재작성·인용·오류 코드만 확인, 실제 LLM 모델 미선정) |
+| 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), PPTX `convert` 모드(픽스처 4장을 변환 서버와 이미지 안 LibreOffice로 변환, 쪽·bbox 확인. 실제 고객 슬라이드 미확인), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인), FR-31(stub LLM으로 재작성·인용·오류 코드만 확인, 실제 LLM 모델 미선정), FR-32(실제 `/v1/chat`(memory sink·stub LLM)과 로컬 테스트용 OIDC 서버로 SSO·CRUD·ACL·브라우저 흐름 확인, 실제 IdP·실제 LLM·배포 미확인) |
 | 구현, 미검증 | FR-15 운영 Airflow 가이드의 원격 로그 설정(예시만 제공), FR-26 Helm 사설 레지스트리 경로 |
 | 보류 | FR-21 (DOCX·HWPX `native`) |
 
@@ -484,6 +494,7 @@ FR-21(DOCX·HWPX `native`, 보류)을 제외한 FR을 구현했다. FR-20(DOCX·
 - 기본 구조 분석 백엔드는 PP-StructureV3 GPU다(2026-10-20 사용자 결정). Compose `gpu` 프로필과 Helm 기본값이 GPU 서버를 띄우고, GPU가 없으면 `cpu`(Compose 프로필, `values-cpu.yaml`), 개발·CI는 `heuristic`을 쓴다. 폐쇄망 번들 기본 변형은 `STRUCTURE_VARIANTS=gpu`다. 모델을 미리 로드한 상태의 픽스처 11페이지 측정은 GPU(RTX 4070) 0.33~0.42 s/page, CPU 4스레드(pgx aarch64) 17.6 s/page, 최대 메모리 11.6 GiB다. 상세는 [PP-StructureV3 기본 백엔드](wiki/2026-10-21-ppstructure-gpu-default.md)에 있다.
 - 검색: `POST /v1/search`와 파이프라인 YAML `retrieval:`을 구현했다. 서비스·`folio eval run`·라이브러리 모두 `folio.pipeline.retriever(cfg)` 한 경로로 retriever를 만든다. 상세는 [검색 API 작업 기록](wiki/2026-10-20-implementation-search-api.md)에 있다.
 - 생성: `POST /v1/chat`과 YAML `generation:`을 구현했다(무상태 멀티턴, 기본 꺼짐). `folio eval testset --method llm`도 같은 chat 클라이언트(`folio.generation:http`)를 쓴다. 상세는 [멀티턴 생성 작업 기록](wiki/2026-10-21-generation-multiturn.md)에 있다.
+- 채팅 App: `apps/chat`(FR-32)을 추가했다. Claude API용 chat 단계 `folio.generation.anthropic:chat`도 추가했다(pgx vLLM 준비 전 테스트용). 상세는 [채팅 App 작업 기록](wiki/2026-10-21-chat-app-sso.md)에 있다.
 - `minio/minio`가 Docker Hub에서 더 이상 배포되지 않아, 내장 S3를 digest로 고정한 `cgr.dev/chainguard/minio`로 바꿨다.
 
 ## 열린 질문

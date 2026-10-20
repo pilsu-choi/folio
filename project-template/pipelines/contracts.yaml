@@ -24,6 +24,7 @@ retrieval:                 # POST /v1/search and folio.pipeline.search defaults
   # required_filters: [tenant_id]                                 # reject searches without it
 # generation:              # enables POST /v1/chat (stateless multi-turn answers citing [n])
 #   chat: {fn: folio.generation:http, max_tokens: 1024}           # FOLIO_LLM_URL / FOLIO_LLM_MODEL
+#   # chat: {fn: "folio.generation.anthropic:chat", effort: low}  # Claude API (pip install folio[anthropic]; ANTHROPIC_API_KEY)
 #   rewrite: true          # rewrite follow-up questions into a standalone search query
 #   max_context_tokens: 6000
 #   max_history_tokens: 2000
