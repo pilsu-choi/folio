@@ -92,5 +92,5 @@ sources:
 
 - 운영 Airflow 가이드의 원격 로그 설정, 외부 PostgreSQL 실서버, git-sync 인증(credentialsSecret)은 미검증이다.
 - 다중 노드 클러스터에서는 검증하지 않았다(단일 노드 k3s만). KPO Pod에는 프로젝트 ConfigMap을 마운트하지 않으므로 프로젝트가 들어 있는 이미지가 필요하다.
-- Compose Airflow는 개발용이다. SQLite를 쓰는 standalone이고, docker.sock 마운트는 호스트 root 권한과 같다.
+- Compose Airflow는 개발용이다. docker.sock 마운트는 호스트 root 권한과 같다. 메타데이터 DB는 2026-10-21에 SQLite에서 내장 postgres로 바꿨다([공유 PostgreSQL 기록](2026-10-21-airflow-shared-postgres.md)).
 - 오프라인 번들(`make_bundle.sh`)에는 Airflow 이미지가 들어 있지 않다.

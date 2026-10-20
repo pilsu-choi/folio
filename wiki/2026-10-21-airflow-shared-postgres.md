@@ -49,8 +49,26 @@ sources:
   - `helm uninstall folio` 후에도 PVC `data-folio-postgres-0`가 남는 것을 확인했고, 정리 단계에서 namespace와 함께 삭제했다.
 - 정리: release 2개, namespace 2개, 임시 레지스트리, push한 이미지, `postgres:16`(docker), `~/folio-af-test`, 터널, 테스트용 비밀번호 파일을 삭제했다. 다른 세션 컨테이너는 건드리지 않았다. k3s containerd에 남은 이미지는 sudo가 없어 지우지 못했다.
 
+## Compose 경로 (2026-10-21 추가)
+
+- 결정: 개발용 Compose의 Airflow도 SQLite 대신 Compose 내장 postgres의 `airflow` DB를 쓴다. Helm과 같은 변수명 `POSTGRES_AIRFLOW_PASSWORD`를 쓴다. 외부 DB는 `AIRFLOW_DATABASE_URL`로 지정한다.
+- 구현:
+  - one-shot `airflow-db` 서비스(`postgres:16`, profile `airflow`)가 Helm `create-databases`와 같은 SQL 3줄을 실행한다. 두 곳에 "keep in sync" 주석을 달았다.
+  - 공유 스크립트 파일로 빼지 않은 이유: Helm 템플릿은 차트 밖 파일을 읽을 수 없고, 오프라인 번들 구성을 건드리지 않으려 했다.
+  - `airflow`는 `airflow-db` 완료 후에 시작한다. `AIRFLOW__DATABASE__SQL_ALCHEMY_CONN`으로 연결한다.
+  - interpolation은 `:-`만 쓴다(`:?`를 쓰면 airflow 프로필을 안 쓰는 사람의 `config`도 깨진다). 비밀번호가 없으면 서비스가 명확한 메시지로 실패한다.
+- 검증(로컬 Docker Desktop):
+  - `docker compose config -q`: 기본, `airflow`, offline 모두 통과했다.
+  - `COMPOSE_PROJECT_NAME=folio-airflow-e2e AIRFLOW=1 deploy/compose/e2e.sh`: 통과했다. e2e는 이제 `airflow` DB의 `dag_run`에 해당 run이 있는지도 확인한다.
+  - executor `LocalExecutor`, `sql_alchemy_conn`이 `postgres:5432/airflow`를 가리키고, SQLite 파일이 없다.
+  - `airflow-db` 재실행: `ALTER ROLE`만 했다. `up --force-recreate airflow` 후에도 run 이력이 유지되고 healthy였다.
+
+## 공식 차트 fernet key (2026-10-21 추가)
+
+- 문제: values가 fernet key를 고정하지 않았다. 차트가 설치할 때마다 새 키를 만들면, 남아 있는 공유 DB나 복원한 백업의 connection·variable을 복호화하지 못한다.
+- 수정: `fernetKeySecretName: airflow-fernet-key`, 가이드에 Secret 생성 명령과 "키 사본 보관"을 추가했다. 이 수정은 렌더링만 확인했다.
+
 ## 미완료
 
-- Compose 경로는 바꾸지 않았다(Compose Airflow는 개발용 SQLite standalone).
-- 백업 CronJob은 차트에 넣지 않았다. 가이드에 요구사항으로만 적었다.
+- 백업 CronJob은 차트에 넣지 않았다. 가이드에 요구사항으로만 적었다(선택형 백업은 설계 논의 중).
 - 연결 수와 부하는 측정하지 않았다(DAG run 3회 규모).

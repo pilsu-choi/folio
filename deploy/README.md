@@ -41,7 +41,9 @@ curl localhost:8080/readyz
 - Offline: `-f docker-compose.yml -f docker-compose.offline.yml` (no build, `pull_policy: never`).
 - Worker `stop_grace_period` is 120s so SIGTERM (Celery warm shutdown) finishes the running task.
 - OpenSearch security is disabled in the bundled service: dev / closed network only.
-- Airflow example (FR-15): adding `airflow` to `COMPOSE_PROFILES` adds `airflow standalone` (UI on `${AIRFLOW_PORT:-8081}`, SQLite, DAGs unpaused at creation, dev only)
+- Airflow example (FR-15): adding `airflow` to `COMPOSE_PROFILES` adds `airflow standalone` (UI on `${AIRFLOW_PORT:-8081}`, LocalExecutor, metadata DB `airflow` on the bundled postgres created by the one-shot
+  `airflow-db` service - set `POSTGRES_AIRFLOW_PASSWORD`, or `AIRFLOW_DATABASE_URL` for an external DB; DAGs unpaused
+  at creation, dev only)
   with `project-template/dags/folio_ingest.py`. The DAG runs `folio run` in a sibling folio container via the
   mounted Docker socket (DockerOperator), so Airflow has no folio dependencies. Set `DOCKER_GID` (gid of
   `/var/run/docker.sock`) and `FOLIO_DOCKER_NETWORK=<project>_default`; the spawned container uses the project baked

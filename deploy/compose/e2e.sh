@@ -11,7 +11,7 @@ ENV_FILE=${ENV_FILE:-$here/.env}
 if [ ! -f "$ENV_FILE" ]; then
   ENV_FILE=$(mktemp)
   # Random throwaway secrets (alphanumeric = URL-safe); never persisted.
-  for k in POSTGRES_PASSWORD RABBITMQ_PASSWORD MINIO_ROOT_PASSWORD; do echo "$k=$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')" >> "$ENV_FILE"; done
+  for k in POSTGRES_PASSWORD RABBITMQ_PASSWORD MINIO_ROOT_PASSWORD POSTGRES_AIRFLOW_PASSWORD; do echo "$k=$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')" >> "$ENV_FILE"; done
   echo "COMPOSE_PROFILES=infra,cpu" >> "$ENV_FILE"
   TMP_ENV=$ENV_FILE
 fi
@@ -52,6 +52,9 @@ airflow_scenario() {
     i=$((i + 5)); [ "$i" -ge "$E2E_TIMEOUT" ] && die "DAG run $run timeout (last state: ${s:-none})"; sleep 5
   done
   log "DAG run $run succeeded"
+  # metadata lives in the bundled postgres (airflow DB), not in SQLite
+  "${dc[@]}" exec -T postgres sh -c "psql -X -U \"\$POSTGRES_USER\" -d airflow -tAc \"select count(*) from dag_run where run_id = '$run'\"" \
+    | grep -qx 1 || die "DAG run $run not found in the airflow database"
   n=$("${dc[@]}" exec -T api python -c "import json,os,urllib.request as u; b=os.environ['OPENSEARCH_URL']
 u.urlopen(u.Request(b + '/contracts/_refresh', method='POST'))
 q=json.dumps({'query': {'term': {'source_uri': '$src'}}}).encode()

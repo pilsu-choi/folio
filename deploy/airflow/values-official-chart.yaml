@@ -38,6 +38,8 @@ redis:
 # Stable secrets across upgrades (otherwise the chart generates them per install).
 apiSecretKeySecretName: airflow-api-secret-key     # key `api-secret-key`
 jwtSecretName: airflow-jwt-secret                  # key `jwt-secret`
+# Encrypts connections/variables in the metadata DB: must outlive reinstalls (shared DB, restored backups).
+fernetKeySecretName: airflow-fernet-key            # key `fernet-key`
 
 config:
   core:

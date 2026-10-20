@@ -252,7 +252,37 @@ services:
     depends_on:
       init: {condition: service_completed_successfully}
 
-  # Example Airflow (FR-15), profile `airflow`: `airflow standalone` (SQLite, dev only) with dags/folio_ingest.py.
+  # Airflow metadata DB (profile `airflow`): database + owner `airflow` on the bundled postgres, re-runnable.
+  # Same statements as the Helm init Job's create-databases step (deploy/helm/folio/templates/_helpers.tpl): keep in sync.
+  # External DB: set AIRFLOW_DATABASE_URL and this service does nothing.
+  airflow-db:
+    image: ${FOLIO_REGISTRY:-}postgres:16
+    profiles: [airflow]
+    restart: "no"
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-folio}
+      PGDATABASE: ${POSTGRES_DB:-folio}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-}
+      POSTGRES_AIRFLOW_PASSWORD: ${POSTGRES_AIRFLOW_PASSWORD:-}
+      AIRFLOW_DATABASE_URL: ${AIRFLOW_DATABASE_URL:-}
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        if [ -n "$$AIRFLOW_DATABASE_URL" ]; then echo "AIRFLOW_DATABASE_URL is set: external DB, nothing to do"; exit 0; fi
+        [ -n "$$POSTGRES_AIRFLOW_PASSWORD" ] || { echo "set POSTGRES_AIRFLOW_PASSWORD in .env" >&2; exit 1; }
+        psql -X -v ON_ERROR_STOP=1 -v db=airflow -v usr=airflow -v pw="$$POSTGRES_AIRFLOW_PASSWORD" <<'SQL'
+        SELECT format('CREATE ROLE %I LOGIN', :'usr') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'usr')\gexec
+        ALTER ROLE :"usr" WITH LOGIN PASSWORD :'pw';
+        SELECT format('CREATE DATABASE %I OWNER %I', :'db', :'usr') WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'db')\gexec
+        SQL
+        echo "database airflow ready"
+    depends_on:
+      postgres: {condition: service_healthy, required: false}
+
+  # Example Airflow (FR-15), profile `airflow`: `airflow standalone` (metadata in the bundled postgres, dev only).
   # The DAG runs `folio run` in a sibling folio container through the host Docker socket (DockerOperator), so the
   # Airflow image has no folio dependencies. Socket access = root on the host: dev / closed networks only.
   # DOCKER_GID: gid of /var/run/docker.sock as seen in containers (`stat -c %g`). FOLIO_DOCKER_NETWORK must be this
@@ -265,6 +295,7 @@ services:
       <<: *folio-env
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "False"  # dev: triggered runs start without unpausing
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW_DATABASE_URL:-postgresql+psycopg2://airflow:${POSTGRES_AIRFLOW_PASSWORD:-}@postgres:5432/airflow}
       FOLIO_IMAGE: *image-folio
       FOLIO_AIRFLOW_RUNNER: docker
       FOLIO_DOCKER_NETWORK: ${FOLIO_DOCKER_NETWORK:-folio_default}
@@ -282,6 +313,7 @@ services:
       start_period: 30s
     depends_on:
       init: {condition: service_completed_successfully}
+      airflow-db: {condition: service_completed_successfully}
     restart: unless-stopped
 
 volumes:

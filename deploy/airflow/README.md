@@ -25,6 +25,9 @@ kubectl -n airflow create secret generic airflow-metadata \
   --from-literal=connection='postgresql+psycopg2://airflow:CHANGE_ME@db.example:5432/airflow'
 kubectl -n airflow create secret generic airflow-api-secret-key --from-literal=api-secret-key="$(openssl rand -hex 32)"
 kubectl -n airflow create secret generic airflow-jwt-secret --from-literal=jwt-secret="$(openssl rand -hex 32)"
+# fernet key encrypts connections/variables in the DB: keep a copy, a reinstall with a new key cannot read them
+kubectl -n airflow create secret generic airflow-fernet-key \
+  --from-literal=fernet-key="$(python3 -c 'import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')"
 
 # 2. Airflow (edit the CHANGE_ME values first: folio image, git repo of the DAG)
 helm repo add apache-airflow https://airflow.apache.org

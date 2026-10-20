@@ -252,6 +252,7 @@ initContainers:
     {{- include "folio.containerSecurity" . | nindent 4 }}
 {{- with .Values.infra.postgres }}{{- if and .enabled .extraDatabases }}
   # Extra databases + owners on the bundled server: re-running is safe (create if missing, reset password).
+  # Same statements as the Compose airflow-db service (deploy/compose/docker-compose.yml): keep in sync.
   - name: create-databases
     image: {{ include "folio.image" (dict "root" $ "repository" .image.repository "tag" .image.tag) }}
     imagePullPolicy: {{ $.Values.image.pullPolicy }}

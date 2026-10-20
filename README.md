@@ -73,7 +73,7 @@ storage: ${FOLIO_STORAGE_URI:-.folio/artifacts}
 - Docker Compose: `deploy/compose/` (`cp .env.example .env` → `docker compose up -d`)
 - Kubernetes: `deploy/helm/folio/` (`helm install folio deploy/helm/folio -f values-dev.yaml`)
 - 폐쇄망: `deploy/bundle/make_bundle.sh` → `install.sh`
-- Airflow(개발용): `.env`의 `COMPOSE_PROFILES`에 `airflow` 추가, `DOCKER_GID`·`FOLIO_DOCKER_NETWORK` 설정 → UI `localhost:8081`
+- Airflow(개발용): `.env`의 `COMPOSE_PROFILES`에 `airflow` 추가, `POSTGRES_AIRFLOW_PASSWORD`·`DOCKER_GID`·`FOLIO_DOCKER_NETWORK` 설정 → UI `localhost:8081` (메타데이터는 내장 postgres의 `airflow` DB)
 - Airflow(운영): 공식 Apache Airflow Helm 차트 + `deploy/airflow/values-official-chart.yaml` + `rbac-folio-namespace.yaml` ([가이드](deploy/airflow/README.md)). 외부 DB 없이 folio 내장 PostgreSQL을 Airflow 메타데이터 DB로 공유할 수 있다(`infra.postgres.extraDatabases`)
 
 자세한 내용은 [deploy/README.md](deploy/README.md)에 있다.
