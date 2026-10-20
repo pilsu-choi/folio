@@ -151,7 +151,51 @@ sequenceDiagram
 - **이력 정리**: 이전 답변의 `[n]` 표시는 지난 턴의 근거를 가리키므로 지운다. 이력과 근거는 `max_history_tokens`·`max_context_tokens` 안에서 오래된 턴, 낮은 순위 청크부터 버린다
 - **인용**: 답변의 `[n]`은 `hits[n-1]`이다. 범위를 벗어난 번호는 `citations`에서 뺀다
 - **보안**: `system` 역할은 받지 않는다(422). 권한 필터는 검색과 같이 App이 채운다
-- LLM 단계는 `generation.chat: module:function`(`fn(messages, **opts) -> str`)으로 바꿀 수 있다. 기본은 `FOLIO_LLM_URL`의 OpenAI 호환 서버(vLLM 등)
+- LLM 단계는 `generation.chat: module:function`(`fn(messages, **opts) -> str`)으로 바꿀 수 있다. 기본은 `FOLIO_LLM_URL`의 OpenAI 호환 서버(vLLM 등)이고, Claude API는 `folio.generation.anthropic:chat`(`pip install -e ".[anthropic]"`, `ANTHROPIC_API_KEY`)
+
+## 채팅 App (선택)
+
+`apps/chat`은 `/v1/chat` 위에 얹은 참조 App이다. 사용자는 SSO로 로그인하고, 대화는 App의 DB에 저장된다. folio API는 인증이 없으므로 내부망에 두고, 사용자는 App만 접속한다.
+
+```mermaid
+flowchart LR
+    U["브라우저<br/>단일 HTML UI"] -- "세션 쿠키<br/>/api/*" --> A["채팅 App<br/>apps/chat"]
+    U -. "로그인 리다이렉트" .-> IdP["OIDC IdP<br/>Keycloak·Entra ID 등"]
+    A -- "코드 교환·ID 토큰 검증" --> IdP
+    A <--> DB[("App DB<br/>users·conversations·messages")]
+    A -- "POST /v1/chat<br/>이력 + 권한 필터(클레임)" --> F["folio API<br/>(내부망)"]
+    F --> S[("검색 저장소")]
+    F --> L["LLM<br/>vLLM(OpenAI 호환)·Claude"]
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 브라우저
+    participant A as 채팅 App
+    participant F as folio API
+    U->>A: POST /api/conversations/{id}/messages {content}
+    A->>A: DB에서 이력 복원(최근 50개) · filters = 클라이언트 값 + 로그인 ACL(우선)
+    A->>F: POST /v1/chat {messages, pipeline, filters}
+    F-->>A: {answer, query, citations, hits}
+    A->>A: 질문·답변을 함께 저장 (실패하면 저장하지 않음)
+    A-->>U: 201 {messages, conversation}
+```
+
+- **로그인**: `FOLIO_APP_AUTH=oidc`면 OIDC 코드 플로(PKCE, ID 토큰 서명·nonce 검증)로 로그인한다. 세션은 서명된 쿠키(HttpOnly, SameSite=Lax)다. 기본값은 `oidc`이고, 로그인 없는 개발용 `dev` 모드(고정 사용자)는 명시해야 켜진다
+- **권한**: `FOLIO_APP_ACL_CLAIMS='{"tenant_id": "tenant"}'`이면 토큰의 `tenant` 클레임이 검색 필터 `tenant_id`가 된다. 클라이언트가 같은 키를 보내도 덮어쓰고, 클레임이 없는 사용자는 검색할 수 없다(403)
+- **대화 API**: 대화 목록·생성·조회·이름 변경·삭제, 메시지 전송, 답변 피드백(`up`·`down`), "이 질문부터 삭제". 다른 사용자의 대화는 404
+- **UI**: 대화 목록, `[n]` 인용을 누르면 근거 청크(문서·섹션·페이지·점수)를 보여 주는 패널, 재작성된 검색어 표시, 라이트·다크, 모바일. 외부 리소스를 쓰지 않아 폐쇄망에서 그대로 쓴다
+
+```bash
+pip install -e ".[app]"
+folio api &                                                  # :8080, generation: 이 켜진 파이프라인
+FOLIO_APP_AUTH=dev FOLIO_API_URL=http://localhost:8080 uvicorn --factory apps.chat.main:create_app --port 8000
+# SSO: FOLIO_APP_AUTH=oidc OIDC_ISSUER=https://idp/realms/x OIDC_CLIENT_ID=folio-chat OIDC_CLIENT_SECRET=...
+#      FOLIO_APP_SECRET_KEY=... (redirect URI: <app>/auth/callback)
+```
+
+환경변수와 API 전체는 [docs/INTERFACES.md](docs/INTERFACES.md#chat-app-appschat-extra-folioapp)에 있다. 이미지·Compose·Helm에는 아직 넣지 않았다.
 
 ## 재처리: 바뀐 단계부터만 다시
 
@@ -229,6 +273,8 @@ hits = search(cfg, "위약금 조항", filters={"tenant_id": "acme", "article": 
 pip install -e ".[all]"          # 라이브러리 + 서비스 + 모든 Sink + S3
 pip install -e ".[ocr]"          # heuristic 백엔드용 OCR(rapidocr)
 pip install -e ".[docling]"      # 또는 ".[ppstructure]": 프로세스 내 구조 분석 백엔드
+pip install -e ".[app]"          # 채팅 App(apps/chat): Authlib, itsdangerous
+pip install -e ".[anthropic]"    # Claude API chat 단계
 pip install -e ".[dev]"          # 테스트
 ```
 
@@ -253,6 +299,7 @@ retrieval:                                # 생략하면 hybrid, k=10, content�
   required_filters: [tenant_id]           # 없으면 검색 요청 400
 generation:                               # 선택, 있으면 POST /v1/chat 사용 (true = 기본값)
   chat: {fn: folio.generation:http, max_tokens: 1024}   # FOLIO_LLM_URL / FOLIO_LLM_MODEL
+  # chat: {fn: "folio.generation.anthropic:chat", effort: low}   # Claude API (ANTHROPIC_API_KEY)
   rewrite: true                           # 후속 질문을 독립 검색어로 재작성
   max_context_tokens: 6000                # 근거 청크 예산
   max_history_tokens: 2000                # 대화 이력 예산 (오래된 턴부터 버림)
@@ -294,6 +341,7 @@ folio eval testset --pipeline contracts --n 50 && folio eval run --pipeline cont
 | VLM | 🟡 연동 완료, 운영 모델 미정(개발용 stub만 있음) |
 | 검색 API | ✅ `POST /v1/search` + YAML `retrieval:` ([작업 기록](wiki/2026-10-20-implementation-search-api.md)) |
 | 생성(Chat API) | 🟡 `POST /v1/chat` 무상태 멀티턴 + YAML `generation:`. stub LLM으로만 검증, 운영 LLM 미정, 스트리밍 미지원 ([작업 기록](wiki/2026-10-21-generation-multiturn.md)) |
+| 채팅 App | 🟡 `apps/chat`: SSO(OIDC)·대화 저장·UI. 실제 `/v1/chat`(stub LLM)·로컬 테스트용 OIDC 서버로 검증, 실제 IdP·LLM·배포 미확인 ([작업 기록](wiki/2026-10-21-chat-app-sso.md)) |
 | 구조 분석 | ✅ 기본 PP-StructureV3 GPU ([작업 기록](wiki/2026-10-21-ppstructure-gpu-default.md)) |
 | Airflow | ✅ 예시 DAG(DockerOperator 기본, KubernetesPodOperator 선택) ([작업 기록](wiki/2026-10-20-airflow-container-dag.md)) |
 
@@ -315,6 +363,7 @@ python scripts/bench_backends.py --backends heuristic,docling,ppstructure   # �
 ```
 folio/             라이브러리: contracts, parse, backends, chunk, embed, map, sinks, retrieval, generation, eval, storage, pipeline, cli
 service/           API(FastAPI) + 워커(Celery)
+apps/chat/         참조 채팅 App: SSO, 대화 저장 API, 단일 HTML UI
 project-template/  고객사 구축 템플릿: schemas/ pipelines/ mappers.py dags/ samples/
 deploy/            docker, compose, helm, bundle, kind, airflow
 tests/             단위, 통합, fixtures (생성 스크립트: tests/fixtures/make_fixtures.py)

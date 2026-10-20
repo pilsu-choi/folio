@@ -97,6 +97,34 @@ folio.generation.http(messages, *, url, model, api_key, temperature=0, max_token
 - Service: `POST /v1/chat {messages (1..50, content <= 20000 chars), pipeline, k, mode, filters}` ->
   `{pipeline, answer, query, citations, hits}`; `system` role or empty messages 422, `ValueError`/`ConfigError` 400,
   `GenerationError` 502. No streaming yet.
+- Claude chat step: `folio.generation.anthropic:chat(messages, *, model="claude-opus-5-5", max_tokens=16000, effort=None,
+  fallbacks=True, ...) -> str` (extra `folio[anthropic]`, credentials from `ANTHROPIC_API_KEY` etc., model override
+  `FOLIO_LLM_MODEL`). `system` turns become the top-level `system`; `fallbacks` sends `fallbacks="default"` (Claude API
+  only); a refusal raises.
+
+## Chat app (`apps/chat`, extra `folio[app]`)
+
+`uvicorn --factory apps.chat.main:create_app`. It talks to folio only over HTTP (`POST /v1/chat`) and imports nothing
+from `folio`. Login (OIDC code flow + PKCE via Authlib, or a fixed `dev` user) sets a signed session cookie
+(`folio_chat`, HttpOnly, SameSite=Lax, 12 h) with `{sub, email, name, acl}`.
+
+| Method · path | Body → response |
+| --- | --- |
+| `GET /auth/login`, `GET /auth/callback`, `POST /auth/logout` (204) | OIDC redirect · callback · local logout |
+| `GET /api/me` | `{sub, email, name, auth_mode, pipelines, acl_keys}` |
+| `GET/POST /api/conversations` | list (newest first) · `{title?, pipeline?}` → 201 conversation |
+| `GET/PATCH/DELETE /api/conversations/{id}` | conversation + `messages` · `{title}` · 204 |
+| `GET /api/conversations/{id}/messages` | messages in order |
+| `POST /api/conversations/{id}/messages` | `{content, k?, mode?, filters?}` → 201 `{messages: [user, assistant], conversation}` |
+| `PATCH /api/messages/{id}` | `{feedback: up\|down\|null}` (assistant messages only) |
+| `DELETE /api/conversations/{id}/messages/{mid}` | 204, deletes `mid` and every later message |
+
+- Every query is scoped by the login `sub`; another user's ids return 404.
+- Send: history is rebuilt from the database (newest 50, starting with a user turn), `filters = {**client, **acl}`
+  (login ACL wins), and the conversation's `pipeline` is used. The turn is stored only when folio answered: folio
+  400/422 -> 400, 502 -> 502, other errors or unreachable -> 503. The first question becomes the title.
+- `acl`: `FOLIO_APP_ACL_CLAIMS` maps filter fields to claims. A user missing a mapped claim gets 403 on send, because
+  folio drops `None` filters, which would widen the search.
 
 ## Storage
 
@@ -139,6 +167,20 @@ Stages: `parse → chunk → map → embed → index`. `PipelineResult` has `doc
 | `FOLIO_RERANK_URL` | optional rerank endpoint |
 | `FOLIO_LLM_URL`, `FOLIO_LLM_MODEL`, `FOLIO_LLM_API_KEY` | chat LLM for `generation:` / `POST /v1/chat` and `eval testset --method llm` (OpenAI-compatible; testset falls back to `FOLIO_VLM_URL`/`FOLIO_VLM_MODEL`) |
 | `FOLIO_LOG_LEVEL` | logging level |
+
+Chat app (`apps/chat`):
+
+| Variable | Meaning |
+| --- | --- |
+| `FOLIO_APP_AUTH` | `oidc` (default; startup fails without the secret and client) or `dev` (no login: fixed user `FOLIO_APP_DEV_USER`, claims `FOLIO_APP_DEV_CLAIMS` JSON) |
+| `OIDC_ISSUER` (or `OIDC_METADATA_URL`), `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_SCOPES` | IdP (Keycloak, Entra ID, Google, ...); redirect URI `<app>/auth/callback` |
+| `FOLIO_APP_SECRET_KEY` | session cookie signing key (required for `oidc`) |
+| `FOLIO_APP_COOKIE_SECURE` | `Secure` cookie flag (default true for `oidc`) |
+| `FOLIO_APP_PUBLIC_URL` | external base URL behind a proxy (builds the redirect URI) |
+| `FOLIO_APP_ACL_CLAIMS` | JSON `{filter_field: claim}`, e.g. `{"tenant_id": "tenant"}` |
+| `FOLIO_APP_PIPELINES` | comma list users may pick; empty = folio's default pipeline |
+| `FOLIO_APP_DATABASE_URL` | conversations DB (default `sqlite:///.folio/app.db`; PostgreSQL for production) |
+| `FOLIO_API_URL` | folio API base (default `http://localhost:8080`) |
 
 ## Commands (image entrypoint is `folio`)
 
