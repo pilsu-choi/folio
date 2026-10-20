@@ -14,7 +14,7 @@ parse (PDF 텍스트 레이어 + 구조 분석 백엔드, OCR·VLM 폴백) → c
 - 청킹: `adaptive`가 기본이다. `max_tokens` 안에 들어가는 가장 큰 구조 단위를 청크로 만든다. 대안은 `page`·`fixed`.
 - Airflow: 예시 DAG(`project-template/dags/folio_ingest.py`)는 folio 이미지로 `folio run`을 실행한다(DockerOperator 기본, KubernetesPodOperator 선택). Airflow에는 folio 의존성이 필요 없다. Compose `airflow` 프로필로 로컬 Airflow를 띄운다.
 - 검증한 것: 단위 테스트, Sink 통합 테스트(OpenSearch·Milvus·pgvector), Compose E2E(전 형식, VLM stub 포함), Compose Airflow DAG E2E(DockerOperator), kind + Helm E2E(업그레이드·워커 강제 종료 포함), 오프라인 번들 설치. 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md), [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md), [Airflow 컨테이너 DAG](wiki/2026-10-20-airflow-container-dag.md) 작업 기록에 있다.
-- 미정: 기본 구조 분석 백엔드(Docling vs PP-StructureV3)는 고객사 샘플 벤치마크 후 정한다. `FOLIO_STRUCTURE_URL`이 없으면 모델 없는 `heuristic` 백엔드를 쓴다.
+- 구조 분석: 기본은 PP-StructureV3 GPU 서버다(Compose `gpu` 프로필, Helm 기본값). GPU가 없으면 `cpu` 프로필·`values-cpu.yaml`(약 40배 느리고 메모리 약 12 GB), 개발·CI는 `dev` 프로필(heuristic)을 쓴다. 라이브러리를 단독으로 쓸 때 `FOLIO_STRUCTURE_URL`이 없으면 모델 없는 `heuristic` 백엔드를 쓴다. 상세는 [wiki/2026-10-21-ppstructure-gpu-default.md](wiki/2026-10-21-ppstructure-gpu-default.md).
 
 ## 설치
 

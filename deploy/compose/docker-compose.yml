@@ -137,7 +137,7 @@ services:
   # Structure analysis server (PP-StructureV3). One profile per variant; all share the network alias `structure`,
   # so FOLIO_STRUCTURE_URL stays http://structure:9000:
   #   gpu (default) - PP-StructureV3 on 1 NVIDIA GPU (host needs the NVIDIA container toolkit)
-  #   cpu           - PP-StructureV3 on CPU, for hosts without a GPU (same output, much slower)
+  #   cpu           - PP-StructureV3 on CPU, for hosts without a GPU (same blocks/tables, ~40x slower, ~12 GB RAM)
   #   dev           - model-free heuristic backend, for local development / CI
   # Model weights live in the `models` volume (not baked into the image); the offline bundle can pre-populate it.
   # /readyz turns healthy only after the weights are loaded (first start downloads them unless pre-populated).
@@ -187,6 +187,7 @@ services:
       FOLIO_STRUCTURE_CPU_THREADS: ${FOLIO_STRUCTURE_CPU_THREADS:-4}
       OMP_NUM_THREADS: ${FOLIO_STRUCTURE_CPU_THREADS:-4}
     cpus: ${FOLIO_STRUCTURE_CPUS:-4}
+    mem_limit: ${FOLIO_STRUCTURE_MEMORY:-14g}   # measured peak 11.6 GiB with 4 threads
     deploy: {}
 
   structure-dev:

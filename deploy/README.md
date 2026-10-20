@@ -6,7 +6,7 @@ environment variables are listed in [docs/INTERFACES.md](../docs/INTERFACES.md).
 | Path | Purpose |
 | --- | --- |
 | `docker/` | `Dockerfile` (folio: api/worker/cli), `Dockerfile.structure` (model server), `Dockerfile.opensearch` (nori baked in), `Dockerfile.project` (customer image) |
-| `compose/` | `docker-compose.yml` + `.gpu.yml` / `.offline.yml` overrides, `.env.example`, `e2e.sh` |
+| `compose/` | `docker-compose.yml` (profiles gpu/cpu/dev) + `.offline.yml` override, `.env.example`, `e2e.sh` |
 | `helm/folio/` | Helm 3 chart (no subcharts, works offline), see its README |
 | `bundle/` | `make_bundle.sh` / `install.sh` - air-gapped bundle (FR-26) |
 | `kind/` | kind config and Helm E2E (`e2e.sh`) |
