@@ -244,3 +244,43 @@ def test_against_real_folio_chat(env, tmp_path):
             assert r.status_code == 400 and "generation" in r.json()["detail"]
     finally:
         celery_app.conf.update(task_always_eager=False)
+
+
+@pytest.mark.parametrize("rotation", [0, 90])
+def test_source_page_highlight_and_pdf(env, rotation):
+    import pymupdf
+
+    pdf = pymupdf.open()
+    pdf.new_page(width=300, height=400).insert_text((72, 90), "제1조 목적", fontname="korea", fontsize=12)
+    pdf[0].set_rotation(rotation)  # bbox is in visible-page coordinates either way
+    pdf_bytes, folio, seen = pdf.tobytes(), Folio(), []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.method == "GET":
+            seen.append(str(req.url))
+            return httpx.Response(200, content=pdf_bytes) if "/v1/documents/d1/pdf" in req.url.path \
+                else httpx.Response(404, json={"detail": "no PDF"})
+        return folio(req)
+
+    with TestClient(create_app(transport=httpx.MockTransport(handler))) as c:
+        conv = c.post("/api/conversations", json={}).json()
+        folio_hit = {"page": 1, "bbox": [72, 72, 200, 100]}
+        user_msg, bot = c.post(f"/api/conversations/{conv['id']}/messages", json={"content": "목적은?"}).json()["messages"]
+        from apps.chat.store import messages
+
+        with c.app.state.store.engine.begin() as cx:  # the fake answer's hit, now with a bbox
+            cx.execute(messages.update().where(messages.c.id == bot["id"]).values(
+                hits=[{"chunk_id": "c1", "doc_id": "d1", "score": 1.0, "content": "x", "record": folio_hit}]))
+        base = f"/api/conversations/{conv['id']}/messages/{bot['id']}/sources"
+        r = c.get(f"{base}/1/page.png")
+        assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+        pix = pymupdf.Pixmap(r.content)
+        assert (pix.width, pix.height) == (2 * (200 - 72 + 72), 2 * (100 - 72 + 72))  # bbox + 36pt context
+        r_, g, b = pix.pixel(2 * (136 - 36), 2 * (96 - 36))[:3]  # inside the bbox: tinted, not white
+        assert b < 200 and r_ > 200
+        assert pix.pixel(4, 4)[:3] == (255, 255, 255)  # context outside the bbox
+        assert c.get(f"{base}/1/pdf").content == pdf_bytes
+        assert seen[0].endswith("/v1/documents/d1/pdf")
+        assert c.get(f"{base}/2/page.png").status_code == 404  # only hits of this answer
+        assert c.get(f"/api/conversations/{conv['id']}/messages/{user_msg['id']}/sources/1/pdf").status_code == 404
+        assert c.get(f"/api/conversations/nope/messages/{bot['id']}/sources/1/pdf").status_code == 404
