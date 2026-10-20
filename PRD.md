@@ -484,7 +484,7 @@ FR-21(DOCX·HWPX `native`, 보류)을 제외한 FR을 구현했다. FR-20(DOCX·
 | 상태 | FR |
 | --- | --- |
 | 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 20(DOCX 13·HWPX 11·HWP 1개를 변환 서버로 파싱, 모든 텍스트 블록에 쪽·bbox), 15(Compose Airflow + DockerOperator, k3s에 공식 Airflow 차트 설치 후 KubernetesExecutor → KubernetesPodOperator, folio 내장 PostgreSQL을 메타데이터 DB로 공유), 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~30 |
-| 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), PPTX `convert` 모드(픽스처 4장을 변환 서버와 이미지 안 LibreOffice로 변환, 쪽·bbox 확인. 실제 고객 슬라이드 미확인), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(구간 기반 testset·유형별 지표·CI를 M1 한국어 질의 249개와 청킹 설정 4종으로 확인, 실제 LLM으로 다중 쪽 유형 생성은 미확인. [작업 기록](wiki/2026-10-21-eval-span-testset.md)), FR-25(values·env 전환 렌더링만 확인), FR-31(stub LLM으로 재작성·인용·오류 코드만 확인, 실제 LLM 모델 미선정), FR-32(실제 `/v1/chat`(memory sink·stub LLM)과 로컬 테스트용 OIDC 서버로 SSO·CRUD·ACL·브라우저 흐름 확인, 실제 IdP·실제 LLM·배포 미확인) |
+| 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), PPTX `convert` 모드(픽스처 4장을 변환 서버와 이미지 안 LibreOffice로 변환, 쪽·bbox 확인. 실제 고객 슬라이드 미확인), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(구간 기반 testset·유형별 지표·CI를 M1 한국어 질의 249개와 청킹 설정 4종으로 확인, OpenRouter qwen3.8-27b로 공개 샘플에서 8개 유형 생성 확인, 고객사 샘플·내부 LLM 미확인. [작업 기록](wiki/2026-10-21-eval-span-testset.md)), FR-25(values·env 전환 렌더링만 확인), FR-31(stub LLM으로 재작성·인용·오류 코드만 확인, 실제 LLM 모델 미선정), FR-32(실제 `/v1/chat`(memory sink·stub LLM)과 로컬 테스트용 OIDC 서버로 SSO·CRUD·ACL·브라우저 흐름 확인, 실제 IdP·실제 LLM·배포 미확인) |
 | 구현, 미검증 | FR-15 운영 Airflow 가이드의 원격 로그 설정(예시만 제공), FR-26 Helm 사설 레지스트리 경로 |
 | 보류 | FR-21 (DOCX·HWPX `native`) |
 

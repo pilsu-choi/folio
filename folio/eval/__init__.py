@@ -2,10 +2,11 @@
 
 Plain functions (the CLI wraps them as ``folio eval testset|run|compare``):
 
-    testset.generate(docs, pages=50, pairs=0, method="llm"|"heuristic", types=testset.TYPES, ...) -> (items, stats)
+    testset.generate(docs, pages=50, pairs=20, method="llm"|"heuristic", types=testset.TYPES, min_per_type=0, ...)
+        -> (items, stats)   # a page pair is asked for one type; min_per_type tops up short types on unused pages
         item = {"qid", "type", "query", "answer", "evidence": [{"doc_id", "page", "text", "start", "end"}]}
         types: fact, table, section (one page); multi_hop, comparison, temporal, multi_intent (two pages of a
-        document); multi_document, comparison (pages of two documents)
+        document); multi_document (pages of two documents)
     metrics.recall_at_k / all_at_k / mrr / ndcg_at_k over per-rank span coverage
     run(testset, retriever, ks=(1, 5, 10), config_dir=None, chunks=None, **search_kwargs) -> dict
         {"metrics": {"recall@5": .., "all@5": .., "mrr": .., "ndcg@10": ..}, "by_type": {type: {"n", "metrics"}},

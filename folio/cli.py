@@ -180,7 +180,8 @@ def cmd_eval(args) -> int:
         items, stats = testset.generate(
             [Document.model_validate(d) for d in docs], args.pages, args.pairs, args.method,
             tuple(args.types.split(",")) if args.types else testset.TYPES, llm_url=args.llm_url, model=args.model,
-            extra_body=json.loads(args.llm_extra) if args.llm_extra else None, seed=args.seed)
+            extra_body=json.loads(args.llm_extra) if args.llm_extra else None, seed=args.seed,
+            min_per_type=args.min_per_type, max_rounds=args.max_rounds)
         Path(args.out).write_text(json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
         _out({"testset": args.out, "items": len(items), "stats": stats})
     elif args.eval_cmd == "run":
@@ -270,6 +271,8 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--llm-url", default=None, help="OpenAI-compatible base URL (default FOLIO_LLM_URL)")
     t.add_argument("--model", default=None)
     t.add_argument("--llm-extra", default=None, help='JSON merged into the request, e.g. \'{"chat_template_kwargs": {"enable_thinking": false}}\'')
+    t.add_argument("--min-per-type", type=int, default=0, help="extra rounds on unused pages until each type has N")
+    t.add_argument("--max-rounds", type=int, default=3, help="cap on --min-per-type extra rounds")
     t.add_argument("--seed", type=int, default=0)
     t.add_argument("--out", default="testset.json")
     r = es.add_parser("run")

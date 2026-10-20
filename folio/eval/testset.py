@@ -17,8 +17,8 @@ from folio.generation import http as chat
 
 SINGLE = ("fact", "table", "section")  # one page
 SAME_DOC = ("multi_hop", "comparison", "temporal", "multi_intent")  # two pages of one document
-CROSS_DOC = ("multi_document", "comparison")  # two pages of different documents
-TYPES = tuple(dict.fromkeys(SINGLE + SAME_DOC + CROSS_DOC))
+CROSS_DOC = ("multi_document",)  # two pages of different documents
+TYPES = SINGLE + SAME_DOC + CROSS_DOC
 
 _DESC = {
     "fact": "사실 조회: 단일 문장·수치 하나로 답이 나오는 질문",
@@ -114,11 +114,16 @@ def _heuristic(text: str) -> tuple[str, str] | None:
 def generate(docs: list[Document], pages: int = 50, pairs: int = 20, method: str = "llm",
              types: tuple[str, ...] = TYPES, llm_url: str | None = None, model: str | None = None,
              api_key: str | None = None, extra_body: dict | None = None, seed: int = 0, workers: int = 4,
-             min_chars: int = 250, timeout: float = 300) -> tuple[list[dict], dict]:
+             min_chars: int = 250, timeout: float = 300, min_per_type: int = 0,
+             max_rounds: int = 3) -> tuple[list[dict], dict]:
     """Sample ``pages`` single pages and ``pairs`` page pairs (seeded; up to 5 pages per document first) and ask the
-    LLM for questions with verbatim evidence. Returns ``(items, stats)``; an item is
+    LLM for questions with verbatim evidence. A single page is asked for every requested one-page type; a page pair is
+    asked for exactly one type (requested pair types in rotation), because given several the LLM picks the easiest.
+    ``min_per_type`` > 0 then runs up to ``max_rounds`` extra rounds that target only the types still short, on pages
+    and pairs not used yet. Returns ``(items, stats)``; an item is
     ``{qid, type, query, answer, evidence: [{doc_id, page, text, start, end}]}`` (``start``/``end`` = page-text
-    offsets, informational). Dropped questions are counted per reason and type in ``stats``."""
+    offsets, informational). Dropped questions are counted per reason and type in ``stats``; ``stats["short"]`` lists
+    the types that stayed below ``min_per_type``."""
     if method not in ("heuristic", "llm"):
         raise ValueError("method must be 'heuristic' or 'llm'")
     if unknown := set(types) - set(TYPES):
@@ -132,27 +137,34 @@ def generate(docs: list[Document], pages: int = 50, pairs: int = 20, method: str
     rng = random.Random(seed)
     text = {(d.doc_id, p): t for d in docs for p, t in page_texts(d).items() if len(t) >= min_chars}
     hdrs = {d.doc_id: _table_headers(d) for d in docs}
-    by_doc: dict[str, list] = {}
-    for key in sorted(text):
-        by_doc.setdefault(key[0], []).append(key)
+    grams = {k: _grams(v[:5500]) for k, v in text.items()} if set(types) - set(SINGLE) else {}
+    used: set = set()  # (keys, type) and (anchor page, type) already asked
 
-    def sample(n: int) -> list:
+    def sample(n: int, keys: list) -> list:
+        by_doc: dict[str, list] = {}
+        for k in sorted(keys):
+            by_doc.setdefault(k[0], []).append(k)
         first = [k for ks in by_doc.values() for k in rng.sample(ks, min(len(ks), 5))]
         rest = [k for ks in by_doc.values() for k in ks if k not in first]
         picked = rng.sample(first, min(n, len(first)))
         return sorted(picked + rng.sample(rest, max(0, min(n - len(picked), len(rest)))))
 
-    single = [t for t in types if t in SINGLE]
-    same = [t for t in types if t in SAME_DOC]
-    cross = [t for t in types if t in CROSS_DOC]
-    units = [([k], single) for k in sample(pages)] if single and pages else []
-    if pairs and (same or cross):
-        grams = {k: _grams(v[:5500]) for k, v in text.items()}
-        for i, k in enumerate(sample(pairs)):  # alternate same-doc / cross-doc pairs when both are wanted
-            is_cross = bool(cross) and (not same or i % 2 == 1 or len(by_doc[k[0]]) < 2)
-            cands = [c for c in text if (c[0] != k[0]) == is_cross and c != k]
-            if other := _partner(k, rng.sample(cands, min(len(cands), 200)), grams):
-                units.append(([k, other], cross if is_cross else same))
+    def page_units(n: int, kinds: list[str]) -> list:
+        free = [k for k in text if not all(((k,), t) in used for t in kinds)]
+        return [([k], kinds) for k in sample(n, free)]
+
+    def pair_units(n: int, kinds: list[str]) -> list:
+        """``n`` pairs, one type each in rotation; same-doc types need a document with two pages."""
+        out = []
+        for i, t in enumerate(kinds):
+            cross = t in CROSS_DOC
+            anchors = [k for k in text if (k, t) not in used
+                       and (cross or sum(1 for c in text if c[0] == k[0]) > 1)]
+            for k in sample(n // len(kinds) + (i < n % len(kinds)), anchors):
+                cands = [c for c in text if (c[0] != k[0]) == cross and c != k]
+                if other := _partner(k, rng.sample(cands, min(len(cands), 200)), grams):
+                    out.append(([k, other], [t]))
+        return out
 
     def ask(unit) -> list[dict] | None:
         keys, kinds = unit
@@ -173,55 +185,73 @@ def generate(docs: list[Document], pages: int = 50, pairs: int = 20, method: str
         return None
 
     reasons = ("wrong_type", "no_evidence", "unlocated", "one_side_only", "header_only", "dup")
-    stats = {"units": len(units), "failed_units": 0, "generated": Counter(), "kept": Counter(),
+    stats = {"units": 0, "failed_units": 0, "rounds": 0, "generated": Counter(), "kept": Counter(),
              **{r: Counter() for r in reasons}}
     seen, items = set(), []
-    with ThreadPoolExecutor(workers if method == "llm" else 1) as ex:
-        for (keys, kinds), got in zip(units, ex.map(ask, units)):
-            if got is None:
-                stats["failed_units"] += 1
-                continue
-            norms = [norm_map(text[k]) for k in keys]
-            labels = "AB"[: len(keys)]
-            for it in got:
-                kind = it.get("type")
-                stats["generated"][kind] += 1
-                if kind not in kinds:
-                    stats["wrong_type"][kind] += 1
+
+    def run_units(units: list) -> None:
+        stats["units"] += len(units)
+        stats["rounds"] += 1
+        used.update(u for keys, kinds in units for t in kinds for u in ((tuple(keys), t), (keys[0], t)))
+        with ThreadPoolExecutor(workers if method == "llm" else 1) as ex:
+            for (keys, kinds), got in zip(units, ex.map(ask, units)):
+                if got is None:
+                    stats["failed_units"] += 1
                     continue
-                q = (it.get("question") or "").strip()
-                ev = [e for e in it.get("evidence") or [] if isinstance(e, dict) and isinstance(e.get("quote"), str)]
-                if not q or not ev or any(len(e["quote"].strip()) < 10 for e in ev):
-                    stats["no_evidence"][kind] += 1
-                    continue
-                spans = []
-                for e in ev:  # look on the labelled page first, then on the other one
-                    ne = norm_map(e["quote"].strip())[0]
-                    lb = str(e.get("page", "A"))[:1]
-                    pref = labels.index(lb) if lb and lb in labels else 0
-                    j, i = next(((j, i) for j in (pref, 1 - pref)[: len(keys)] if (i := norms[j][0].find(ne)) >= 0), (None, -1))
-                    if j is None:
-                        spans = None
-                        break
-                    (did, page), idx = keys[j], norms[j][1]
-                    a, b = idx[i], idx[i + len(ne) - 1] + 1
-                    spans.append({"doc_id": did, "page": page, "text": text[keys[j]][a:b], "start": a, "end": b})
-                if spans is None:
-                    stats["unlocated"][kind] += 1
-                    continue
-                if len(keys) > 1 and len({(s["doc_id"], s["page"]) for s in spans}) < 2:
-                    stats["one_side_only"][kind] += 1
-                    continue
-                if all(any(norm_map(s["text"])[0] in h for h in hdrs[s["doc_id"]].get(s["page"], [])) for s in spans):
-                    stats["header_only"][kind] += 1
-                    continue
-                if q in seen:
-                    stats["dup"][kind] += 1
-                    continue
-                seen.add(q)
-                stats["kept"][kind] += 1
-                items.append({"qid": f"q{len(items):04d}", "type": kind, "query": q, "answer": it.get("answer") or "",
-                              "evidence": spans})
-    if units and stats["failed_units"] == len(units):
-        raise FolioError(f"testset: every LLM call failed ({len(units)}); check the LLM url/model ({url}, {model!r})")
+                for it in got:
+                    if item := _check(it, keys, kinds):
+                        seen.add(item["query"])
+                        items.append({"qid": f"q{len(items):04d}", **item})
+
+    def _check(it: dict, keys: list, kinds: list[str]) -> dict | None:
+        kind = it.get("type")
+        stats["generated"][kind] += 1
+        if kind not in kinds:
+            stats["wrong_type"][kind] += 1
+            return None
+        q = (it.get("question") or "").strip()
+        ev = [e for e in it.get("evidence") or [] if isinstance(e, dict) and isinstance(e.get("quote"), str)]
+        if not q or not ev or any(len(e["quote"].strip()) < 10 for e in ev):
+            stats["no_evidence"][kind] += 1
+            return None
+        norms, labels, spans = [norm_map(text[k]) for k in keys], "AB"[: len(keys)], []
+        for e in ev:  # look on the labelled page first, then on the other one
+            ne = norm_map(e["quote"].strip())[0]
+            lb = str(e.get("page", "A"))[:1]
+            pref = labels.index(lb) if lb and lb in labels else 0
+            j, i = next(((j, i) for j in (pref, 1 - pref)[: len(keys)] if (i := norms[j][0].find(ne)) >= 0), (None, -1))
+            if j is None:
+                stats["unlocated"][kind] += 1
+                return None
+            (did, page), idx = keys[j], norms[j][1]
+            a, b = idx[i], idx[i + len(ne) - 1] + 1
+            spans.append({"doc_id": did, "page": page, "text": text[keys[j]][a:b], "start": a, "end": b})
+        if len(keys) > 1 and len({(s["doc_id"], s["page"]) for s in spans}) < 2:
+            stats["one_side_only"][kind] += 1
+            return None
+        if all(any(norm_map(s["text"])[0] in h for h in hdrs[s["doc_id"]].get(s["page"], [])) for s in spans):
+            stats["header_only"][kind] += 1
+            return None
+        if q in seen:
+            stats["dup"][kind] += 1
+            return None
+        stats["kept"][kind] += 1
+        return {"type": kind, "query": q, "answer": it.get("answer") or "", "evidence": spans}
+
+    single = [t for t in types if t in SINGLE]
+    multi = [t for t in types if t not in SINGLE]
+    run_units((page_units(pages, single) if single and pages else []) + (pair_units(pairs, multi) if multi and pairs else []))
+    if stats["units"] and stats["failed_units"] == stats["units"]:
+        raise FolioError(f"testset: every LLM call failed ({stats['units']}); check the LLM url/model ({url}, {model!r})")
+    for _ in range(max_rounds if min_per_type > 0 else 0):  # top up the types still short, on unused pages/pairs
+        short = {t: min_per_type - stats["kept"][t] for t in types if stats["kept"][t] < min_per_type}
+        if method == "heuristic" or not short:
+            break
+        units = []
+        for t, n in short.items():  # ask ~2x the gap: about half of the questions survive the filters
+            units += page_units(2 * n, [t]) if t in SINGLE else pair_units(2 * n, [t])
+        if not units:
+            break
+        run_units(units)
+    stats["short"] = {t: min_per_type - stats["kept"][t] for t in types if stats["kept"][t] < min_per_type}
     return items, {k: dict(v) if isinstance(v, Counter) else v for k, v in stats.items()}

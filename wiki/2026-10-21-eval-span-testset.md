@@ -36,7 +36,10 @@ sources:
 | --- | --- | --- |
 | 한 쪽 | `fact`, `table`, `section` | 쪽 1개 |
 | 같은 문서 두 쪽 | `multi_hop`, `comparison`, `temporal`, `multi_intent` | 같은 문서에서 내용이 가장 비슷한 쪽 2개 |
-| 다른 문서 두 쪽 | `multi_document`, `comparison` | 다른 문서에서 내용이 가장 비슷한 쪽 2개 |
+| 다른 문서 두 쪽 | `multi_document` | 다른 문서에서 내용이 가장 비슷한 쪽 2개 |
+
+- 쪽 쌍 하나에는 유형 하나만 요청한다(요청한 쌍 유형을 돌아가며 배정). 여러 유형을 한 번에 요청하면 LLM이 쉬운 유형만 골랐다(아래 OpenRouter 1차 실행). 한 쪽 단위는 요청한 한 쪽 유형을 모두 한 번에 요청한다.
+- `min_per_type`(CLI `--min-per-type`): 첫 실행 뒤 개수가 모자란 유형만 골라, 그 유형으로 아직 쓰지 않은 쪽(쌍은 기준 쪽)에서 부족분의 2배를 다시 요청한다. 최대 `max_rounds`(기본 3)회 반복하고, 끝까지 못 채운 유형은 `stats["short"]`에 남긴다. 같은 쪽·유형 조합은 다시 요청하지 않는다.
 
 - 비슷한 쪽은 글자 3-gram Jaccard로 고른다. 한국어 형태소 분석기 없이 동작한다. 후보는 최대 200쪽까지 무작위로 뽑아 비교한다.
 - 표본 추출: 문서마다 최대 5쪽을 먼저 고르고 나머지는 무작위로 채운다. `seed`로 고정된다.
@@ -104,14 +107,36 @@ sources:
   - 억지 질문: 다른 문서 비교 "2026년 2/4분기 경제활동인구 증감과 2025년 1/4분기 취업자 증감 비교"는 실제 사용자가 할 질문이 아니다. 비슷한 쪽끼리 묶어도 비교할 이유가 없는 쌍이 생긴다.
   - 근거 부족: "예금거래기본약관 제10012호의 개정 날짜"는 근거가 "(2024. 9. 27. 개정)"뿐이라 문서 번호가 근거로 확인되지 않는다. 표 행만 인용한 질문은 열 이름이 근거에 없다.
 - 발견한 한계와 다음 작업
-  - `multi_hop`, `multi_document`가 하나도 생성되지 않았다. 다른 문서 쌍에 `multi_document`와 `comparison`을 함께 요청하면 LLM이 `comparison`만 고른다. 다른 문서 쌍은 `multi_document`만 요청하고, 같은 문서 쌍은 유형을 하나씩 지정해 요청하는 방식으로 바꿀 필요가 있다.
+  - (해결, 아래 재실행 참고) `multi_hop`, `multi_document`가 하나도 생성되지 않았다. 다른 문서 쌍에 `multi_document`와 `comparison`을 함께 요청하면 LLM이 `comparison`만 고른다. 다른 문서 쌍은 `multi_document`만 요청하고, 같은 문서 쌍은 유형을 하나씩 지정해 요청하는 방식으로 바꿀 필요가 있다.
   - `comparison`의 버림 비율(5/8)이 높다. 두 쪽에서 인용을 정확히 복사하는 데 실패하는 경우가 많다.
-  - 생성 수가 유형별로 1~9개라 유형별 지표는 아직 신뢰구간이 넓다. 유형별 최소 개수를 정하고 그만큼 반복 생성하는 옵션이 필요하다.
+  - (해결: `--min-per-type`) 생성 수가 유형별로 1~9개라 유형별 지표는 아직 신뢰구간이 넓다.
+
+## 개선 후 재실행 (2026-10-21, OpenRouter)
+
+- 변경: 쪽 쌍당 유형 1개, `comparison`은 같은 문서 쌍에만 배정(다른 문서 비교가 억지 질문이 됐기 때문), `--min-per-type` 추가.
+- 명령: `folio-openrouter eval testset --docs <m1docs> --pages 10 --pairs 10 --min-per-type 3 --llm-extra '{"reasoning": {"enabled": false}}'`. 2라운드, 호출 40회, 실패 3회(원인 미확인: 응답 형식 오류 또는 타임아웃), 48초. 질문 38개가 남았고 8개 유형 모두 3개 이상이다(`short` 없음).
+
+| 유형 | 생성 | 남음 | 버린 사유 |
+| --- | --- | --- | --- |
+| fact | 10 | 9 | unlocated 1 |
+| section | 9 | 7 | unlocated 2 |
+| table | 5 | 4 | header_only 1 |
+| multi_hop | 3 | 3 | |
+| comparison | 6 | 4 | one_side_only 2 |
+| temporal | 6 | 5 | one_side_only 1 |
+| multi_intent | 6 | 3 | unlocated 2, one_side_only 1 |
+| multi_document | 5 | 3 | unlocated 1, header_only 1 |
+
+- 채점(어휘 검색기, 경로 확인용): 두 청킹 설정 모두 `unreachable` 0개.
+- 표본 검토(작업자, 여러 쪽 유형 18개)
+  - 좋은 예: multi_document "체력단련장·요가 표준약관에서 회원 귀책 해지 시 사은품 반환 방법 종합", multi_hop "체력단련장 약관의 이용료 정의와 위약금 비율"(2쪽·4쪽), multi_intent "토스뱅크·광주은행 공동대출 분담 비율과 규제 특례 업무".
+  - 약한 예: multi_document 2개는 서로 관계없는 두 사실을 "각각" 묻는 질문이라 사실상 multi_intent다. temporal 일부는 시간 관계가 없다("생성형 AI 규제 특례 보안성 평가"). 통계표 행만 인용한 질문(temporal "30~39세와 남자 경제활동인구 증감")은 근거에 열·행 이름이 없어 사람이 확인하기 어렵다.
+  - 결론: 유형별 개수 문제는 해결됐다. 유형이 실제로 맞는지는 생성 단계에서 보장하지 못하므로, 고객사 testset은 사람이 표본을 검토하는 단계를 둔다. LLM으로 유형 적합성을 다시 판정하는 단계는 다음 후보다.
 
 ## 미완료와 다음 작업
 
 - **호환성**: 이전 형식(`relevant_chunk_ids`) testset은 더 이상 읽지 않는다. CLI 옵션 `--chunks`·`--n`은 `--docs`·`--pages`·`--pairs`로 바뀌었다.
-- 실제 LLM 생성은 위 OpenRouter 실행으로 소규모 확인했다. `multi_hop`·`multi_document` 생성과 유형별 최소 개수 보장은 미해결이다. 고객사 문서는 외부로 보낼 수 없으므로 pgx vLLM으로 다시 확인해야 한다.
+- 실제 LLM 생성은 위 OpenRouter 실행으로 소규모 확인했다. 유형별 최소 개수는 `--min-per-type`으로 해결했고, 유형 적합성(질문이 정말 그 유형인지) 판정은 남았다. 고객사 문서는 외부로 보낼 수 없으므로 pgx vLLM으로 다시 확인해야 한다.
 - 답변 평가가 필요한 유형은 다루지 않는다: Negative/Unanswerable(근거 없음 응답), Aggregation·Global/Summarization(근거가 top-k보다 많음). 운영 LLM이 정해진 뒤 `/v1/chat` 답변 평가로 추가한다.
 - Conditional(질문에서 필터 추출)은 PRD 비목표라서 다루지 않는다.
 - `bench/m1/chunking/`의 벤치마크 스크립트는 그대로 뒀다(토큰 예산 지표 등 벤치마크 전용 기능이 있음).
