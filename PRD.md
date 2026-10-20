@@ -188,7 +188,7 @@ storage: s3://folio-artifacts/       # 중간 산출물 위치
 | --- | --- | --- | --- | --- |
 | [Docling](https://arxiv.org/html/2408.09869v5) | 레이아웃 모델 + TableFormer, OCR은 선택 | PDF 백엔드에서 좌표 포함 텍스트 토큰을 그대로 쓴다 | MIT | 기본 백엔드 후보 — 설계 원리가 이 PRD와 같다 |
 | [PaddleOCR PP-StructureV3](https://www.paddleocr.ai/latest/en/version3.x/pipeline_usage/PP-StructureV3.html) | 레이아웃 + OCR + 표 구조·셀 검출 파이프라인, CPU/GPU | 문서상 명시 없음 → 레이아웃·표 결과만 쓰고 글자는 우리 매칭으로 | Apache-2.0 | 기본 백엔드 후보 — 한글 OCR·스캔 비중이 높으면 유리 |
-| [MinerU](https://knightli.com:8443/en/2026/06/26/mineru-34-backend-modes-pipeline-hybrid-vlm/) (pipeline / hybrid) | pipeline은 전문 모델 조합, hybrid는 어려운 영역만 VLM | pipeline·hybrid 모두 네이티브 텍스트 추출이 먼저 | 확인 필요 | 대안 — hybrid 방식이 우리 폴백 구조와 같다 |
+| [MinerU](https://knightli.com:8443/en/2026/06/26/mineru-34-backend-modes-pipeline-hybrid-vlm/) (pipeline / hybrid) | pipeline은 전문 모델 조합, hybrid는 어려운 영역만 VLM | pipeline·hybrid 모두 네이티브 텍스트 추출이 먼저 | [Apache-2.0 + 추가 조건](https://github.com/opendatalab/MinerU/blob/master/LICENSE.md): 계열사 합산 MAU 1억 또는 월 매출 2천만 달러 초과 시 별도 상용 라이선스, 온라인 서비스 제공 시 MinerU 사용 표기, 위반 시 자동 종료 (4.0.12 기준) | 대안 — hybrid 방식이 우리 폴백 구조와 같다. 대형 고객사는 매출 조건에 걸릴 수 있어 기본 후보에서 제외 |
 | E2E VLM 파서 (PaddleOCR-VL-1.5, GLM-OCR 등) | 페이지 이미지 → 구조화 결과 한 번에 | 사용 안 함 (페이지를 이미지로 읽음) | 모델별 확인 | VLM 후보 — 그림·차트 설명 품질을 함께 확인 |
 | 범용 VLM (Qwen-VL 계열 등) | 이미지 + 지시문 → 텍스트(Markdown·HTML 표 등) | 사용 안 함 | 모델별 확인 | VLM 후보 — 스캔 OCR 정확도를 함께 확인 |
 
@@ -206,6 +206,17 @@ E2E 문서 VLM은 OCR·표에 강하지만 그림 설명이 약할 수 있고, �
 | 그림 설명 | 차트·도식 샘플에서 수치·라벨 누락 없이 검색 가능한 설명을 만드는지 (수동 평가) |
 | 속도·자원 | 페이지당 시간, GPU 1장(메모리 상한은 고객사 환경 기준)에 올라가는지 |
 | 서빙·라이선스 | OpenAI 호환 서버(vLLM 등)로 폐쇄망 서빙 가능, 고객사 배포에 문제 없는 라이선스 |
+
+M1 벤치마크 결과(2026-10-21, 공개 한글 샘플, 잠정): **Qwen3.5-9B**를 잠정 선택했다. 그림 설명은 범용 VLM만 할 수 있어 모델 1개 조건을 문서 전용 VLM으로는 채울 수 없다. 상세는 [M1 벤치마크](wiki/2026-10-21-m1-benchmarks.md)에 있다.
+
+| 모델 | 스캔 OCR 유사도 / CER | 표 셀 정확도 | 그림 사실 재현율 | 스캔 s/page (bf16, GB10) | 라이선스 |
+| --- | --- | --- | --- | --- | --- |
+| Qwen3.5-9B (범용) | 0.895 / 0.228 | 0.93 (HTML 지시) | 0.90 | 78 | Apache-2.0 |
+| Qwen3-VL-8B-Instruct (범용) | 0.865 / 0.196 | 0.81 (HTML 지시) | 0.77 | 80 | Apache-2.0 |
+| GLM-OCR (문서) | 0.811 / 0.301 | 0.79 | 0.73 (그림 안 글자를 옮겨 적음) | 11.7 | MIT |
+| PaddleOCR-VL-1.6 (문서) | 0.836 / 0.383 | 0.75 | 0.62 (그림 10개 중 4개 반복 출력) | 8.3 | Apache-2.0 |
+
+채택 전 남은 일: 병합 셀 표는 HTML 지시에서만 정확하므로 VLM 출력의 HTML 표 파서가 필요하다(현재는 파이프 표만 읽음). Qwen3.5-9B는 문서 VLM보다 약 10배 느리다(FP8 서빙 미시험). 사고 모드는 끈다(`enable_thinking=false`).
 
 ### 기본 구성 (M1 벤치마크 전 가정)
 
@@ -313,6 +324,8 @@ Document JSON의 `heading`과 `section_path`로 트리를 만든다. 헤딩이 �
 | `min_tokens` | 128 | 이보다 작은 이웃 청크를 합친다 |
 | `tokenizer` | 임베딩 모델 토크나이저 | 토큰 수 계산 기준. 지정이 없으면 문자 수 근사 |
 | `overlap` | 0 | 구조 경계로 자르므로 기본은 겹침 없음. `fixed` 분할 구간에만 적용 |
+
+M1 벤치마크(2026-10-21, 공개 한글 디지털 문서 16개, 질의 249개, bge-m3, 같은 검색 토큰 예산 비교)에서는 `max_tokens=512`, `min_tokens=64`가 잠정 최적이었다. 다만 `max_tokens` 256~1024는 2k 예산에서 통계적으로 구분되지 않았고, 1536·2048만 확실히 나빴다. 기본값 변경은 사용자 결정으로 남긴다. 상세는 [M1 벤치마크](wiki/2026-10-21-m1-benchmarks.md)에 있다.
 
 기본값은 M1에서 Eval(FR-18) 기준으로 조정한다. `max_tokens`를 없앨 수는 없다. 임베딩 모델 입력 길이에 한계가 있고, 너무 큰 청크는 검색 정밀도를 떨어뜨리기 때문이다.
 
@@ -446,11 +459,13 @@ DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 검증 상세�
 
 - [x] 레포·패키지 이름: `folio`로 확정. CLI도 `folio`
 - [x] 기본 구조 분석 백엔드: PP-StructureV3 GPU로 결정(2026-10-20 사용자 결정)
-- [ ] PP-StructureV3 기본값을 고객사 샘플(한글 포함)로 재확인. MinerU 라이선스 확인
+- [ ] PP-StructureV3 기본값을 고객사 샘플(한글 포함)로 재확인. 공개 샘플 비교는 [M1 벤치마크](wiki/2026-10-21-m1-benchmarks.md)에 있다
+- [x] MinerU 라이선스: Apache-2.0 + 매출·MAU 조건과 표기 의무. 기본 후보에서 제외
+- [ ] ARM GPU 호스트(예: DGX Spark GB10, aarch64 sm_121): paddlepaddle-gpu 3.3.1(cu129)·3.5 nightly(cu130)가 `run_check()`에서 실패해 PP-StructureV3가 CPU로만 돈다. 이런 고객사 환경을 지원할지, 그때 Docling(GPU 동작 확인)을 기본으로 쓸지
 - [ ] HWPX → PDF 변환기: 공개 샘플 벤치마크로 rhwp 기본 + LibreOffice·H2Orestart 대체로 잠정 결정. 첫 고객사 샘플로 재확인 필요
 - [x] VLM 모델 수: 스캔 파싱·그림 설명·복잡 표를 모델 1개로 처리 (이미지 콘텐츠에 VLM 기본 적용도 결정됨)
-- [ ] VLM 모델 선정: [VLM 모델](#vlm-모델-1개) 기준으로 M1에서 E2E 문서 VLM과 범용 VLM 후보를 비교
-- [ ] `adaptive` 청킹 기본값: `max_tokens`·`min_tokens`를 임베딩 모델과 Eval 결과로 확정
+- [ ] VLM 모델 선정: 공개 샘플로 Qwen3.5-9B 잠정 선택([VLM 모델](#vlm-모델-1개)). 고객사 샘플 재확인, HTML 표 파서, FP8 속도 확인 필요
+- [ ] `adaptive` 청킹 기본값: 공개 샘플로 `max_tokens=512`·`min_tokens=64`가 잠정 최적([파라미터](#파라미터)). 현재 기본값 1024/128을 바꿀지 사용자 결정 필요
 - [ ] 첫 적용 고객사와 샘플 문서 세트: 수용 기준과 성능 기준선의 근거가 된다
 - [ ] 마일스톤별 일정과 담당자
 - [ ] 라이선스·배포 형태: 사내 패키지 저장소 배포인지, 고객사에 소스로 전달하는지
