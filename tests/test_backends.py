@@ -154,3 +154,12 @@ def test_ppstructure_numpy_results():
     ps = b.analyze(png, None)
     assert ps.tables[0].bbox == [0, 0, 20, 10] and len(ps.tables[0].cells) == 2
     assert [w.conf for w in ps.ocr_words] == pytest.approx([0.9, 0.8])
+
+
+def test_ppstructure_cell_reading_order():
+    """Cell boxes arriving bottom-right first are paired with <td> cells top-left first (rowspan kept in its row)."""
+    from folio.backends.ppstructure import _reading_order
+
+    a, b, c = [0, 0, 10, 20], [10, 0, 20, 10], [10, 10, 20, 20]  # a spans two rows
+    assert _reading_order([c, b, a]) == [a, b, c]
+    assert _reading_order([]) == []
