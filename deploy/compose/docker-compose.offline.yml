@@ -1,0 +1,14 @@
+# Offline / air-gapped override: never build, never pull. Images must be present locally (docker load) or
+# available under ${FOLIO_REGISTRY} (private registry prefix with trailing slash, e.g. registry.local:5000/).
+#   docker compose -f docker-compose.yml -f docker-compose.offline.yml up -d
+services:
+  postgres:       {pull_policy: never}
+  rabbitmq:       {pull_policy: never}
+  minio:          {pull_policy: never}
+  opensearch:     {build: !reset null, pull_policy: never}
+  structure:      {build: !reset null, pull_policy: never}
+  structure-gpu:  {build: !reset null, pull_policy: never}
+  embed:          {build: !reset null, pull_policy: never}
+  init:           {build: !reset null, pull_policy: never}
+  api:            {build: !reset null, pull_policy: never}
+  worker:         {build: !reset null, pull_policy: never}

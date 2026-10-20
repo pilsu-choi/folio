@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "folio.fullname" . }}-api
+  labels: {{- include "folio.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.api.replicas }}
+  selector:
+    matchLabels: {{- include "folio.selector" (dict "root" . "component" "api") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "folio.selector" (dict "root" . "component" "api") | nindent 8 }}
+      annotations:
+        checksum/project: {{ include (print $.Template.BasePath "/configmap-project.yaml") . | sha256sum }}
+        {{- with .Values.api.podAnnotations }}{{ toYaml . | nindent 8 }}{{ end }}
+    spec:
+      serviceAccountName: {{ include "folio.serviceAccountName" . }}
+      {{- include "folio.imagePullSecrets" . | nindent 6 }}
+      {{- include "folio.podSecurity" . | nindent 6 }}
+      containers:
+        - name: api
+          image: {{ include "folio.appImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["api"]
+          ports:
+            - {name: http, containerPort: 8080}
+          env: {{- include "folio.env" . | nindent 12 }}
+          envFrom:
+            - secretRef: {name: {{ include "folio.secretName" . }}}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+            failureThreshold: 60
+          {{- include "folio.containerSecurity" . | nindent 10 }}
+          volumeMounts: {{- include "folio.volumeMounts" . | nindent 12 }}
+          resources: {{- toYaml .Values.api.resources | nindent 12 }}
+      volumes: {{- include "folio.volumes" . | nindent 8 }}
+      {{- with .Values.api.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}

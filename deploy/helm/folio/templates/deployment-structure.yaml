@@ -1,0 +1,98 @@
+{{- if .Values.structure.enabled }}
+{{- $m := .Values.structure.models }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "folio.fullname" . }}-structure
+  labels: {{- include "folio.labels" . | nindent 4 }}
+    app.kubernetes.io/component: structure
+spec:
+  replicas: {{ .Values.structure.replicas }}
+  {{- if .Values.structure.gpu.enabled }}
+  strategy: {type: Recreate}   # a single GPU cannot be shared by surge pods
+  {{- end }}
+  selector:
+    matchLabels: {{- include "folio.selector" (dict "root" . "component" "structure") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "folio.selector" (dict "root" . "component" "structure") | nindent 8 }}
+      {{- with .Values.structure.podAnnotations }}
+      annotations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "folio.serviceAccountName" . }}
+      {{- include "folio.imagePullSecrets" . | nindent 6 }}
+      {{- include "folio.podSecurity" . | nindent 6 }}
+      containers:
+        - name: structure
+          image: {{ include "folio.structureImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["structure-server", "--port", "9000"]
+          ports:
+            - {name: http, containerPort: 9000}
+          env:
+            - {name: FOLIO_STRUCTURE_BACKEND, value: {{ .Values.structure.backend | quote }}}
+            - {name: FOLIO_LOG_LEVEL, value: {{ .Values.config.logLevel | quote }}}
+            - {name: HOME, value: /tmp}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+            timeoutSeconds: 5
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+            failureThreshold: 90   # model load can take minutes
+          {{- include "folio.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: models, mountPath: /models}
+          resources:
+            {{- $res := deepCopy (.Values.structure.resources | default dict) }}
+            {{- if .Values.structure.gpu.enabled }}
+            {{- $lim := $res.limits | default dict }}
+            {{- $_ := set $lim .Values.structure.gpu.resourceName (.Values.structure.gpu.count | int) }}
+            {{- $_ := set $res "limits" $lim }}
+            {{- end }}
+            {{- toYaml $res | nindent 12 }}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+        - name: models
+          {{- if eq $m.type "pvc" }}
+          persistentVolumeClaim:
+            claimName: {{ $m.existingClaim | default (printf "%s-models" (include "folio.fullname" .)) }}
+          {{- else if eq $m.type "hostPath" }}
+          hostPath: {path: {{ $m.hostPath | quote }}, type: DirectoryOrCreate}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.structure.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.structure.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.structure.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- if and (eq $m.type "pvc") (not $m.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "folio.fullname" . }}-models
+  labels: {{- include "folio.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/resource-policy": keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with $m.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests: {storage: {{ $m.size }}}
+{{- end }}
+{{- end }}

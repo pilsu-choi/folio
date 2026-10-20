@@ -1,0 +1,17 @@
+{
+  "settings": {"index": {"knn": true, "number_of_shards": 1, "number_of_replicas": 0}},
+  "mappings": {
+    "properties": {
+      "doc_id": {"type": "keyword"},
+      "chunk_id": {"type": "keyword"},
+      "tenant_id": {"type": "keyword"},
+      "acl": {"type": "keyword"},
+      "source_uri": {"type": "keyword"},
+      "section_path": {"type": "keyword"},
+      "page": {"type": "integer"},
+      "content": {"type": "text", "analyzer": "standard"},
+      "embedding": {"type": "knn_vector", "dimension": 8,
+                    "method": {"name": "hnsw", "space_type": "cosinesimil", "engine": "lucene"}}
+    }
+  }
+}

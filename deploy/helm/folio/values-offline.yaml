@@ -1,0 +1,12 @@
+# Air-gapped install from the bundle (deploy/bundle). Images are pushed to a private registry by install.sh;
+# set the registry via --set image.registry=REG (shown here as an example only).
+image:
+  registry: registry.local:5000
+  pullPolicy: IfNotPresent     # tags are immutable in the bundle
+imagePullSecrets: []            # e.g. [{name: regcred}] if the registry needs auth
+# Everything must come from the registry/bundle: external services or bundled infra images mirrored there.
+# Model weights come from a pre-populated PVC / hostPath (see structure.models) - nothing is downloaded at runtime.
+structure:
+  models:
+    type: pvc
+    existingClaim: folio-models

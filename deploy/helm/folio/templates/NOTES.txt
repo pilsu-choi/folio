@@ -1,0 +1,11 @@
+folio {{ .Chart.AppVersion }} installed as release "{{ .Release.Name }}".
+
+API:  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "folio.fullname" . }}-api 8080:{{ .Values.api.service.port }}
+      curl localhost:8080/readyz
+{{- if .Values.init.enabled }}
+Init: {{ if eq .Values.init.mode "hook" }}pre-install/pre-upgrade hook Job {{ include "folio.fullname" . }}-init{{ else }}Job {{ include "folio.fullname" . }}-init-{{ .Release.Revision }}{{ end }} (folio init + schema apply)
+{{- end }}
+{{- if include "folio.anyBundled" . }}
+
+WARNING: bundled infra (single replica, security disabled for OpenSearch) is for dev/PoC only.
+{{- end }}

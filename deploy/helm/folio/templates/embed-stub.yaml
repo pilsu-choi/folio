@@ -1,0 +1,44 @@
+{{- if .Values.embedStub.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "folio.fullname" . }}-embed
+  labels: {{- include "folio.labels" . | nindent 4 }}
+    app.kubernetes.io/component: embed
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "folio.selector" (dict "root" . "component" "embed") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "folio.selector" (dict "root" . "component" "embed") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "folio.serviceAccountName" . }}
+      {{- include "folio.imagePullSecrets" . | nindent 6 }}
+      {{- include "folio.podSecurity" . | nindent 6 }}
+      containers:
+        - name: embed
+          image: {{ include "folio.appImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["embed-stub", "--port", "8001"]
+          env:
+            - {name: HOME, value: /tmp}
+          ports: [{name: http, containerPort: 8001}]
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+          {{- include "folio.containerSecurity" . | nindent 10 }}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+          resources: {{- toYaml .Values.embedStub.resources | nindent 12 }}
+      volumes: [{name: tmp, emptyDir: {}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "folio.fullname" . }}-embed
+  labels: {{- include "folio.labels" . | nindent 4 }}
+spec:
+  ports: [{name: http, port: 8001, targetPort: http}]
+  selector: {{- include "folio.selector" (dict "root" . "component" "embed") | nindent 4 }}
+{{- end }}

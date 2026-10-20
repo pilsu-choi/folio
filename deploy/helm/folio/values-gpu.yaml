@@ -1,0 +1,15 @@
+# Overlay: GPU structure server (docling). Combine: -f values.yaml -f values-gpu.yaml
+# Requires the NVIDIA device plugin; adjust nodeSelector/tolerations to your GPU node pool.
+structure:
+  backend: docling
+  gpu: {enabled: true, count: 1, resourceName: nvidia.com/gpu}
+  models:
+    type: pvc               # persistent model cache mounted at /models
+    size: 30Gi
+  nodeSelector:
+    nvidia.com/gpu.present: "true"
+  tolerations:
+    - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+  resources:
+    requests: {cpu: "2", memory: 8Gi}
+    limits: {memory: 16Gi}

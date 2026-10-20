@@ -1,0 +1,17 @@
+# Contract documents -> OpenSearch (BM25 nori + 384-dim vectors).
+# Any stage can be replaced with `module:function` or `{fn: module:function, opt: value}`.
+parse:
+  fn: folio.parse:default
+  backend: auto          # FOLIO_STRUCTURE_URL set -> HTTP structure server, else heuristic
+  ocr_fallback: true
+chunk:
+  fn: folio.chunk:auto
+  max_tokens: 512
+map: mappers:map_contract
+embed:
+  fn: folio.embed:http   # FOLIO_EMBED_URL / FOLIO_EMBED_MODEL
+  batch_size: 64
+sink:
+  type: opensearch
+  index: contracts
+storage: ${FOLIO_STORAGE_URI:-.folio/artifacts}

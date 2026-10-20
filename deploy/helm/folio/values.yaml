@@ -1,0 +1,160 @@
+# Default values. NO secret defaults live here: provide `secrets.existingSecret` or `secrets.create` + `secrets.values`.
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  registry: ""            # private registry host[:port] (FR-26); prefixed to EVERY image incl. bundled infra
+  repository: folio
+  tag: ""                 # default: .Chart.AppVersion
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Project (pipelines/schemas/mappers.py).
+#  fromImage=true : use the project baked into the image (customer image built with Dockerfile.project)
+#  fromImage=false: render ConfigMap from the maps below and mount it at /app/project
+project:
+  fromImage: true
+  pipelines: {}           # {"default.yaml": "<yaml text>"}
+  schemas:
+    opensearch: {}        # {"chunks.json": "<json text>"}
+    milvus: {}
+  mappers: ""             # optional mappers.py content
+
+# Secrets: environment-variable names exactly as docs/INTERFACES.md.
+# Keys: FOLIO_DATABASE_URL FOLIO_BROKER_URL PGVECTOR_DSN AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+#       OPENSEARCH_USER OPENSEARCH_PASSWORD MILVUS_TOKEN FOLIO_EMBED_API_KEY
+# With bundled infra and an existingSecret, the secret must also hold the bundled component passwords
+# (POSTGRES_PASSWORD, RABBITMQ_PASSWORD, MINIO_ROOT_PASSWORD).
+secrets:
+  existingSecret: ""
+  create: false
+  values: {}              # only used when create=true
+
+# Non-secret application settings
+config:
+  logLevel: INFO
+  storageUri: ""          # FOLIO_STORAGE_URI; empty = bundled MinIO bucket or the pipeline's own value
+  awsRegion: us-east-1
+extraEnv: []              # extra container env for api/worker/init (list of {name, value})
+
+# External endpoints (used when the matching infra.<x>.enabled=false). Postgres/RabbitMQ/Milvus-token/credentials
+# carry passwords, so they go in the Secret (FOLIO_DATABASE_URL, FOLIO_BROKER_URL, PGVECTOR_DSN, ...).
+external:
+  opensearch: {url: ""}
+  s3: {endpoint: ""}
+  milvus: {uri: ""}
+  structure: {url: ""}    # used when structure.enabled=false
+  embed: {url: "", model: ""}   # used when embedStub.enabled=false
+  vlm: {url: "", model: ""}
+  rerank: {url: ""}
+
+# Bundled single-replica infra for dev / PoC. Production: keep all disabled and fill `external` + Secret.
+infra:
+  postgres:
+    enabled: false
+    image: {repository: postgres, tag: "16"}
+    user: folio
+    database: folio
+    password: ""          # dev only; required when enabled and secrets.create=true
+    persistence: {enabled: false, size: 5Gi, storageClass: ""}
+    resources: {}
+  rabbitmq:
+    enabled: false
+    image: {repository: rabbitmq, tag: "3-management-alpine"}
+    user: folio
+    password: ""
+    persistence: {enabled: false, size: 2Gi, storageClass: ""}
+    resources: {}
+  opensearch:
+    enabled: false
+    image: {repository: folio-opensearch, tag: ""}   # default: appVersion (built from Dockerfile.opensearch, nori included)
+    javaOpts: "-Xms512m -Xmx512m"
+    persistence: {enabled: false, size: 10Gi, storageClass: ""}
+    resources: {}
+  minio:
+    enabled: false
+    image: {repository: minio/minio, tag: "RELEASE.2025-04-22T22-12-26Z"}
+    rootUser: folio
+    password: ""
+    bucket: folio-artifacts
+    persistence: {enabled: false, size: 10Gi, storageClass: ""}
+    resources: {}
+  milvus:
+    enabled: false
+    image: {repository: milvusdb/milvus, tag: "v2.5.4"}   # standalone with embedded etcd + local storage (dev)
+    persistence: {enabled: false, size: 10Gi, storageClass: ""}
+    resources: {}
+
+# Dev embedding stub (`folio embed-stub`). Real endpoint: set enabled=false and external.embed.*
+embedStub:
+  enabled: false
+  model: stub
+  resources: {}
+
+api:
+  replicas: 1
+  port: 8080
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  service: {type: ClusterIP, port: 8080}
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: folio.example.com
+        paths: [{path: /, pathType: Prefix}]
+    tls: []
+
+worker:
+  replicas: 1
+  args: ["worker"]
+  # Celery warm shutdown on SIGTERM: finish the running task. Must exceed the longest task.
+  terminationGracePeriodSeconds: 300
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+
+structure:
+  enabled: true
+  replicas: 1
+  backend: heuristic        # heuristic | docling | ppstructure (must match the image build)
+  image: {repository: folio-structure, tag: ""}   # default: <appVersion>-<cpu|gpu>
+  gpu:
+    enabled: false
+    count: 1
+    resourceName: nvidia.com/gpu
+  # Model weights are mounted at /models (never baked into the image).
+  models:
+    type: emptyDir          # emptyDir | pvc | hostPath
+    existingClaim: ""       # type=pvc: use this claim, else the chart creates one
+    size: 20Gi
+    storageClass: ""
+    hostPath: /srv/folio/models
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+
+# Project-init Job (`folio init` then `folio schema apply`).
+#  mode=job  (default): regular Job named per release revision; waits for bundled infra via initContainers.
+#                       Runs after ConfigMap/Secret exist and sees the NEW project config.
+#  mode=hook          : Helm pre-install,pre-upgrade hook (needs EXTERNAL infra that already exists);
+#                       the chart's ServiceAccount/ConfigMap/Secret are then rendered as pre-install hooks too.
+init:
+  enabled: true
+  mode: job
+  backoffLimit: 6
+  reindex: false            # add --reindex to `schema apply`
+  resources: {}

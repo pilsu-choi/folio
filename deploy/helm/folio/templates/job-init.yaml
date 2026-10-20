@@ -1,0 +1,42 @@
+{{- if .Values.init.enabled }}
+{{- $hook := eq .Values.init.mode "hook" }}
+{{- if and $hook (include "folio.anyBundled" .) }}{{ fail "init.mode=hook cannot be used with bundled infra (infra does not exist yet at pre-install); use init.mode=job" }}{{ end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  {{- if $hook }}
+  name: {{ include "folio.fullname" . }}-init
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+  {{- else }}
+  name: {{ include "folio.fullname" . }}-init-{{ .Release.Revision }}
+  {{- end }}
+  labels: {{- include "folio.labels" . | nindent 4 }}
+    app.kubernetes.io/component: init
+spec:
+  backoffLimit: {{ .Values.init.backoffLimit }}
+  template:
+    metadata:
+      labels: {{- include "folio.selector" (dict "root" . "component" "init") | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ include "folio.serviceAccountName" . }}
+      {{- include "folio.imagePullSecrets" . | nindent 6 }}
+      {{- include "folio.podSecurity" . | nindent 6 }}
+      {{- if not $hook }}{{- include "folio.waitFor" . | nindent 6 }}{{- end }}
+      containers:
+        - name: init
+          image: {{ include "folio.appImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-c"]
+          args: ["folio init && folio schema apply{{ if .Values.init.reindex }} --reindex{{ end }}"]
+          env: {{- include "folio.env" . | nindent 12 }}
+          envFrom:
+            - secretRef: {name: {{ include "folio.secretName" . }}}
+          {{- include "folio.containerSecurity" . | nindent 10 }}
+          volumeMounts: {{- include "folio.volumeMounts" . | nindent 12 }}
+          resources: {{- toYaml .Values.init.resources | nindent 12 }}
+      volumes: {{- include "folio.volumes" . | nindent 8 }}
+{{- end }}

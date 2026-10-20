@@ -13,3 +13,4 @@ models/
 bench-results/
 *.tar
 *.tgz
+.venv-bench*/

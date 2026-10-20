@@ -1,0 +1,242 @@
+# folio Docker Compose stack.
+#   cp .env.example .env   # then fill in the passwords (compose refuses to start without them)
+#   docker compose up -d --build
+#
+# Profiles (set COMPOSE_PROFILES in .env):
+#   infra : bundled PostgreSQL / RabbitMQ / OpenSearch / MinIO. Drop it to use external infra (FR-25):
+#           set FOLIO_DATABASE_URL, FOLIO_BROKER_URL, OPENSEARCH_URL, S3_ENDPOINT_URL, ... in .env.
+#   cpu   : structure model server, CPU image.      gpu : same server, GPU image (needs NVIDIA container toolkit).
+# The same environment-variable contract is used by the Helm chart (docs/INTERFACES.md).
+#
+# WARNING: OpenSearch security is DISABLED here (plain http, no auth) - this is for dev / closed networks only.
+# Production: use external, secured OpenSearch and set OPENSEARCH_URL/OPENSEARCH_USER/OPENSEARCH_PASSWORD.
+
+name: folio
+
+x-image-folio: &image-folio ${FOLIO_REGISTRY:-}folio:${FOLIO_TAG:-0.1.0}
+x-build-folio: &build-folio
+  context: ../..
+  dockerfile: deploy/docker/Dockerfile
+
+x-folio-env: &folio-env
+  FOLIO_CONFIG_DIR: /app/project
+  FOLIO_LOG_LEVEL: ${FOLIO_LOG_LEVEL:-INFO}
+  FOLIO_DATABASE_URL: ${FOLIO_DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-folio}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-folio}}
+  PGVECTOR_DSN: ${PGVECTOR_DSN:-postgresql://${POSTGRES_USER:-folio}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-folio}}
+  FOLIO_BROKER_URL: ${FOLIO_BROKER_URL:-amqp://${RABBITMQ_USER:-folio}:${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}@rabbitmq:5672//}
+  OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
+  OPENSEARCH_USER: ${OPENSEARCH_USER:-}
+  OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-}
+  MILVUS_URI: ${MILVUS_URI:-}
+  MILVUS_TOKEN: ${MILVUS_TOKEN:-}
+  S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-${MINIO_ROOT_USER:-folio}}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}}
+  AWS_REGION: ${AWS_REGION:-us-east-1}
+  FOLIO_STORAGE_URI: ${FOLIO_STORAGE_URI:-s3://${FOLIO_BUCKET:-folio-artifacts}}
+  FOLIO_STRUCTURE_URL: ${FOLIO_STRUCTURE_URL:-http://structure:9000}
+  # Embedding: defaults to the bundled stub. For a real TEI / vLLM endpoint set FOLIO_EMBED_URL
+  # (OpenAI-compatible base ending in /v1), FOLIO_EMBED_MODEL and FOLIO_EMBED_API_KEY in .env.
+  FOLIO_EMBED_URL: ${FOLIO_EMBED_URL:-http://embed:8001/v1}
+  FOLIO_EMBED_MODEL: ${FOLIO_EMBED_MODEL:-stub}
+  FOLIO_EMBED_API_KEY: ${FOLIO_EMBED_API_KEY:-}
+  FOLIO_VLM_URL: ${FOLIO_VLM_URL:-}
+  FOLIO_VLM_MODEL: ${FOLIO_VLM_MODEL:-}
+  FOLIO_RERANK_URL: ${FOLIO_RERANK_URL:-}
+
+x-app: &app
+  image: *image-folio
+  build: *build-folio
+  environment: *folio-env
+  volumes:
+    - ${FOLIO_PROJECT_DIR:-../../project-template}:/app/project:ro
+  read_only: true
+  tmpfs:
+    - /tmp
+  security_opt:
+    - no-new-privileges:true
+  cap_drop: [ALL]
+  restart: unless-stopped
+
+services:
+  postgres:
+    profiles: [infra]
+    image: ${FOLIO_REGISTRY:-}postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-folio}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-folio}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  rabbitmq:
+    profiles: [infra]
+    image: ${FOLIO_REGISTRY:-}rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-folio}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}
+    volumes:
+      - rabbit-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  opensearch:
+    profiles: [infra]
+    image: ${FOLIO_REGISTRY:-}folio-opensearch:${FOLIO_TAG:-0.1.0}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.opensearch
+    environment:
+      discovery.type: single-node
+      # DEV ONLY: security plugin disabled (see warning at top of this file).
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS:--Xms512m -Xmx512m}
+    ulimits:
+      memlock: {soft: -1, hard: -1}
+      nofile: {soft: 65536, hard: 65536}
+    volumes:
+      - os-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=3s >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  minio:
+    profiles: [infra]
+    image: ${FOLIO_REGISTRY:-}minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-folio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # Structure analysis server. CPU variant (profile cpu) and GPU variant (profile gpu) share the network alias
+  # `structure`, so FOLIO_STRUCTURE_URL stays http://structure:9000. Model weights live in the `models` volume
+  # (not baked into the image); the offline bundle can pre-populate it.
+  structure: &structure
+    profiles: [cpu]
+    image: ${FOLIO_REGISTRY:-}folio-structure:${FOLIO_TAG:-0.1.0}-cpu
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.structure
+      args:
+        BACKEND: ${FOLIO_STRUCTURE_BACKEND:-heuristic}
+        DEVICE: cpu
+    environment:
+      FOLIO_STRUCTURE_BACKEND: ${FOLIO_STRUCTURE_BACKEND:-heuristic}
+    volumes:
+      - ${FOLIO_MODELS_DIR:-models}:/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9000/healthz', timeout=3).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    restart: unless-stopped
+
+  structure-gpu:
+    <<: *structure
+    profiles: [gpu]
+    image: ${FOLIO_REGISTRY:-}folio-structure:${FOLIO_TAG:-0.1.0}-gpu
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.structure
+      args:
+        BACKEND: ${FOLIO_STRUCTURE_BACKEND:-docling}
+        DEVICE: gpu
+    environment:
+      FOLIO_STRUCTURE_BACKEND: ${FOLIO_STRUCTURE_BACKEND:-docling}
+    networks:
+      default:
+        aliases: [structure]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Deterministic dev embedding server. To use a real endpoint instead, set FOLIO_EMBED_URL / FOLIO_EMBED_MODEL /
+  # FOLIO_EMBED_API_KEY in .env (e.g. http://tei:80/v1) and stop this service: `docker compose stop embed`.
+  embed:
+    <<: *app
+    command: ["embed-stub", "--port", "8001"]
+    volumes: []
+    environment:
+      FOLIO_LOG_LEVEL: ${FOLIO_LOG_LEVEL:-INFO}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/healthz', timeout=3).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # One-shot: creates the storage bucket / jobs tables, then applies index schemas.
+  init:
+    <<: *app
+    command: ["init"]
+    restart: "no"
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres: {condition: service_healthy, required: false}
+      rabbitmq: {condition: service_healthy, required: false}
+      opensearch: {condition: service_healthy, required: false}
+      minio: {condition: service_healthy, required: false}
+
+  api:
+    <<: *app
+    command: ["api"]
+    ports:
+      - "${FOLIO_API_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/readyz', timeout=3).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+    depends_on:
+      init: {condition: service_completed_successfully}
+
+  worker:
+    <<: *app
+    command: ["worker"]
+    # SIGTERM = Celery warm shutdown: finish the running task before exiting.
+    stop_grace_period: 120s
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A service.worker:celery_app inspect ping -d celery@$$HOSTNAME"]
+      interval: 60s
+      timeout: 20s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      init: {condition: service_completed_successfully}
+
+volumes:
+  pg-data:
+  rabbit-data:
+  os-data:
+  minio-data:
+  models:

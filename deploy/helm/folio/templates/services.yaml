@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "folio.fullname" . }}-api
+  labels: {{- include "folio.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.api.service.type }}
+  ports:
+    - {name: http, port: {{ .Values.api.service.port }}, targetPort: http}
+  selector: {{- include "folio.selector" (dict "root" . "component" "api") | nindent 4 }}
+{{- if .Values.structure.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "folio.fullname" . }}-structure
+  labels: {{- include "folio.labels" . | nindent 4 }}
+spec:
+  ports:
+    - {name: http, port: 9000, targetPort: http}
+  selector: {{- include "folio.selector" (dict "root" . "component" "structure") | nindent 4 }}
+{{- end }}

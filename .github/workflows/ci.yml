@@ -1,0 +1,87 @@
+name: ci
+on:
+  push: {branches: [dev, main]}
+  pull_request:
+env:
+  FOLIO_TAG: ci
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: pytest
+
+  helm-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: |
+          helm lint deploy/helm/folio --set secrets.existingSecret=x
+          for v in values-dev values-gpu values-offline; do
+            helm template t deploy/helm/folio -f deploy/helm/folio/$v.yaml --set secrets.existingSecret=x >/dev/null
+          done
+      - run: |
+          printf 'POSTGRES_PASSWORD=x\nRABBITMQ_PASSWORD=x\nMINIO_ROOT_PASSWORD=x\n' > /tmp/ci.env
+          docker compose --env-file /tmp/ci.env -f deploy/compose/docker-compose.yml config >/dev/null
+
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - run: |
+          docker build -f deploy/docker/Dockerfile -t folio:$FOLIO_TAG .
+          docker build -f deploy/docker/Dockerfile.structure --build-arg BACKEND=heuristic --build-arg DEVICE=cpu -t folio-structure:$FOLIO_TAG-cpu .
+          docker build -f deploy/docker/Dockerfile.opensearch -t folio-opensearch:$FOLIO_TAG .
+          test "$(docker run --rm --entrypoint id -u folio:$FOLIO_TAG)" = 10001
+      - run: |
+          mkdir images
+          docker save folio:$FOLIO_TAG folio-structure:$FOLIO_TAG-cpu folio-opensearch:$FOLIO_TAG -o images/folio-images.tar
+      - uses: actions/upload-artifact@v4
+        with: {name: images, path: images/folio-images.tar, retention-days: 1}
+
+  trivy:
+    needs: images
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: [folio, folio-structure, folio-opensearch]
+    steps:
+      - uses: actions/download-artifact@v4
+        with: {name: images}
+      - run: docker load -i folio-images.tar
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ matrix.image }}:${{ env.FOLIO_TAG }}${{ matrix.image == 'folio-structure' && '-cpu' || '' }}
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+  compose-e2e:
+    needs: images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: images}
+      - run: docker load -i folio-images.tar
+      - run: FOLIO_TAG=$FOLIO_TAG NO_BUILD=1 deploy/compose/e2e.sh
+        env: {COMPOSE_EXTRA: ""}
+
+  kind-e2e:
+    needs: images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: images}
+      - run: docker load -i folio-images.tar
+      - uses: azure/setup-helm@v4
+      - uses: helm/kind-action@v1
+        with: {install_only: true}
+      - run: deploy/kind/e2e.sh

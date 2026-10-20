@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "folio.fullname" . }}-worker
+  labels: {{- include "folio.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 1, maxUnavailable: 0}
+  selector:
+    matchLabels: {{- include "folio.selector" (dict "root" . "component" "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "folio.selector" (dict "root" . "component" "worker") | nindent 8 }}
+      annotations:
+        checksum/project: {{ include (print $.Template.BasePath "/configmap-project.yaml") . | sha256sum }}
+        {{- with .Values.worker.podAnnotations }}{{ toYaml . | nindent 8 }}{{ end }}
+    spec:
+      serviceAccountName: {{ include "folio.serviceAccountName" . }}
+      # SIGTERM -> Celery warm shutdown: the running task finishes (up to this grace period); no preStop needed.
+      terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
+      {{- include "folio.imagePullSecrets" . | nindent 6 }}
+      {{- include "folio.podSecurity" . | nindent 6 }}
+      containers:
+        - name: worker
+          image: {{ include "folio.appImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: {{- toYaml .Values.worker.args | nindent 12 }}
+          env: {{- include "folio.env" . | nindent 12 }}
+          envFrom:
+            - secretRef: {name: {{ include "folio.secretName" . }}}
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "celery -A service.worker:celery_app inspect ping -d celery@$HOSTNAME"]
+            initialDelaySeconds: 90
+            periodSeconds: 120
+            timeoutSeconds: 30
+            failureThreshold: 5
+          {{- include "folio.containerSecurity" . | nindent 10 }}
+          volumeMounts: {{- include "folio.volumeMounts" . | nindent 12 }}
+          resources: {{- toYaml .Values.worker.resources | nindent 12 }}
+      volumes: {{- include "folio.volumes" . | nindent 8 }}
+      {{- with .Values.worker.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}

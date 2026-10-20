@@ -1,0 +1,21 @@
+{
+  "dynamic_field": true,
+  "fields": [
+    {"name": "chunk_id", "type": "VARCHAR", "max_length": 128, "is_primary": true},
+    {"name": "doc_id", "type": "VARCHAR", "max_length": 64},
+    {"name": "content", "type": "VARCHAR", "max_length": 65535, "enable_analyzer": true, "analyzer_params": {"type": "chinese"}},
+    {"name": "page", "type": "INT64", "nullable": true},
+    {"name": "section_path", "type": "JSON", "nullable": true},
+    {"name": "source_uri", "type": "VARCHAR", "max_length": 1024},
+    {"name": "contract_no", "type": "VARCHAR", "max_length": 128, "nullable": true},
+    {"name": "party", "type": "VARCHAR", "max_length": 256, "nullable": true},
+    {"name": "article", "type": "INT64", "nullable": true},
+    {"name": "embedding", "type": "FLOAT_VECTOR", "dim": 384},
+    {"name": "sparse", "type": "SPARSE_FLOAT_VECTOR"}
+  ],
+  "bm25": {"input_field": "content", "output_field": "sparse"},
+  "indexes": [
+    {"field": "embedding", "index_type": "AUTOINDEX", "metric_type": "COSINE"},
+    {"field": "sparse", "index_type": "SPARSE_INVERTED_INDEX", "metric_type": "BM25"}
+  ]
+}

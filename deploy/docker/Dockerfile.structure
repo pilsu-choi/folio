@@ -1,0 +1,60 @@
+# syntax=docker/dockerfile:1
+# folio-structure: document structure analysis model server (`folio structure-server`).
+#   docker build -f deploy/docker/Dockerfile.structure \
+#       --build-arg BACKEND=docling --build-arg DEVICE=cpu -t folio-structure:0.1.0-cpu .
+# BACKEND: docling | ppstructure | heuristic     DEVICE: cpu | gpu (gpu = CUDA wheels; host needs NVIDIA container toolkit)
+# Model weights are NOT baked in: mount a volume at /models (caches point there).
+ARG BACKEND=heuristic
+ARG DEVICE=cpu
+
+FROM python:3.12-slim AS build
+ARG BACKEND
+ARG DEVICE
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
+RUN python -m venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+WORKDIR /src
+COPY pyproject.toml README.md ./
+COPY folio ./folio
+COPY service ./service
+RUN set -eux; \
+    case "${BACKEND}" in \
+      docling) \
+        if [ "${DEVICE}" = "gpu" ]; then TORCH_INDEX=https://download.pytorch.org/whl/cu124; else TORCH_INDEX=https://download.pytorch.org/whl/cpu; fi; \
+        pip install torch torchvision --index-url "${TORCH_INDEX}"; \
+        pip install ".[service,docling]" ;; \
+      ppstructure) \
+        if [ "${DEVICE}" = "gpu" ]; then pip install paddlepaddle-gpu==3.0.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu123/; \
+        else pip install paddlepaddle==3.0.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/; fi; \
+        pip install ".[service,ppstructure]" ;; \
+      heuristic) pip install ".[service,ocr]" ;; \
+      *) echo "unknown BACKEND=${BACKEND}" >&2; exit 1 ;; \
+    esac
+
+FROM python:3.12-slim AS runtime
+ARG BACKEND
+ARG DEVICE
+ARG FOLIO_VERSION=0.1.0
+LABEL org.opencontainers.image.title="folio-structure" \
+      org.opencontainers.image.description="folio structure analysis model server" \
+      org.opencontainers.image.version="${FOLIO_VERSION}" \
+      io.folio.structure.backend="${BACKEND}" io.folio.structure.device="${DEVICE}"
+# libgl/glib are needed by opencv (docling, paddle).
+RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libgomp1 \
+ && rm -rf /var/lib/apt/lists/*
+RUN groupadd --gid 10001 folio \
+ && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/folio --shell /usr/sbin/nologin folio \
+ && mkdir -p /models && chown 10001:10001 /models
+COPY --from=build /opt/venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 HOME=/home/folio \
+    FOLIO_STRUCTURE_BACKEND=${BACKEND} FOLIO_STRUCTURE_DEVICE=${DEVICE} \
+    HF_HOME=/models/hf DOCLING_ARTIFACTS_PATH=/models/docling \
+    PADDLE_HOME=/models/paddle PADDLE_PDX_CACHE_HOME=/models/paddlex XDG_CACHE_HOME=/models/cache
+VOLUME ["/models"]
+USER 10001:10001
+WORKDIR /app
+EXPOSE 9000
+HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=10 \
+  CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9000/healthz', timeout=3).status == 200 else 1)"]
+ENTRYPOINT ["folio"]
+CMD ["structure-server", "--port", "9000"]

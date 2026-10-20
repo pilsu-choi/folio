@@ -31,6 +31,7 @@ service = [
 ]
 docling = ["docling>=2.50"]
 ppstructure = ["paddleocr>=3.2"]
+ocr = ["rapidocr-onnxruntime>=1.3"]
 all = ["folio[opensearch,milvus,pgvector,s3,service]"]
 dev = ["folio[all]", "pytest>=8", "jsonschema>=4", "ruff>=0.6"]
 

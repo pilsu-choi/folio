@@ -1,0 +1,4 @@
+# OpenSearch with the Korean analyzer plugin baked in, so installs work without internet access.
+# docker build -f deploy/docker/Dockerfile.opensearch -t folio-opensearch:0.1.0 .
+FROM opensearchproject/opensearch:2.19.1
+RUN /usr/share/opensearch/bin/opensearch-plugin install --batch analysis-nori

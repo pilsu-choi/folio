@@ -1,0 +1,18 @@
+{
+  "dynamic_field": true,
+  "fields": [
+    {"name": "chunk_id", "type": "VARCHAR", "max_length": 128, "is_primary": true},
+    {"name": "doc_id", "type": "VARCHAR", "max_length": 128},
+    {"name": "tenant_id", "type": "VARCHAR", "max_length": 64},
+    {"name": "acl", "type": "ARRAY", "element_type": "VARCHAR", "max_length": 128, "max_capacity": 32},
+    {"name": "page", "type": "INT64", "nullable": true},
+    {"name": "content", "type": "VARCHAR", "max_length": 65535, "enable_analyzer": true},
+    {"name": "embedding", "type": "FLOAT_VECTOR", "dim": 8},
+    {"name": "sparse", "type": "SPARSE_FLOAT_VECTOR"}
+  ],
+  "bm25": {"input_field": "content", "output_field": "sparse"},
+  "indexes": [
+    {"field": "embedding", "index_type": "AUTOINDEX", "metric_type": "COSINE"},
+    {"field": "sparse", "index_type": "SPARSE_INVERTED_INDEX", "metric_type": "BM25"}
+  ]
+}

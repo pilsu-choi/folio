@@ -1,0 +1,22 @@
+# Dev / kind: everything bundled, small resources. DEV-ONLY passwords below - never use them elsewhere.
+# helm install folio deploy/helm/folio -f deploy/helm/folio/values-dev.yaml
+image:
+  pullPolicy: IfNotPresent
+secrets:
+  create: true
+  values: {}
+infra:
+  postgres:   {enabled: true, password: dev-only-pg,    resources: {requests: {cpu: 50m, memory: 128Mi}}}
+  rabbitmq:   {enabled: true, password: dev-only-mq,    resources: {requests: {cpu: 50m, memory: 192Mi}}}
+  opensearch: {enabled: true, javaOpts: "-Xms512m -Xmx512m", resources: {requests: {cpu: 100m, memory: 1Gi}, limits: {memory: 1536Mi}}}
+  minio:      {enabled: true, password: dev-only-minio, resources: {requests: {cpu: 50m, memory: 128Mi}}}
+embedStub:
+  enabled: true
+structure:
+  backend: heuristic
+  resources: {requests: {cpu: 100m, memory: 256Mi}}
+api:
+  resources: {requests: {cpu: 100m, memory: 256Mi}}
+worker:
+  terminationGracePeriodSeconds: 120
+  resources: {requests: {cpu: 100m, memory: 512Mi}}

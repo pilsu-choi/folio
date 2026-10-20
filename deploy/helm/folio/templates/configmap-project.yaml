@@ -1,0 +1,25 @@
+{{- if not .Values.project.fromImage }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "folio.fullname" . }}-project
+  labels: {{- include "folio.labels" . | nindent 4 }}
+  {{- include "folio.preHook" . | nindent 2 }}
+data:
+  {{- range $n, $c := .Values.project.pipelines }}
+  {{ printf "pipelines__%s" $n | quote }}: |-
+    {{- $c | nindent 4 }}
+  {{- end }}
+  {{- range $n, $c := .Values.project.schemas.opensearch }}
+  {{ printf "schemas_opensearch__%s" $n | quote }}: |-
+    {{- $c | nindent 4 }}
+  {{- end }}
+  {{- range $n, $c := .Values.project.schemas.milvus }}
+  {{ printf "schemas_milvus__%s" $n | quote }}: |-
+    {{- $c | nindent 4 }}
+  {{- end }}
+  {{- if .Values.project.mappers }}
+  "mappers.py": |-
+    {{- .Values.project.mappers | nindent 4 }}
+  {{- end }}
+{{- end }}
