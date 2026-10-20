@@ -216,12 +216,22 @@ def finalize(pages_blocks: list[list[dict]]) -> None:
         b["level"] = sizes.index(s) + 1 if s in sizes else 1
     stack: list[tuple[int, str]] = []
     for blocks in pages_blocks:
+        apply_sections(blocks, stack)
         for b in blocks:
-            b["section_path"] = [t for _, t in stack]
-            if b["type"] == "heading":
-                lvl = b.get("level") or 1
-                while stack and stack[-1][0] >= lvl:
-                    stack.pop()
-                stack.append((lvl, b["text"].replace("\n", " ")))
             b.pop("_size", None)
             b["bbox"] = [round(x, 2) for x in b["bbox"]]
+
+
+def apply_sections(blocks: list[dict], stack: list[tuple[int, str]] | None = None) -> list[tuple[int, str]]:
+    """Set `section_path` from the heading stack (a heading gets its parents' path). Returns the stack."""
+    stack = [] if stack is None else stack
+    for b in blocks:
+        if b["type"] == "heading":
+            lvl = b.get("level") or 1
+            while stack and stack[-1][0] >= lvl:
+                stack.pop()
+            b["section_path"] = [t for _, t in stack]
+            stack.append((lvl, b["text"].replace("\n", " ")))
+        else:
+            b["section_path"] = [t for _, t in stack]
+    return stack

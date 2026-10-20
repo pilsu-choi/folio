@@ -34,7 +34,7 @@ def test_run_directory_and_reprocess(tmp_path, capsys):
     docs = tmp_path / "docs"
     docs.mkdir()
     (docs / "a.pdf").write_text("제1조\n제2조\n")
-    (docs / "skip.txt").write_text("no")
+    (docs / "skip.csv").write_text("no")  # unsupported extension
     assert main(["--config-dir", d, "run", str(docs), "--pipeline", "p"]) == 0
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
     assert len(lines) == 1 and lines[0]["status"] == "succeeded"

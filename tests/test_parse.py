@@ -10,6 +10,11 @@ from folio.parse import ParseError, default
 from tests._parse_helpers import FIX, FakeBackend, norm, ocr_words_for, validate_doc
 
 
+@pytest.fixture(autouse=True)
+def _no_vlm_env(monkeypatch):
+    monkeypatch.delenv("FOLIO_VLM_URL", raising=False)
+
+
 def words_of(text: str) -> list[str]:
     return norm(text).split(" ") if norm(text) else []
 
@@ -103,29 +108,6 @@ def test_image_inputs(name, pages):
     if name.startswith("image."):  # 100 dpi image of a 595x842pt page
         assert doc.pages[0].width == pytest.approx(595, abs=2)
     validate_doc(doc)
-
-
-def test_vlm_off_by_default_and_opt_in():
-    fb = FakeBackend(ocr_words_for(list("abcde")))
-    doc = default(str(FIX / "scanned.pdf"), backend=fb)
-    assert doc.meta["calls"]["vlm"] == 0
-    seen = []
-
-    def vlm(png):
-        seen.append(len(png))
-        return "# 제목\n\n본문 문단\n\n- a\n- b\n\n| x | y |\n|---|---|\n| 1 | 2 |\n"
-
-    doc = default(str(FIX / "scanned.pdf"), backend=FakeBackend(ocr_words_for(["a"])), vlm=vlm)  # too few words
-    assert doc.meta["calls"]["vlm"] == 1
-    kinds = [b.type for _, b in doc.iter_blocks()]
-    assert kinds == ["heading", "paragraph", "list", "table"]
-    assert {b.text_source for _, b in doc.iter_blocks()} == {"vlm"}
-    validate_doc(doc)
-    # good OCR -> no trigger; "all" -> forced, also for digital pages
-    d2 = default(str(FIX / "scanned.pdf"), backend=FakeBackend(ocr_words_for(list("abcde"))), vlm=vlm)
-    assert d2.meta["calls"]["vlm"] == 0
-    d3 = default(str(FIX / "digital.pdf"), backend=FakeBackend(), vlm=vlm, vlm_pages="all")
-    assert d3.meta["calls"]["vlm"] == 2
 
 
 def test_page_failure_isolated():

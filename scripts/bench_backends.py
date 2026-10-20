@@ -80,7 +80,7 @@ def run_backend(name: str, fixtures: Path) -> dict:
 
     def parse(f: str):
         t = time.perf_counter()
-        doc = default(str(fixtures / f), backend=backend)
+        doc = default(str(fixtures / f), backend=backend, vlm=False)
         res["sec"] += time.perf_counter() - t
         res["pages"] += len(doc.pages)
         res["schema_total"] += 1

@@ -55,7 +55,7 @@ def test_config_forms(monkeypatch):
     monkeypatch.setenv("IDX", "contracts")
     cfg = parse_config({
         "parse": "folio.parse:default",
-        "chunk": {"fn": "folio.chunk:auto", "max_tokens": 512},
+        "chunk": {"fn": "folio.chunk:adaptive", "max_tokens": 512},
         "map": "mappers:map_contract",
         "sink": {"type": "opensearch", "index": "${IDX}"},
         "storage": "${STORE:-/tmp/x}",

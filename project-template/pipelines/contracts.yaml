@@ -4,9 +4,11 @@ parse:
   fn: folio.parse:default
   backend: auto          # FOLIO_STRUCTURE_URL set -> HTTP structure server, else heuristic
   ocr_fallback: true
+  vlm: auto              # FOLIO_VLM_URL set -> VLM for scanned pages/images/figures/complex tables, else OCR
 chunk:
-  fn: folio.chunk:auto
-  max_tokens: 512
+  fn: folio.chunk:adaptive   # largest structural unit within max_tokens; alternatives: folio.chunk:page|fixed
+  max_tokens: 1024
+  min_tokens: 128
 map: mappers:map_contract
 embed:
   fn: folio.embed:http   # FOLIO_EMBED_URL / FOLIO_EMBED_MODEL

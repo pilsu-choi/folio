@@ -56,17 +56,22 @@ def _split_chars(text: str, max_tokens: int, count: Counter) -> list[str]:
     return parts
 
 
-def atomize(text: str, max_tokens: int, count: Counter) -> list[str]:
-    """Split text into pieces each <= max_tokens: sentence -> word -> char boundaries. Concatenation == text."""
-    atoms: list[str] = []
+def sentences(text: str) -> list[str]:
+    """Split into sentences (leading whitespace stays attached); concatenation == text."""
+    pieces: list[str] = []
     last = 0
-    pieces = []
     for m in _SENTENCE_RE.finditer(text):
-        pieces.append(text[last : m.end()])  # keeps leading whitespace attached
+        pieces.append(text[last : m.end()])
         last = m.end()
     if last < len(text):
         pieces.append(text[last:])
-    for sent in pieces:
+    return pieces
+
+
+def atomize(text: str, max_tokens: int, count: Counter) -> list[str]:
+    """Split text into pieces each <= max_tokens: sentence -> word -> char boundaries. Concatenation == text."""
+    atoms: list[str] = []
+    for sent in sentences(text):
         if count(sent) <= max_tokens:
             atoms.append(sent)
             continue

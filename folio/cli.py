@@ -8,7 +8,10 @@ import os
 import sys
 from pathlib import Path
 
-SUPPORTED = {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff"}
+SUPPORTED = {
+    ".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp",
+    ".pptx", ".xlsx", ".md", ".markdown", ".txt",
+}
 
 
 def _config_dir(args) -> str:

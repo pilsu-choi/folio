@@ -1,15 +1,15 @@
 """Chunk stage: Document -> Chunk Records.
 
-    folio.chunk.auto(doc, **opts) -> list[dict]   # picks a strategy per document
-    folio.chunk.section / table / page / fixed    # force one strategy
+    folio.chunk.adaptive(doc, **opts)   # default: structure tree, largest unit that fits max_tokens
+    folio.chunk.page(doc, **opts)       # one chunk per page/slide/sheet, adaptive split on overflow
+    folio.chunk.fixed(doc, **opts)      # structure-blind token windows (baseline)
 
-Options: ``max_tokens=512``, ``overlap_tokens=0``, ``min_tokens=0`` (merge smaller chunks into the previous
-one when they fit), ``tokenizer="module:function"`` (text -> int; default :func:`count_tokens`),
-``include_header_footer=False``, and for ``auto`` also ``strategy=`` to override the choice.
-No chunk exceeds ``max_tokens`` under the same counter. Output is deterministic.
+Options: ``max_tokens=1024``, ``min_tokens=128``, ``tokenizer=None`` (None -> :func:`count_tokens`, or
+``"module:function"`` text -> int), ``overlap=0`` (only ``fixed`` and forced fixed splits), ``include_header_footer=False``.
+``max_tokens`` bounds ``contextualized_content``. Output is deterministic; every record is contract-validated.
 """
 
-from folio.chunk.strategies import auto, fixed, page, section, table
+from folio.chunk.strategies import adaptive, fixed, page
 from folio.chunk.tokens import count_tokens
 
-__all__ = ["auto", "count_tokens", "fixed", "page", "section", "table"]
+__all__ = ["adaptive", "count_tokens", "fixed", "page"]
