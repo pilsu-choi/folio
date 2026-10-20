@@ -6,8 +6,9 @@ services:
   rabbitmq:       {pull_policy: never}
   minio:          {image: "${FOLIO_REGISTRY:-}cgr.dev/chainguard/minio:latest", pull_policy: never}  # digest verified by make_bundle.sh
   opensearch:     {build: !reset null, pull_policy: never}
-  structure:      {build: !reset null, pull_policy: never}
   structure-gpu:  {build: !reset null, pull_policy: never}
+  structure-cpu:  {build: !reset null, pull_policy: never}
+  structure-dev:  {build: !reset null, pull_policy: never}
   embed:          {build: !reset null, pull_policy: never}
   init:           {build: !reset null, pull_policy: never}
   api:            {build: !reset null, pull_policy: never}

@@ -98,7 +98,7 @@ P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 �
 | FR-12 | Pipeline | `run_pipeline(uri, cfg, stop_after)` + YAML의 `module:function` 로더 | P0 | 사용자 함수로 어느 단계든 교체 가능, 문서로 예제 제공 |
 | FR-13 | Pipeline | 원본·Document JSON·청크 저장, `reprocess --from parse\|chunk\|map` | P0 | `--from map` 재처리에서 구조 분석·OCR 호출 0회 |
 | FR-14 | Service | Ingest API, Job 조회, Celery 워커 1종 | P0 | 업로드 → `succeeded`까지 E2E 테스트 통과, 실패 시 에러 메시지 조회 가능 |
-| FR-15 | Service | Airflow 예시 DAG(PythonOperator로 `run_pipeline` 호출) | P1 | 예시 DAG가 로컬 Airflow에서 실행 |
+| FR-15 | Service | Airflow 예시 DAG(folio 이미지로 `folio run` 실행: DockerOperator 기본, KubernetesPodOperator 선택). Airflow에는 folio 의존성을 설치하지 않는다 | P1 | 예시 DAG가 로컬 Airflow에서 실행 |
 | FR-16 | CLI | `init`, `schema apply [--reindex]`, `run`, `reprocess` | P0 | `init` 반복 실행이 안전(멱등), `--reindex`는 alias 교체로 무중단 |
 | FR-17 | Retrieval | 하이브리드 검색(BM25 + 벡터, RRF) + rerank 라이브러리, OpenSearch·Milvus·pgvector 공통 인터페이스. 필터는 같음·목록·범위(`gt`·`gte`·`lt`·`lte`). 파이프라인 YAML `retrieval:`로 모드·`k`·BM25 필드 가중치(OpenSearch)·`rrf_k`·후보 수·rerank·필수 필터·사용자 retriever(`fn`) 설정 | P1 | 필터 인자로 도메인 필드 검색 가능, 세 스토어 모두 범위 필터 통합 테스트 통과, 가중치를 지원하지 않는 스토어에 가중치를 주면 설정 오류 |
 | FR-18 | Eval | Testset 생성, Recall@k·MRR·nDCG 평가. 서비스와 같은 `retrieval:` 설정으로 검색 | P2 | 설정 파일의 Git 커밋별로 결과 비교 가능 |
@@ -398,14 +398,14 @@ Document JSON의 `heading`과 `section_path`로 트리를 만든다. 헤딩이 �
 | --- | --- | --- |
 | 언어 | Python 3.11+ | 타입 힌트 필수 |
 | PDF | PyMuPDF | 텍스트 레이어·렌더링 |
-| 구조 분석 · OCR | Docling 또는 PP-StructureV3 (M1에서 확정) | 모델 교체는 `parse` 옵션의 엔드포인트로 |
+| 구조 분석 · OCR | PP-StructureV3 (기본, GPU). Docling·heuristic은 교체 가능한 백엔드 | 모델 교체는 `parse` 옵션의 엔드포인트로 |
 | VLM | 이미지 콘텐츠 기본 경로, 모델 1개(M1에서 확정) | OpenAI 호환 HTTP 엔드포인트, `parse.vlm: false`로 끔 |
 | Office · 텍스트 | python-pptx, openpyxl, markdown-it-py, charset-normalizer | PPTX·XLSX·Markdown 파싱, TXT 인코딩 판별 |
 | API · 워커 | FastAPI, Celery, RabbitMQ | 기존 사내 스택 |
-| 메타 DB | PostgreSQL | `jobs` 테이블 하나 |
+| 메타 DB | PostgreSQL | `jobs` 테이블 하나. 내장 PostgreSQL에 Airflow 메타데이터 DB를 별도 DB·계정으로 함께 둘 수 있다(`infra.postgres.extraDatabases`, persistence 필수) |
 | 저장소 | S3 호환 Object Storage | 로컬 파일시스템 폴백 |
 | 검색 인덱스 | OpenSearch (기본), Milvus, pgvector |  |
-| 배치 | Airflow (선택) | 예시 DAG만 제공 |
+| 배치 | Airflow (선택) | 예시 DAG + Compose `airflow` 프로필(개발용). 작업은 folio 컨테이너에서 실행. 운영 Airflow는 설치하지 않고, 공식 Apache Airflow Helm 차트용 설치 가이드·values 예시·RBAC(`deploy/airflow/`)만 제공 |
 | 배포 | Docker 이미지, Docker Compose v2, Kubernetes + Helm 3 | 지원 k8s 최소 버전은 열린 질문 |
 
 ## 마일스톤
@@ -426,25 +426,27 @@ M1에서 디지털 PDF 하나로 처음부터 끝까지 도는 것을 먼저 만
 
 ## 구현 현황 (2026-10-20)
 
-DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 검증 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md)과 [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md) 작업 기록에 있다.
+DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 검증 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md), [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md), [Airflow 컨테이너 DAG](wiki/2026-10-20-airflow-container-dag.md) 작업 기록에 있다.
 
 | 상태 | FR |
 | --- | --- |
-| 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~30 |
+| 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 15(Compose Airflow + DockerOperator, k3s에 공식 Airflow 차트 설치 후 KubernetesExecutor → KubernetesPodOperator, folio 내장 PostgreSQL을 메타데이터 DB로 공유), 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~30 |
 | 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인) |
-| 구현, 미검증 | FR-15(Airflow DAG 미실행), FR-26 Helm 사설 레지스트리 경로, PPTX `convert` 모드(LibreOffice 미포함) |
+| 구현, 미검증 | FR-15 운영 Airflow 가이드의 원격 로그 설정(예시만 제공), FR-26 Helm 사설 레지스트리 경로, PPTX `convert` 모드(LibreOffice 미포함) |
 | 보류 | FR-20, FR-21 (DOCX·HWPX) |
 
 - VLM 기본 적용은 `parse.vlm: auto`로 구현했다. `FOLIO_VLM_URL`이 있으면 VLM 경로(기본)를 쓰고, 없으면 구조 분석 OCR을 쓰며 `meta.vlm`에 사유를 남긴다. VLM 호출이 실패한 페이지만 OCR로 폴백하고 `meta.vlm_fallbacks`에 기록한다.
 - 청킹 기본 전략은 `adaptive`이고 대안은 `page`·`fixed`다. 이전의 `auto`·`section`·`table` 전략은 제거했다. `max_tokens`는 임베딩 입력인 `contextualized_content` 기준으로 지킨다.
-- 구조 분석 백엔드: 픽스처에서 heuristic·Docling·PP-StructureV3 모두 디지털 텍스트·표 결과가 같았다. OCR 유사도는 0.72 / 0.75 / 0.91, CPU 기준 초/페이지는 0.04 / 1.75 / 20.6이다. 기본 백엔드는 고객사 샘플(한글 포함)로 정한다.
+- 구조 분석 백엔드: 픽스처에서 heuristic·Docling·PP-StructureV3 모두 디지털 텍스트·표 결과가 같았다. OCR 유사도는 0.72 / 0.75 / 0.91, CPU 기준 초/페이지는 0.04 / 1.75 / 20.6이다(PP-StructureV3는 모델 로드 포함).
+- 기본 구조 분석 백엔드는 PP-StructureV3 GPU다(2026-10-20 사용자 결정). Compose `gpu` 프로필과 Helm 기본값이 GPU 서버를 띄우고, GPU가 없으면 `cpu`(Compose 프로필, `values-cpu.yaml`), 개발·CI는 `heuristic`을 쓴다. 폐쇄망 번들 기본 변형은 `STRUCTURE_VARIANTS=gpu`다. 모델을 미리 로드한 상태의 픽스처 11페이지 측정은 GPU(RTX 4070) 0.33~0.42 s/page, CPU 4스레드(pgx aarch64) 17.6 s/page, 최대 메모리 11.6 GiB다. 상세는 [PP-StructureV3 기본 백엔드](wiki/2026-10-21-ppstructure-gpu-default.md)에 있다.
 - 검색: `POST /v1/search`와 파이프라인 YAML `retrieval:`을 구현했다. 서비스·`folio eval run`·라이브러리 모두 `folio.pipeline.retriever(cfg)` 한 경로로 retriever를 만든다. 상세는 [검색 API 작업 기록](wiki/2026-10-20-implementation-search-api.md)에 있다.
 - `minio/minio`가 Docker Hub에서 더 이상 배포되지 않아, 내장 S3를 digest로 고정한 `cgr.dev/chainguard/minio`로 바꿨다.
 
 ## 열린 질문
 
 - [x] 레포·패키지 이름: `folio`로 확정. CLI도 `folio`
-- [ ] 기본 구조 분석 백엔드 확정: Docling vs PP-StructureV3를 M1에서 고객사 샘플(한글 포함)로 비교. MinerU 라이선스 확인 (어댑터·벤치마크 스크립트 구현 완료, 픽스처 결과는 위 구현 현황 참고)
+- [x] 기본 구조 분석 백엔드: PP-StructureV3 GPU로 결정(2026-10-20 사용자 결정)
+- [ ] PP-StructureV3 기본값을 고객사 샘플(한글 포함)로 재확인. MinerU 라이선스 확인
 - [ ] HWPX → PDF 변환기: 공개 샘플 벤치마크로 rhwp 기본 + LibreOffice·H2Orestart 대체로 잠정 결정. 첫 고객사 샘플로 재확인 필요
 - [x] VLM 모델 수: 스캔 파싱·그림 설명·복잡 표를 모델 1개로 처리 (이미지 콘텐츠에 VLM 기본 적용도 결정됨)
 - [ ] VLM 모델 선정: [VLM 모델](#vlm-모델-1개) 기준으로 M1에서 E2E 문서 VLM과 범용 VLM 후보를 비교

@@ -13,9 +13,10 @@ search (BM25 + 벡터 RRF, 필터·범위, 필드 가중치, rerank) ← POST /v
 - 입력 형식: PDF, 이미지(PNG·JPG·TIFF·BMP·WebP), PPTX, XLSX, Markdown, TXT(UTF-8·CP949 자동 판별).
 - VLM: `parse.vlm: auto`가 기본이다. `FOLIO_VLM_URL`이 있으면 스캔·품질 미달 페이지, 이미지, 그림 설명, 구조가 약한 표를 VLM으로 처리하고, 없으면 OCR로 처리한다. VLM 모델은 아직 정하지 않았다(개발용 `folio vlm-stub`만 있음).
 - 청킹: `adaptive`가 기본이다. `max_tokens` 안에 들어가는 가장 큰 구조 단위를 청크로 만든다. 대안은 `page`·`fixed`.
+- Airflow: 예시 DAG(`project-template/dags/folio_ingest.py`)는 folio 이미지로 `folio run`을 실행한다(DockerOperator 기본, KubernetesPodOperator 선택). Airflow에는 folio 의존성이 필요 없다. Compose `airflow` 프로필로 로컬 Airflow를 띄운다. 운영 Airflow는 공식 Apache Airflow Helm 차트 기준 가이드([deploy/airflow](deploy/airflow/README.md))만 제공한다.
 - 검색: `POST /v1/search`와 파이프라인 YAML `retrieval:`(모드, BM25 필드 가중치, 범위 필터, rerank, 필수 필터)을 제공한다. 상세는 [검색 API](wiki/2026-10-20-implementation-search-api.md) 작업 기록에 있다.
-- 검증한 것: 단위 테스트, Sink 통합 테스트(OpenSearch·Milvus·pgvector), Compose E2E(전 형식, VLM stub 포함), kind + Helm E2E(업그레이드·워커 강제 종료 포함), 오프라인 번들 설치. 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md), [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md) 작업 기록에 있다.
-- 미정: 기본 구조 분석 백엔드(Docling vs PP-StructureV3)는 고객사 샘플 벤치마크 후 정한다. `FOLIO_STRUCTURE_URL`이 없으면 모델 없는 `heuristic` 백엔드를 쓴다.
+- 검증한 것: 단위 테스트, Sink 통합 테스트(OpenSearch·Milvus·pgvector), Compose E2E(전 형식, VLM stub 포함), Compose Airflow DAG E2E(DockerOperator), k3s 공식 Airflow 차트 설치 + KubernetesPodOperator 실행, kind + Helm E2E(업그레이드·워커 강제 종료 포함), 오프라인 번들 설치. 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md), [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md), [Airflow 컨테이너 DAG](wiki/2026-10-20-airflow-container-dag.md) 작업 기록에 있다.
+- 구조 분석: 기본은 PP-StructureV3 GPU 서버다(Compose `gpu` 프로필, Helm 기본값). GPU가 없으면 `cpu` 프로필·`values-cpu.yaml`(약 40배 느리고 메모리 약 12 GB), 개발·CI는 `dev` 프로필(heuristic)을 쓴다. 라이브러리를 단독으로 쓸 때 `FOLIO_STRUCTURE_URL`이 없으면 모델 없는 `heuristic` 백엔드를 쓴다. 상세는 [wiki/2026-10-21-ppstructure-gpu-default.md](wiki/2026-10-21-ppstructure-gpu-default.md).
 
 ## 설치
 
@@ -91,6 +92,8 @@ API에는 인증이 없다. 내부망에 두고, App 백엔드가 사용자 권�
 - Docker Compose: `deploy/compose/` (`cp .env.example .env` → `docker compose up -d`)
 - Kubernetes: `deploy/helm/folio/` (`helm install folio deploy/helm/folio -f values-dev.yaml`)
 - 폐쇄망: `deploy/bundle/make_bundle.sh` → `install.sh`
+- Airflow(개발용): `.env`의 `COMPOSE_PROFILES`에 `airflow` 추가, `POSTGRES_AIRFLOW_PASSWORD`·`DOCKER_GID`·`FOLIO_DOCKER_NETWORK` 설정 → UI `localhost:8081` (메타데이터는 내장 postgres의 `airflow` DB)
+- Airflow(운영): 공식 Apache Airflow Helm 차트 + `deploy/airflow/values-official-chart.yaml` + `rbac-folio-namespace.yaml` ([가이드](deploy/airflow/README.md)). 외부 DB 없이 folio 내장 PostgreSQL을 Airflow 메타데이터 DB로 공유할 수 있다(`infra.postgres.extraDatabases`)
 
 자세한 내용은 [deploy/README.md](deploy/README.md)에 있다.
 
@@ -100,6 +103,7 @@ API에는 인증이 없다. 내부망에 두고, App 백엔드가 사용자 권�
 pytest -q                                              # 단위 테스트 (모델·외부 서비스 불필요)
 pytest -q -m integration tests/integration/test_sinks_integration.py   # OpenSearch·pgvector·Milvus 컨테이너 기동
 deploy/compose/e2e.sh                                  # Compose E2E (적재 → 검색)
+AIRFLOW=1 deploy/compose/e2e.sh                        # + Airflow DAG(DockerOperator) 실행·인덱스 적재 확인
 deploy/kind/e2e.sh                                     # kind + Helm E2E (업그레이드 포함)
 python scripts/bench_backends.py --backends heuristic,docling,ppstructure   # 구조 분석 백엔드 벤치마크
 ```

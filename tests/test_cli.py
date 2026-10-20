@@ -42,7 +42,19 @@ def test_run_directory_and_reprocess(tmp_path, capsys):
     assert main(["--config-dir", d, "reprocess", "--from", "map", "--index", "idx"]) == 0
 
 
+def test_run_source_uri(tmp_path, capsys):
+    d = project(tmp_path)
+    (tmp_path / "a.pdf").write_text("제1조\n")
+    args = ["--config-dir", d, "run", str(tmp_path / "a.pdf"), "--pipeline", "p", "--source-uri"]
+    assert main([*args, "https://dms.example/a"]) == 0
+    assert main([*args, ""]) == 0  # empty (Airflow default) = no override
+    sources = {json.loads(m.read_text())["source_uri"] for m in (tmp_path / "store").rglob("manifest.json")}
+    assert sources == {"https://dms.example/a", str(tmp_path / "a.pdf")}
+
+
 def test_run_failure_exit_code(tmp_path, capsys):
     d = project(tmp_path)
+    assert main(["--config-dir", d, "run", "", "--pipeline", "p"]) == 2  # empty Airflow param
+    assert json.loads(capsys.readouterr().out)["error"] == "empty path" and not SINKS.get("default")
     assert main(["--config-dir", d, "run", str(tmp_path / "missing.pdf"), "--pipeline", "p"]) == 1
     assert json.loads(capsys.readouterr().out)["status"] == "failed"

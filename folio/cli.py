@@ -82,11 +82,14 @@ def _expand(paths: list[str]) -> list[str]:
 def cmd_run(args) -> int:
     from folio.pipeline import run_pipeline
 
+    if not all(p.strip() for p in args.paths):  # `""` would expand to the working directory
+        _out({"status": "failed", "error": "empty path"})
+        return 2
     cfg = _load(args, args.pipeline)
     rc = 0
     for uri in _expand(args.paths):
         try:
-            res = run_pipeline(uri, cfg, stop_after=args.stop_after)
+            res = run_pipeline(uri, cfg, stop_after=args.stop_after, source_uri=args.source_uri or None)
             _out({"uri": uri, **res.to_dict()})
         except Exception as exc:
             rc = 1
@@ -205,6 +208,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("paths", nargs="+")
     s.add_argument("--pipeline", required=True)
     s.add_argument("--stop-after", choices=["parse", "chunk", "map", "embed", "index"])
+    s.add_argument("--source-uri", help="original location recorded in the manifest (empty = the input URI)")
     s.set_defaults(fn=cmd_run)
 
     s = sub.add_parser("reprocess")

@@ -15,7 +15,8 @@ embedStub:
 vlmStub:
   enabled: true
 structure:
-  backend: heuristic
+  backend: heuristic        # model-free, no GPU (image tag <appVersion>-heuristic)
+  gpu: {enabled: false}
   resources: {requests: {cpu: 100m, memory: 256Mi}}
 api:
   resources: {requests: {cpu: 100m, memory: 256Mi}}

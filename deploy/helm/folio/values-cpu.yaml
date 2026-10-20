@@ -1,0 +1,9 @@
+# Overlay: clusters without GPUs. PP-StructureV3 on CPU: same blocks/tables as GPU, OCR text ~0.99 similar,
+# ~40x slower per page (measured on fixtures, wiki/2026-10-21-ppstructure-gpu-default.md).
+structure:
+  backend: ppstructure
+  gpu: {enabled: false}
+  cpuThreads: 4             # matches the CPU request below; paddle otherwise uses every core
+  resources:
+    requests: {cpu: "4", memory: 12Gi}   # measured peak 11.6 GiB with 4 threads; 8 GiB was OOM-killed
+    limits: {memory: 14Gi}

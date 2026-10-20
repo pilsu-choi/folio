@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # kind E2E: install the chart, run the ingest scenario, then `helm upgrade` while jobs are in flight.
-# Images folio:TAG, folio-structure:TAG-cpu and folio-opensearch:TAG must exist locally (docker build).
+# Images folio:TAG, folio-structure:TAG-heuristic and folio-opensearch:TAG must exist locally (docker build).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
@@ -18,7 +18,7 @@ if ! kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
 fi
 kubectl config use-context "kind-$CLUSTER" >/dev/null
 
-images=("folio:$TAG" "folio-structure:$TAG-cpu" "folio-opensearch:$TAG"
+images=("folio:$TAG" "folio-structure:$TAG-heuristic" "folio-opensearch:$TAG"
         postgres:16 rabbitmq:3-management-alpine cgr.dev/chainguard/minio:latest@sha256:cff197fef764642223ef9f4444c903d51aee9b544a7be8bc007fef6b7b00d136)
 for i in "${images[@]}"; do
   docker image inspect "$i" >/dev/null 2>&1 || docker pull "$i"
@@ -26,7 +26,7 @@ for i in "${images[@]}"; do
 done
 
 # FOLIO_TAG applies to every folio-built image (app, structure, opensearch), not just the app
-tags=(--set image.tag="$TAG" --set structure.image.tag="$TAG-cpu" --set infra.opensearch.image.tag="$TAG")
+tags=(--set image.tag="$TAG" --set structure.image.tag="$TAG-heuristic" --set infra.opensearch.image.tag="$TAG")
 $HELM upgrade --install "$REL" "$root/deploy/helm/folio" -n "$NS" --create-namespace \
   -f "$root/deploy/helm/folio/values-dev.yaml" "${tags[@]}" --wait --timeout 10m
 

@@ -82,3 +82,9 @@ sources:
 
 - API 인증은 범위 밖이다. 외부에 노출해야 하면 게이트웨이나 App 백엔드 뒤에 둔다.
 - Milvus 한국어 BM25 분석기, 실제 rerank 모델 연동은 확인하지 않았다(rerank는 mock 전송으로만 테스트).
+
+## dev 통합 (2026-10-21)
+
+- dev가 Airflow·PP-StructureV3 GPU 작업으로 앞서 있어서, dev를 이 브랜치에 merge했다. PRD·README·`deploy/README.md`·`docs/INTERFACES.md`의 문서 충돌은 양쪽 내용을 합쳐 정리했다.
+- 의미상 충돌: dev가 kind 구조 분석 이미지를 `<tag>-heuristic`으로 바꿨으므로, `deploy/kind/e2e.sh`의 `structure.image.tag`도 `$TAG-heuristic`으로 맞췄다. `helm template` 렌더링으로 확인했다.
+- merge 후 확인한 것: 단위 테스트 133 passed, Sink 통합 테스트 14 passed / 8 skipped, 설정 JSON Schema 최신. kind E2E는 merge 후 다시 돌리지 않았다(이미지 태그 규칙만 바뀜).

@@ -1,8 +1,0 @@
-# GPU override: docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu up -d
-# (use COMPOSE_PROFILES=infra,gpu in .env and remove `cpu` so only one structure server runs).
-# Requires the NVIDIA container toolkit on the host. Default GPU backend is docling.
-services:
-  structure-gpu:
-    shm_size: 2gb
-    environment:
-      FOLIO_STRUCTURE_BACKEND: ${FOLIO_STRUCTURE_BACKEND:-docling}
