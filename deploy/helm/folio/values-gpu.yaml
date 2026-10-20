@@ -1,7 +1,7 @@
-# Overlay: GPU structure server (docling). Combine: -f values.yaml -f values-gpu.yaml
-# Requires the NVIDIA device plugin; adjust nodeSelector/tolerations to your GPU node pool.
+# Overlay: schedule the (default) PP-StructureV3 GPU server on a dedicated GPU node pool with a persistent
+# model cache. Requires the NVIDIA device plugin; adjust nodeSelector/tolerations to your cluster.
 structure:
-  backend: docling
+  backend: ppstructure
   gpu: {enabled: true, count: 1, resourceName: nvidia.com/gpu}
   models:
     type: pvc               # persistent model cache mounted at /models

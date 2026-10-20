@@ -73,3 +73,58 @@ def test_optional_adapters_import_lazily(alias, mod):
     except ImportError:
         with pytest.raises(ImportError):
             resolve_backend(alias).analyze(page_inputs("digital.pdf")[0], None)
+
+
+class _SlowBackend:
+    def __init__(self, device="cpu"):
+        self.device = device
+        self.gate = __import__("threading").Event()
+
+    def warmup(self):
+        if not self.gate.wait(5):
+            raise RuntimeError("weights missing")
+
+    def analyze(self, page_image, words):
+        from folio.backends.base import PageStructure
+
+        return PageStructure()
+
+
+def test_server_readyz_waits_for_warmup():
+    import time
+
+    from fastapi.testclient import TestClient
+
+    from folio.backends.server import create_app
+
+    backend = _SlowBackend()
+    client = TestClient(create_app(backend))
+    r = client.get("/readyz")
+    assert r.status_code == 503 and r.json()["status"] == "loading"
+    assert client.get("/healthz").status_code == 200
+    backend.gate.set()
+    for _ in range(50):
+        if client.get("/readyz").status_code == 200:
+            break
+        time.sleep(0.02)
+    assert client.get("/readyz").json()["status"] == "ready"
+
+
+def test_server_device_from_env(monkeypatch):
+    from folio.backends.server import _spec_from_env
+
+    monkeypatch.setenv("FOLIO_STRUCTURE_BACKEND", "ppstructure")
+    monkeypatch.setenv("FOLIO_STRUCTURE_DEVICE", "gpu")
+    assert _spec_from_env() == {"fn": "ppstructure", "device": "gpu"}
+    monkeypatch.setenv("FOLIO_STRUCTURE_CPU_THREADS", "4")
+    assert _spec_from_env() == {"fn": "ppstructure", "device": "gpu", "cpu_threads": "4"}
+    monkeypatch.setenv("FOLIO_STRUCTURE_BACKEND", "heuristic")
+    assert _spec_from_env() == "heuristic"
+
+
+def test_ppstructure_device_names():
+    from folio.backends.ppstructure import PPStructureBackend
+
+    assert PPStructureBackend(device="gpu").device == "gpu:0"
+    assert PPStructureBackend(device="cpu").device == "cpu"
+    assert PPStructureBackend(cpu_threads="4").pipeline_kwargs == {"cpu_threads": 4}

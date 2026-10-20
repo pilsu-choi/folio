@@ -141,10 +141,12 @@ worker:
 structure:
   enabled: true
   replicas: 1
-  backend: heuristic        # heuristic | docling | ppstructure (must match the image build)
-  image: {repository: folio-structure, tag: ""}   # default: <appVersion>-<cpu|gpu>
+  # Default: PP-StructureV3 on one NVIDIA GPU (needs the NVIDIA device plugin). No GPU: values-cpu.yaml.
+  backend: ppstructure      # ppstructure | docling | heuristic (must match the image build)
+  image: {repository: folio-structure, tag: ""}   # default: <appVersion>-<gpu|cpu>, or -heuristic
+  cpuThreads: ""            # FOLIO_STRUCTURE_CPU_THREADS; set to the CPU limit when running on CPU
   gpu:
-    enabled: false
+    enabled: true
     count: 1
     resourceName: nvidia.com/gpu
   # Model weights are mounted at /models (never baked into the image).
@@ -154,7 +156,9 @@ structure:
     size: 20Gi
     storageClass: ""
     hostPath: /srv/folio/models
-  resources: {}
+  resources:
+    requests: {cpu: "1", memory: 4Gi}
+    limits: {memory: 8Gi}
   nodeSelector: {}
   tolerations: []
   affinity: {}

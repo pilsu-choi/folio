@@ -38,7 +38,8 @@ app.kubernetes.io/component: {{ .component }}
 {{- end -}}
 
 {{- define "folio.structureImage" -}}
-{{- $tag := .Values.structure.image.tag | default (printf "%s-%s" .Chart.AppVersion (ternary "gpu" "cpu" .Values.structure.gpu.enabled)) -}}
+{{- $variant := ternary "heuristic" (ternary "gpu" "cpu" .Values.structure.gpu.enabled) (eq .Values.structure.backend "heuristic") -}}
+{{- $tag := .Values.structure.image.tag | default (printf "%s-%s" .Chart.AppVersion $variant) -}}
 {{- include "folio.image" (dict "root" . "repository" .Values.structure.image.repository "tag" $tag) -}}
 {{- end -}}
 
