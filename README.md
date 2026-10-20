@@ -253,7 +253,7 @@ folio eval testset --pipeline contracts --n 50 && folio eval run --pipeline cont
 | 영역 | 상태 |
 | --- | --- |
 | 입력 형식 | ✅ PDF, 이미지(PNG·JPG·TIFF·BMP·WebP), PPTX, XLSX, Markdown, TXT(UTF-8·CP949 자동 판별) |
-| DOCX·HWPX·HWP | ✅ `convert` 모드(PDF 변환 후 파싱, FR-20) ([작업 기록](wiki/2026-10-21-docx-hwpx-convert-mode.md)). ⏸️ `native` 모드(FR-21) 보류 |
+| DOCX·HWPX·HWP | ✅ `convert` 모드(PDF 변환 후 파싱, FR-20) ([작업 기록](wiki/2026-10-21-docx-hwpx-convert-mode.md)). ⏸️ `native` 모드(FR-21) 보류. PPTX도 `pptx_mode="convert"`로 같은 변환 서버를 쓸 수 있다(픽스처로 확인, 기본은 `native`). 한국어 어절은 공백 글리프가 없어도 글자 간격으로 나눈다 |
 | VLM | 🟡 연동 완료, 운영 모델 미정(개발용 stub만 있음) |
 | 검색 API | ✅ `POST /v1/search` + YAML `retrieval:` ([작업 기록](wiki/2026-10-20-implementation-search-api.md)) |
 | 구조 분석 | ✅ 기본 PP-StructureV3 GPU ([작업 기록](wiki/2026-10-21-ppstructure-gpu-default.md)) |

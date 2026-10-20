@@ -44,10 +44,12 @@ def extract_atoms(page: pymupdf.Page) -> tuple[list[Atom], list[Atom]]:
     word ended continues that word.
     """
     rm = page.rotation_matrix
+    turn = pymupdf.Matrix(rm.a, rm.b, rm.c, rm.d, 0, 0)
     raw = page.get_text("rawdict")
     chars: list[Atom] = []
     words: list[Atom] = []
     tail: list[Atom] = []  # chars of the last word if it ended at a line end, not at a space or gap
+    tail_dir = None
     line_id = 0
     for blk in raw["blocks"]:
         if blk.get("type") != 0:
@@ -60,38 +62,52 @@ def extract_atoms(page: pymupdf.Page) -> tuple[list[Atom], list[Atom]]:
                     box = pymupdf.Rect(ch["bbox"]) * rm
                     atoms.append(Atom(ch["c"], (box.x0, box.y0, box.x1, box.y1), line_id, blk["number"], span["size"]))
             chars.extend(atoms)
-            gaps = sorted(max(0.0, b.bbox[0] - a.bbox[2]) for a, b in zip(atoms, atoms[1:])
-                          if not (a.text.isspace() or b.text.isspace()))
-            base = gaps[len(gaps) // 2] if gaps else 0.0
+            v = pymupdf.Point(line["dir"]) * turn
+            d = _DIRS.get((round(v.x), round(v.y))) if abs(v.x) < 0.01 or abs(v.y) < 0.01 else None
+            gaps = sorted(max(0.0, _gap(a, b, d)) for a, b in zip(atoms, atoms[1:])
+                          if d and not (a.text.isspace() or b.text.isspace()))
+            base = gaps[(len(gaps) - 1) // 2] if gaps else 0.0
+            if d != tail_dir:
+                tail = []
             cur: list[Atom] = []
             for a in atoms:
                 if a.text.isspace():
-                    if tail and _adjacent(tail[-1], a):  # a space drawn out of order elsewhere keeps it open
+                    if tail and _adjacent(tail[-1], a, d):  # a space drawn out of order elsewhere keeps it open
                         tail = []
                     if cur:
                         words.append(_word(cur))
                         cur = []
                     continue
-                if not cur and tail and _adjacent(tail[-1], a):
+                if not cur and tail and _adjacent(tail[-1], a, d):
                     words.pop()
                     cur = tail
-                elif cur and not _adjacent(cur[-1], a, base):
+                elif cur and d and not _adjacent(cur[-1], a, d, base):
                     words.append(_word(cur))
                     cur = []
                 tail = []
                 cur.append(a)
             if cur:
                 words.append(_word(cur))
-                tail = cur
+                tail, tail_dir = (cur, d) if d else ([], None)
     return chars, words
 
 
-def _adjacent(a: Atom, b: Atom, base: float = 0.0) -> bool:
+# writing direction on the visible page -> (start edge, end edge, baseline edge) indexes into a bbox; sign
+_DIRS = {(1, 0): (0, 2, 3, 1), (-1, 0): (2, 0, 1, -1), (0, 1): (1, 3, 0, 1), (0, -1): (3, 1, 2, -1)}
+
+
+def _gap(a: Atom, b: Atom, d) -> float:
+    start, end, _, sign = d
+    return (b.bbox[start] - a.bbox[end]) * sign
+
+
+def _adjacent(a: Atom, b: Atom, d, base: float = 0.0) -> bool:
     """`b` follows `a` on the same baseline without a word gap (a space is ~0.25-0.33 em beyond `base`)."""
+    if not d:
+        return False
     size = max(a.size, b.size, 1.0)
-    gap = b.bbox[0] - a.bbox[2]
     # glyph boxes of condensed fonts overlap; a large step back is a new line, not the next letter
-    return -0.5 * size <= gap <= base + 0.24 * size and abs(a.bbox[3] - b.bbox[3]) <= 0.3 * size
+    return -0.5 * size <= _gap(a, b, d) <= base + 0.24 * size and abs(a.bbox[d[2]] - b.bbox[d[2]]) <= 0.3 * size
 
 
 def _word(chars: list[Atom]) -> Atom:

@@ -159,12 +159,14 @@ def test_resolve_backend_specs(monkeypatch):
     assert resolve_backend(obj) is obj
 
 
-def test_words_split_on_gaps_without_space_glyphs():
+@pytest.mark.parametrize("rotation", [0, 90, 270])
+def test_words_split_on_gaps_without_space_glyphs(rotation):
     """LibreOffice/rhwp/Hancom PDFs may draw Korean words without space glyphs, or draw the spaces out of order."""
     from folio.parse.textlayer import extract_atoms
 
     doc = pymupdf.open()
     page = doc.new_page()
+    page.set_rotation(rotation)  # text then runs vertically on the visible page
     tw, font = pymupdf.TextWriter(page.rect), pymupdf.Font("korea")
     for x, ch in zip([72, 84, 99, 111, 123], "본계약은부"):  # a space-wide gap after 계, no space glyph
         tw.append((x, 100), ch, font=font, fontsize=12)
