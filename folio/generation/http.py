@@ -21,9 +21,11 @@ def http(
     timeout: float = 120,
     retries: int = 3,
     backoff: float = 0.5,
+    extra_body: dict | None = None,
     transport: httpx.BaseTransport | None = None,
 ) -> str:
-    """POST ``messages`` to ``{url}/chat/completions`` and return the reply text; retries 5xx/connection errors."""
+    """POST ``messages`` to ``{url}/chat/completions`` and return the reply text; retries 5xx/connection errors.
+    ``extra_body`` is merged into the request (e.g. vLLM ``{"chat_template_kwargs": {"enable_thinking": False}}``)."""
     url = (url or os.environ.get("FOLIO_LLM_URL") or "").rstrip("/")
     if not url:
         raise FolioError("generation.http: no url (set `url` or FOLIO_LLM_URL)")
@@ -31,7 +33,7 @@ def http(
     model = model or os.environ.get("FOLIO_LLM_MODEL") or ""
     api_key = api_key or os.environ.get("FOLIO_LLM_API_KEY")
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    body = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
+    body = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens, **(extra_body or {})}
     with httpx.Client(timeout=timeout, headers=headers, transport=transport) as client:
         data = post_json(client, endpoint, body, retries, backoff, name="generation.http")
     return data["choices"][0]["message"]["content"] or ""

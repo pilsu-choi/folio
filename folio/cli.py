@@ -165,31 +165,37 @@ def cmd_vlm_stub(args) -> int:
 
 def cmd_eval(args) -> int:
     from folio import eval as ev
+    from folio.pipeline import _storage
 
     if args.eval_cmd == "testset":
+        from folio.contracts import Document
         from folio.eval import testset
 
-        if args.chunks:
-            chunks = json.loads(Path(args.chunks).read_text(encoding="utf-8"))
-        else:  # every stored chunks.json of the pipeline's index
-            from folio.pipeline import _storage
-
+        if args.docs:
+            docs = [json.loads(f.read_text(encoding="utf-8")) for f in sorted(Path(args.docs).glob("*.json"))]
+        else:  # every stored document.json of the pipeline's index
             cfg = _load(args, args.pipeline)
             storage = _storage(cfg)
-            chunks = [c for key in storage.list(f"{cfg.index}/") if key.endswith("/chunks.json")
-                      for c in storage.get_json(key)]
-        items = testset.generate(chunks, args.n, args.method, llm_url=args.llm_url, model=args.model)
+            docs = [storage.get_json(k) for k in storage.list(f"{cfg.index}/") if k.endswith("/document.json")]
+        items, stats = testset.generate(
+            [Document.model_validate(d) for d in docs], args.pages, args.pairs, args.method,
+            tuple(args.types.split(",")) if args.types else testset.TYPES, llm_url=args.llm_url, model=args.model,
+            extra_body=json.loads(args.llm_extra) if args.llm_extra else None, seed=args.seed)
         Path(args.out).write_text(json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
-        _out({"testset": args.out, "items": len(items)})
+        _out({"testset": args.out, "items": len(items), "stats": stats})
     elif args.eval_cmd == "run":
         from folio.pipeline import retriever
 
         cfg = _load(args, args.pipeline)
         items = json.loads(Path(args.testset).read_text(encoding="utf-8"))
+        storage = _storage(cfg)
+        chunks = [c for k in storage.list(f"{cfg.index}/") if k.endswith("/chunks.json") for c in storage.get_json(k)]
         result = ev.run(items, retriever(cfg), tuple(int(k) for k in args.ks.split(",")),
-                        config_dir=_config_dir(args), mode=args.mode)
+                        config_dir=_config_dir(args), chunks=chunks, mode=args.mode)
         path = ev.save_result(result, args.out)
-        _out({"result": str(path), "metrics": result["metrics"]})
+        _out({"result": str(path), "metrics": result["metrics"],
+              "by_type": {t: v["metrics"] for t, v in result["by_type"].items()},
+              "unreachable": len(result["unreachable"])})
     else:
         _out(ev.compare(ev.load_result(args.a), ev.load_result(args.b)))
     return 0
@@ -253,14 +259,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("eval")
     es = s.add_subparsers(dest="eval_cmd", required=True)
-    t = es.add_parser("testset")
+    t = es.add_parser("testset", help="span-based testset (evidence = source text, valid for any chunking)")
     src = t.add_mutually_exclusive_group(required=True)
-    src.add_argument("--chunks", help="chunks.json (list of chunk records)")
-    src.add_argument("--pipeline", help="use every stored chunks.json of this pipeline's index")
-    t.add_argument("--n", type=int, default=50)
-    t.add_argument("--method", choices=["heuristic", "llm"], default="heuristic")
-    t.add_argument("--llm-url", default=None, help="OpenAI-compatible base URL for --method llm")
+    src.add_argument("--docs", help="directory of Document JSON files (parse output)")
+    src.add_argument("--pipeline", help="use every stored document.json of this pipeline's index")
+    t.add_argument("--pages", type=int, default=50, help="single pages to sample (fact/table/section)")
+    t.add_argument("--pairs", type=int, default=20, help="page pairs to sample (multi-page/multi-document types)")
+    t.add_argument("--types", default=None, help="comma-separated question types (default: all)")
+    t.add_argument("--method", choices=["llm", "heuristic"], default="llm", help="heuristic: offline, fact only")
+    t.add_argument("--llm-url", default=None, help="OpenAI-compatible base URL (default FOLIO_LLM_URL)")
     t.add_argument("--model", default=None)
+    t.add_argument("--llm-extra", default=None, help='JSON merged into the request, e.g. \'{"chat_template_kwargs": {"enable_thinking": false}}\'')
+    t.add_argument("--seed", type=int, default=0)
     t.add_argument("--out", default="testset.json")
     r = es.add_parser("run")
     r.add_argument("--pipeline", required=True)
