@@ -1,0 +1,15 @@
+# data files stay on Spark (~/folio-m1-bench/samples); only scripts, manifest and README are tracked
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.hwp
+*.hwpx
+truth/
+pdf/
+scan/
+table/
+figure/
+stage/
+manifest.*.json
+!manifest.json

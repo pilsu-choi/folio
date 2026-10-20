@@ -1,0 +1,636 @@
+[
+ {
+  "id": "d01_fsc_kgx",
+  "file": "pdf/d01_fsc_kgx.pdf",
+  "kind": "digital",
+  "pages": 61,
+  "source_url": "https://www.fsc.go.kr/no010101/87890",
+  "license": "정부 보도자료(금융위원회). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/d01_fsc_kgx.page2.txt",
+   "truth/d01_fsc_kgx.page32.txt",
+   "truth/d01_fsc_kgx.page61.txt"
+  ],
+  "notes": "61p 전략 보고서, 장/절 번호 헤딩, 도표 다수 (long)"
+ },
+ {
+  "id": "d02_fsc_virtual_asset",
+  "file": "pdf/d02_fsc_virtual_asset.pdf",
+  "kind": "digital",
+  "pages": 11,
+  "source_url": "https://www.fsc.go.kr/no010101/87835",
+  "license": "정부 보도자료(금융위원회). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/d02_fsc_virtual_asset.page1.txt",
+   "truth/d02_fsc_virtual_asset.page6.txt",
+   "truth/d02_fsc_virtual_asset.page11.txt"
+  ],
+  "notes": "11p 실태조사, 표+차트"
+ },
+ {
+  "id": "d03_fsc_phishing",
+  "file": "pdf/d03_fsc_phishing.pdf",
+  "kind": "digital",
+  "pages": 13,
+  "source_url": "https://www.fsc.go.kr/no010101/87882",
+  "license": "정부 보도자료(금융위원회). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/d03_fsc_phishing.page1.txt",
+   "truth/d03_fsc_phishing.page4.txt",
+   "truth/d03_fsc_phishing.page7.txt"
+  ],
+  "notes": "13p, 표/이미지, 일부 이미지 전용 페이지"
+ },
+ {
+  "id": "d04_fsc_regional",
+  "file": "pdf/d04_fsc_regional.pdf",
+  "kind": "digital",
+  "pages": 10,
+  "source_url": "https://www.fsc.go.kr/no010101/87821",
+  "license": "정부 보도자료(금융위원회). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/d04_fsc_regional.page1.txt",
+   "truth/d04_fsc_regional.page5.txt",
+   "truth/d04_fsc_regional.page10.txt"
+  ],
+  "notes": "10p 보도자료"
+ },
+ {
+  "id": "d05_fsc_innovfin",
+  "file": "pdf/d05_fsc_innovfin.pdf",
+  "kind": "digital",
+  "pages": 10,
+  "source_url": "https://www.fsc.go.kr/no010101/87893",
+  "license": "정부 보도자료(금융위원회). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/d05_fsc_innovfin.page1.txt",
+   "truth/d05_fsc_innovfin.page5.txt",
+   "truth/d05_fsc_innovfin.page10.txt"
+  ],
+  "notes": "10p 혁신금융서비스 지정 표"
+ },
+ {
+  "id": "d06_fsc_audit",
+  "file": "pdf/d06_fsc_audit.pdf",
+  "kind": "digital",
+  "pages": 4,
+  "source_url": "https://www.fsc.go.kr/no010101/87894",
+  "license": "정부 보도자료(금융위원회). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/d06_fsc_audit.page1.txt",
+   "truth/d06_fsc_audit.page3.txt",
+   "truth/d06_fsc_audit.page4.txt"
+  ],
+  "notes": "4p 감리조치 표 중심"
+ },
+ {
+  "id": "d07_fsc_token_rule",
+  "file": "pdf/d07_fsc_token_rule.pdf",
+  "kind": "digital",
+  "pages": 3,
+  "source_url": "https://www.fsc.go.kr/no010101/87838",
+  "license": "정부 보도자료(금융위원회). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/d07_fsc_token_rule.page1.txt",
+   "truth/d07_fsc_token_rule.page2.txt",
+   "truth/d07_fsc_token_rule.page3.txt"
+  ],
+  "notes": "3p 입법예고, 신구조문대비표"
+ },
+ {
+  "id": "d08_fsc_fund_status",
+  "file": "pdf/d08_fsc_fund_status.pdf",
+  "kind": "digital",
+  "pages": 3,
+  "source_url": "https://www.fsc.go.kr/no010101/87900",
+  "license": "정부 보도자료(금융위원회). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/d08_fsc_fund_status.page1.txt",
+   "truth/d08_fsc_fund_status.page2.txt",
+   "truth/d08_fsc_fund_status.page3.txt"
+  ],
+  "notes": "3p 판매현황 표"
+ },
+ {
+  "id": "d09_kostat_employment",
+  "file": "pdf/d09_kostat_employment.pdf",
+  "kind": "digital",
+  "pages": 81,
+  "source_url": "https://kostat.go.kr/board.es?mid=a10301010000&bid=210",
+  "license": "정부 보도자료(국가데이터처/통계청). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/d09_kostat_employment.page2.txt",
+   "truth/d09_kostat_employment.page51.txt",
+   "truth/d09_kostat_employment.page80.txt"
+  ],
+  "notes": "81p 2026.9 고용동향 통합본, 번호 헤딩+차트 (long)"
+ },
+ {
+  "id": "d10_kostat_elderly",
+  "file": "pdf/d10_kostat_elderly.pdf",
+  "kind": "digital",
+  "pages": 42,
+  "source_url": "https://kostat.go.kr/board.es?mid=a10301010000&bid=210",
+  "license": "정부 보도자료(국가데이터처/통계청). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/d10_kostat_elderly.page2.txt",
+   "truth/d10_kostat_elderly.page23.txt",
+   "truth/d10_kostat_elderly.page42.txt"
+  ],
+  "notes": "42p 고령층 부가조사 결과 (long)"
+ },
+ {
+  "id": "d11_kostat_tables",
+  "file": "pdf/d11_kostat_tables.pdf",
+  "kind": "digital",
+  "pages": 46,
+  "source_url": "https://kostat.go.kr/board.es?mid=a10301010000&bid=210",
+  "license": "정부 보도자료(국가데이터처/통계청). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/d11_kostat_tables.page1.txt",
+   "truth/d11_kostat_tables.page23.txt",
+   "truth/d11_kostat_tables.page46.txt"
+  ],
+  "notes": "46p 통계표 부록, 숫자표 중심 (long)"
+ },
+ {
+  "id": "d12_terms_deposit",
+  "file": "pdf/d12_terms_deposit.pdf",
+  "kind": "digital",
+  "pages": 4,
+  "source_url": "https://www.ftc.go.kr/www/selectBbsNttList.do?bordCd=201&key=201",
+  "license": "공정거래위원회 표준약관(공공저작물). hwpx 원문을 hwpx2pdf.py로 PDF 재렌더(텍스트 레이어 정확), 레이아웃은 원본과 다름",
+  "truth": [
+   "truth/d12_terms_deposit.page1.txt",
+   "truth/d12_terms_deposit.page3.txt",
+   "truth/d12_terms_deposit.page4.txt"
+  ],
+  "notes": "예금거래기본약관(제10012호), 조/항 구조 계약"
+ },
+ {
+  "id": "d13_terms_bankloan",
+  "file": "pdf/d13_terms_bankloan.pdf",
+  "kind": "digital",
+  "pages": 7,
+  "source_url": "https://www.ftc.go.kr/www/selectBbsNttList.do?bordCd=201&key=201",
+  "license": "공정거래위원회 표준약관(공공저작물). hwpx 원문을 hwpx2pdf.py로 PDF 재렌더(텍스트 레이어 정확), 레이아웃은 원본과 다름",
+  "truth": [
+   "truth/d13_terms_bankloan.page1.txt",
+   "truth/d13_terms_bankloan.page4.txt",
+   "truth/d13_terms_bankloan.page7.txt"
+  ],
+  "notes": "은행여신거래기본약관(기업용) 조 구조 계약"
+ },
+ {
+  "id": "d14_form_wedding",
+  "file": "pdf/d14_form_wedding.pdf",
+  "kind": "digital",
+  "pages": 7,
+  "source_url": "https://www.ftc.go.kr/www/selectBbsNttList.do?bordCd=201&key=201",
+  "license": "공정거래위원회 표준약관(공공저작물). hwpx 원문을 hwpx2pdf.py로 PDF 재렌더(텍스트 레이어 정확), 레이아웃은 원본과 다름",
+  "truth": [
+   "truth/d14_form_wedding.page1.txt",
+   "truth/d14_form_wedding.page3.txt",
+   "truth/d14_form_wedding.page6.txt"
+  ],
+  "notes": "결혼준비대행업 표준계약서, 병합셀 양식 표 12개"
+ },
+ {
+  "id": "d15_terms_pilates",
+  "file": "pdf/d15_terms_pilates.pdf",
+  "kind": "digital",
+  "pages": 5,
+  "source_url": "https://www.ftc.go.kr/www/selectBbsNttList.do?bordCd=201&key=201",
+  "license": "공정거래위원회 표준약관(공공저작물). hwpx 원문을 hwpx2pdf.py로 PDF 재렌더(텍스트 레이어 정확), 레이아웃은 원본과 다름",
+  "truth": [
+   "truth/d15_terms_pilates.page1.txt",
+   "truth/d15_terms_pilates.page3.txt",
+   "truth/d15_terms_pilates.page5.txt"
+  ],
+  "notes": "요가·필라테스 표준약관, 표 8개"
+ },
+ {
+  "id": "d16_terms_gym",
+  "file": "pdf/d16_terms_gym.pdf",
+  "kind": "digital",
+  "pages": 4,
+  "source_url": "https://www.ftc.go.kr/www/selectBbsNttList.do?bordCd=201&key=201",
+  "license": "공정거래위원회 표준약관(공공저작물). hwpx 원문을 hwpx2pdf.py로 PDF 재렌더(텍스트 레이어 정확), 레이아웃은 원본과 다름",
+  "truth": [
+   "truth/d16_terms_gym.page1.txt",
+   "truth/d16_terms_gym.page3.txt",
+   "truth/d16_terms_gym.page4.txt"
+  ],
+  "notes": "체력단련장 이용 표준약관, 표 3개"
+ },
+ {
+  "id": "s01_fsc_regional_p1",
+  "file": "scan/s01_fsc_regional_p1.jpg",
+  "kind": "scan",
+  "pages": 1,
+  "source_url": "derived from d04_fsc_regional page 1",
+  "license": "same as source doc",
+  "truth": [
+   "truth/s01_fsc_regional_p1.page1.txt",
+   "truth/s01_fsc_regional_p1.truth.json"
+  ],
+  "notes": "synthetic scan: 150dpi, rot -0.12deg, blur, noise, gray, JPEG q60"
+ },
+ {
+  "id": "s02_fsc_audit_p2",
+  "file": "scan/s02_fsc_audit_p2.jpg",
+  "kind": "scan",
+  "pages": 1,
+  "source_url": "derived from d06_fsc_audit page 2",
+  "license": "same as source doc",
+  "truth": [
+   "truth/s02_fsc_audit_p2.page1.txt",
+   "truth/s02_fsc_audit_p2.truth.json"
+  ],
+  "notes": "synthetic scan: 200dpi, rot +1.04deg, blur, noise, gray, JPEG q60"
+ },
+ {
+  "id": "s03_fsc_token_rule_p3",
+  "file": "scan/s03_fsc_token_rule_p3.jpg",
+  "kind": "scan",
+  "pages": 1,
+  "source_url": "derived from d07_fsc_token_rule page 3",
+  "license": "same as source doc",
+  "truth": [
+   "truth/s03_fsc_token_rule_p3.page1.txt",
+   "truth/s03_fsc_token_rule_p3.truth.json"
+  ],
+  "notes": "synthetic scan: 150dpi, rot +0.53deg, blur, noise, gray, JPEG q60"
+ },
+ {
+  "id": "s04_terms_deposit_p2",
+  "file": "scan/s04_terms_deposit_p2.jpg",
+  "kind": "scan",
+  "pages": 1,
+  "source_url": "derived from d12_terms_deposit page 2",
+  "license": "same as source doc",
+  "truth": [
+   "truth/s04_terms_deposit_p2.page1.txt",
+   "truth/s04_terms_deposit_p2.truth.json"
+  ],
+  "notes": "synthetic scan: 200dpi, rot -0.13deg, blur, noise, gray, JPEG q60"
+ },
+ {
+  "id": "s05_terms_bankloan_p3",
+  "file": "scan/s05_terms_bankloan_p3.jpg",
+  "kind": "scan",
+  "pages": 1,
+  "source_url": "derived from d13_terms_bankloan page 3",
+  "license": "same as source doc",
+  "truth": [
+   "truth/s05_terms_bankloan_p3.page1.txt",
+   "truth/s05_terms_bankloan_p3.truth.json"
+  ],
+  "notes": "synthetic scan: 150dpi, rot +1.12deg, blur, noise, gray, JPEG q60"
+ },
+ {
+  "id": "s06_terms_pilates_p2",
+  "file": "scan/s06_terms_pilates_p2.jpg",
+  "kind": "scan",
+  "pages": 1,
+  "source_url": "derived from d15_terms_pilates page 2",
+  "license": "same as source doc",
+  "truth": [
+   "truth/s06_terms_pilates_p2.page1.txt",
+   "truth/s06_terms_pilates_p2.truth.json"
+  ],
+  "notes": "synthetic scan: 200dpi, rot -0.45deg, blur, noise, gray, JPEG q60"
+ },
+ {
+  "id": "s07_fsc_virtual_asset_p2",
+  "file": "scan/s07_fsc_virtual_asset_p2.jpg",
+  "kind": "scan",
+  "pages": 1,
+  "source_url": "derived from d02_fsc_virtual_asset page 2",
+  "license": "same as source doc",
+  "truth": [
+   "truth/s07_fsc_virtual_asset_p2.page1.txt",
+   "truth/s07_fsc_virtual_asset_p2.truth.json"
+  ],
+  "notes": "synthetic scan: 200dpi, rot +1.43deg, blur, noise, gray, JPEG q60"
+ },
+ {
+  "id": "s08_fsc_innovfin_p3",
+  "file": "scan/s08_fsc_innovfin_p3.jpg",
+  "kind": "scan",
+  "pages": 1,
+  "source_url": "derived from d05_fsc_innovfin page 3",
+  "license": "same as source doc",
+  "truth": [
+   "truth/s08_fsc_innovfin_p3.page1.txt",
+   "truth/s08_fsc_innovfin_p3.truth.json"
+  ],
+  "notes": "synthetic scan: 150dpi, rot +0.36deg, blur, noise, gray, JPEG q60"
+ },
+ {
+  "id": "s09_kostat_elderly_p6",
+  "file": "scan/s09_kostat_elderly_p6.jpg",
+  "kind": "scan",
+  "pages": 1,
+  "source_url": "derived from d10_kostat_elderly page 6",
+  "license": "same as source doc",
+  "truth": [
+   "truth/s09_kostat_elderly_p6.page1.txt",
+   "truth/s09_kostat_elderly_p6.truth.json"
+  ],
+  "notes": "synthetic scan: 150dpi, rot +0.65deg, blur, noise, gray, JPEG q60"
+ },
+ {
+  "id": "s10_terms_gym_p1",
+  "file": "scan/s10_terms_gym_p1.jpg",
+  "kind": "scan",
+  "pages": 1,
+  "source_url": "derived from d16_terms_gym page 1",
+  "license": "same as source doc",
+  "truth": [
+   "truth/s10_terms_gym_p1.page1.txt",
+   "truth/s10_terms_gym_p1.truth.json"
+  ],
+  "notes": "synthetic scan: 170dpi, rot -0.81deg, blur, noise, gray, JPEG q60"
+ },
+ {
+  "id": "r01_Gwanbo_jeilho_p1",
+  "file": "scan/r01_Gwanbo_jeilho_p1.jpg",
+  "kind": "scan",
+  "pages": 1,
+  "source_url": "https://commons.wikimedia.org/wiki/File:Gwanbo_jeilho.pdf",
+  "license": "대한민국 관보 제1호(1948.9.1), 국가기록원 소장, Commons 표기 Public domain (저작권법 제7조)",
+  "truth": [],
+  "notes": "genuine scan, no text truth (OCR sanity/qualitative only); 1948 국한문혼용 세로/다단 레이아웃 가능, 현대 문서보다 어려움"
+ },
+ {
+  "id": "r02_Gwanbo_jeilho_p2",
+  "file": "scan/r02_Gwanbo_jeilho_p2.jpg",
+  "kind": "scan",
+  "pages": 1,
+  "source_url": "https://commons.wikimedia.org/wiki/File:Gwanbo_jeilho.pdf",
+  "license": "대한민국 관보 제1호(1948.9.1), 국가기록원 소장, Commons 표기 Public domain (저작권법 제7조)",
+  "truth": [],
+  "notes": "genuine scan, no text truth (OCR sanity/qualitative only); 1948 국한문혼용 세로/다단 레이아웃 가능, 현대 문서보다 어려움"
+ },
+ {
+  "id": "r03_jayu_sinmun_1948-07-13_p1",
+  "file": "scan/r03_jayu_sinmun_1948-07-13_p1.jpg",
+  "kind": "scan",
+  "pages": 1,
+  "source_url": "https://ko.wikisource.org/wiki/파일:CNTS-00115191829_自由新聞_1948-07-13.pdf",
+  "license": "자유신문 1948-07-13, 국사편찬위원회 소장 스캔, Wikisource/Commons 표기 Public domain",
+  "truth": [],
+  "notes": "genuine scan, no text truth (OCR sanity/qualitative only); 1948 국한문혼용 세로/다단 레이아웃 가능, 현대 문서보다 어려움"
+ },
+ {
+  "id": "r04_jayu_sinmun_1948-07-13_p2",
+  "file": "scan/r04_jayu_sinmun_1948-07-13_p2.jpg",
+  "kind": "scan",
+  "pages": 1,
+  "source_url": "https://ko.wikisource.org/wiki/파일:CNTS-00115191829_自由新聞_1948-07-13.pdf",
+  "license": "자유신문 1948-07-13, 국사편찬위원회 소장 스캔, Wikisource/Commons 표기 Public domain",
+  "truth": [],
+  "notes": "genuine scan, no text truth (OCR sanity/qualitative only); 1948 국한문혼용 세로/다단 레이아웃 가능, 현대 문서보다 어려움"
+ },
+ {
+  "id": "t01_population_2level",
+  "file": "table/t01_population_2level.pdf",
+  "kind": "table",
+  "pages": 1,
+  "source_url": "synthetic (make_tables.py)",
+  "license": "own work, CC0",
+  "truth": [
+   "truth/t01_population_2level.table.json"
+  ],
+  "notes": "synthetic HTML table 5x5, 3 merged cells; also table/t01_population_2level.png (200dpi)"
+ },
+ {
+  "id": "t02_sales_3level",
+  "file": "table/t02_sales_3level.pdf",
+  "kind": "table",
+  "pages": 1,
+  "source_url": "synthetic (make_tables.py)",
+  "license": "own work, CC0",
+  "truth": [
+   "truth/t02_sales_3level.table.json"
+  ],
+  "notes": "synthetic HTML table 6x6, 5 merged cells; also table/t02_sales_3level.png (200dpi)"
+ },
+ {
+  "id": "t03_budget_stub",
+  "file": "table/t03_budget_stub.pdf",
+  "kind": "table",
+  "pages": 1,
+  "source_url": "synthetic (make_tables.py)",
+  "license": "own work, CC0",
+  "truth": [
+   "truth/t03_budget_stub.table.json"
+  ],
+  "notes": "synthetic HTML table 7x5, 3 merged cells; also table/t03_budget_stub.png (200dpi)"
+ },
+ {
+  "id": "t04_application_form",
+  "file": "table/t04_application_form.pdf",
+  "kind": "table",
+  "pages": 1,
+  "source_url": "synthetic (make_tables.py)",
+  "license": "own work, CC0",
+  "truth": [
+   "truth/t04_application_form.table.json"
+  ],
+  "notes": "synthetic HTML table 6x4, 6 merged cells; also table/t04_application_form.png (200dpi)"
+ },
+ {
+  "id": "t05_balance_sheet",
+  "file": "table/t05_balance_sheet.pdf",
+  "kind": "table",
+  "pages": 1,
+  "source_url": "synthetic (make_tables.py)",
+  "license": "own work, CC0",
+  "truth": [
+   "truth/t05_balance_sheet.table.json"
+  ],
+  "notes": "synthetic HTML table 8x4, 4 merged cells; also table/t05_balance_sheet.png (200dpi)"
+ },
+ {
+  "id": "t06_grade_block",
+  "file": "table/t06_grade_block.pdf",
+  "kind": "table",
+  "pages": 1,
+  "source_url": "synthetic (make_tables.py)",
+  "license": "own work, CC0",
+  "truth": [
+   "truth/t06_grade_block.table.json"
+  ],
+  "notes": "synthetic HTML table 7x4, 5 merged cells; also table/t06_grade_block.png (200dpi)"
+ },
+ {
+  "id": "t07_real_wedding",
+  "file": "table/t07_real_wedding.pdf",
+  "kind": "table",
+  "pages": 1,
+  "source_url": "https://www.ftc.go.kr/www/selectBbsNttList.do?bordCd=201&key=201",
+  "license": "공정거래위원회 표준약관(공공저작물)",
+  "truth": [
+   "truth/t07_real_wedding.table.json"
+  ],
+  "notes": "결혼준비대행업 표준계약서의 실제 표 4x6, 병합 6개; hwpx 셀 정보로 정답 생성, 표만 재렌더 (원본 레이아웃 아님)"
+ },
+ {
+  "id": "t08_real_wedding",
+  "file": "table/t08_real_wedding.pdf",
+  "kind": "table",
+  "pages": 1,
+  "source_url": "https://www.ftc.go.kr/www/selectBbsNttList.do?bordCd=201&key=201",
+  "license": "공정거래위원회 표준약관(공공저작물)",
+  "truth": [
+   "truth/t08_real_wedding.table.json"
+  ],
+  "notes": "결혼준비대행업 표준계약서의 실제 표 6x4, 병합 1개; hwpx 셀 정보로 정답 생성, 표만 재렌더 (원본 레이아웃 아님)"
+ },
+ {
+  "id": "t09_real_pilates",
+  "file": "table/t09_real_pilates.pdf",
+  "kind": "table",
+  "pages": 1,
+  "source_url": "https://www.ftc.go.kr/www/selectBbsNttList.do?bordCd=201&key=201",
+  "license": "공정거래위원회 표준약관(공공저작물)",
+  "truth": [
+   "truth/t09_real_pilates.table.json"
+  ],
+  "notes": "요가·필라테스 표준약관의 실제 표 6x3, 병합 4개; hwpx 셀 정보로 정답 생성, 표만 재렌더 (원본 레이아웃 아님)"
+ },
+ {
+  "id": "t10_real_gym",
+  "file": "table/t10_real_gym.pdf",
+  "kind": "table",
+  "pages": 1,
+  "source_url": "https://www.ftc.go.kr/www/selectBbsNttList.do?bordCd=201&key=201",
+  "license": "공정거래위원회 표준약관(공공저작물)",
+  "truth": [
+   "truth/t10_real_gym.table.json"
+  ],
+  "notes": "체력단련장 표준약관의 실제 표 6x3, 병합 4개; hwpx 셀 정보로 정답 생성, 표만 재렌더 (원본 레이아웃 아님)"
+ },
+ {
+  "id": "f01_vasp_asset_count",
+  "file": "figure/f01_vasp_asset_count.png",
+  "kind": "figure",
+  "pages": 1,
+  "source_url": "https://www.fsc.go.kr/no010101/87835",
+  "license": "정부 보도자료(금융위원회). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/f01_vasp_asset_count.figure.json"
+  ],
+  "notes": "crop of d02_fsc_virtual_asset page 10 at 150dpi; human-written Korean description + facts"
+ },
+ {
+  "id": "f02_vasp_halt_pie",
+  "file": "figure/f02_vasp_halt_pie.png",
+  "kind": "figure",
+  "pages": 1,
+  "source_url": "https://www.fsc.go.kr/no010101/87835",
+  "license": "정부 보도자료(금융위원회). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/f02_vasp_halt_pie.figure.json"
+  ],
+  "notes": "crop of d02_fsc_virtual_asset page 5 at 150dpi; human-written Korean description + facts"
+ },
+ {
+  "id": "f03_vasp_solo_listing",
+  "file": "figure/f03_vasp_solo_listing.png",
+  "kind": "figure",
+  "pages": 1,
+  "source_url": "https://www.fsc.go.kr/no010101/87835",
+  "license": "정부 보도자료(금융위원회). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/f03_vasp_solo_listing.figure.json"
+  ],
+  "notes": "crop of d02_fsc_virtual_asset page 5 at 150dpi; human-written Korean description + facts"
+ },
+ {
+  "id": "f04_emp_rate_bar_line",
+  "file": "figure/f04_emp_rate_bar_line.png",
+  "kind": "figure",
+  "pages": 1,
+  "source_url": "https://kostat.go.kr/board.es?mid=a10301010000&bid=210",
+  "license": "정부 보도자료(국가데이터처/통계청). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/f04_emp_rate_bar_line.figure.json"
+  ],
+  "notes": "crop of d09_kostat_employment page 8 at 150dpi; human-written Korean description + facts"
+ },
+ {
+  "id": "f05_emp_infographic",
+  "file": "figure/f05_emp_infographic.png",
+  "kind": "figure",
+  "pages": 1,
+  "source_url": "https://kostat.go.kr/board.es?mid=a10301010000&bid=210",
+  "license": "정부 보도자료(국가데이터처/통계청). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/f05_emp_infographic.figure.json"
+  ],
+  "notes": "crop of d09_kostat_employment page 5 at 150dpi; human-written Korean description + facts"
+ },
+ {
+  "id": "f06_emp_sa_bar_line",
+  "file": "figure/f06_emp_sa_bar_line.png",
+  "kind": "figure",
+  "pages": 1,
+  "source_url": "https://kostat.go.kr/board.es?mid=a10301010000&bid=210",
+  "license": "정부 보도자료(국가데이터처/통계청). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/f06_emp_sa_bar_line.figure.json"
+  ],
+  "notes": "crop of d09_kostat_employment page 8 at 150dpi; human-written Korean description + facts"
+ },
+ {
+  "id": "f07_kgx_five_sectors",
+  "file": "figure/f07_kgx_five_sectors.png",
+  "kind": "figure",
+  "pages": 1,
+  "source_url": "https://www.fsc.go.kr/no010101/87890",
+  "license": "정부 보도자료(금융위원회). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/f07_kgx_five_sectors.figure.json"
+  ],
+  "notes": "crop of d01_fsc_kgx page 19 at 150dpi; human-written Korean description + facts"
+ },
+ {
+  "id": "f08_kgx_support_diagram",
+  "file": "figure/f08_kgx_support_diagram.png",
+  "kind": "figure",
+  "pages": 1,
+  "source_url": "https://www.fsc.go.kr/no010101/87890",
+  "license": "정부 보도자료(금융위원회). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/f08_kgx_support_diagram.figure.json"
+  ],
+  "notes": "crop of d01_fsc_kgx page 25 at 150dpi; human-written Korean description + facts"
+ },
+ {
+  "id": "f09_kgx_steel_roadmap",
+  "file": "figure/f09_kgx_steel_roadmap.png",
+  "kind": "figure",
+  "pages": 1,
+  "source_url": "https://www.fsc.go.kr/no010101/87890",
+  "license": "정부 보도자료(금융위원회). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/f09_kgx_steel_roadmap.figure.json"
+  ],
+  "notes": "crop of d01_fsc_kgx page 19 at 150dpi; human-written Korean description + facts"
+ },
+ {
+  "id": "f10_kgx_mobility_targets",
+  "file": "figure/f10_kgx_mobility_targets.png",
+  "kind": "figure",
+  "pages": 1,
+  "source_url": "https://www.fsc.go.kr/no010101/87890",
+  "license": "정부 보도자료(금융위원회). 공공누리(KOGL) 표시 확인 필요, 출처 표시 후 사용 전제 - 잠정",
+  "truth": [
+   "truth/f10_kgx_mobility_targets.figure.json"
+  ],
+  "notes": "crop of d01_fsc_kgx page 25 at 150dpi; human-written Korean description + facts"
+ }
+]
