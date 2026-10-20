@@ -34,7 +34,7 @@ with DAG(
     catchup=False,
     tags=["folio"],
     params={
-        "uri": Param("", type="string", description="document URI: s3://bucket/key or a path inside the image"),
+        "uri": Param(type="string", minLength=1, description="document URI: s3://bucket/key or a path inside the image"),
         "pipeline": Param("contracts", type="string"),
         "source_uri": Param("", type="string", description="original location recorded in the manifest"),
     },

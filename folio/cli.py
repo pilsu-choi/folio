@@ -82,6 +82,9 @@ def _expand(paths: list[str]) -> list[str]:
 def cmd_run(args) -> int:
     from folio.pipeline import run_pipeline
 
+    if not all(p.strip() for p in args.paths):  # `""` would expand to the working directory
+        _out({"status": "failed", "error": "empty path"})
+        return 2
     cfg = _load(args, args.pipeline)
     rc = 0
     for uri in _expand(args.paths):

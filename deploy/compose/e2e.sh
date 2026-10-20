@@ -29,9 +29,10 @@ trap 'cleanup; [ -z "${TMP_ENV:-}" ] || rm -f "$TMP_ENV"' EXIT
 
 port=${FOLIO_API_PORT:-8080}
 
-# Upload the sample to S3, run the DAG with `airflow dags test`, then check the chunks reached OpenSearch.
+# Upload the sample to S3, trigger the DAG (scheduler + executor path), then check the chunks reached OpenSearch.
 airflow_scenario() {
-  local bucket=${FOLIO_BUCKET:-folio-artifacts} key=airflow-e2e/digital.pdf src="e2e://airflow/$RANDOM" i=0 n
+  local bucket=${FOLIO_BUCKET:-folio-artifacts} key=airflow-e2e/digital.pdf src="e2e://airflow/$RANDOM" i=0 n s
+  local run="e2e-$RANDOM" af=("${dc[@]}" exec -T airflow airflow)
   until "${dc[@]}" exec -T airflow airflow dags list -o plain 2>/dev/null | grep -q folio_ingest; do
     i=$((i + 5)); [ "$i" -ge "$E2E_TIMEOUT" ] && die "airflow did not load folio_ingest"; sleep 5
   done
@@ -39,8 +40,18 @@ airflow_scenario() {
     && die "folio_ingest has import errors"
   "${dc[@]}" run --rm --no-deps -T -v "$E2E_PDF:/e2e/in.pdf:ro" --entrypoint python api -c \
     "import boto3,os; boto3.client('s3', endpoint_url=os.environ['S3_ENDPOINT_URL']).upload_file('/e2e/in.pdf', '$bucket', '$key')"
-  "${dc[@]}" exec -T airflow airflow dags test folio_ingest \
-    -c "{\"uri\": \"s3://$bucket/$key\", \"source_uri\": \"$src\"}" >&2 || die "airflow dags test failed"
+  "${af[@]}" dags trigger folio_ingest -r "$run" \
+    -c "{\"uri\": \"s3://$bucket/$key\", \"source_uri\": \"$src\"}" >/dev/null 2>&1 || die "airflow dags trigger failed"
+  i=0
+  while :; do
+    s=$("${af[@]}" dags list-runs folio_ingest -o plain 2>/dev/null | awk -v r="$run" '$2 == r {print $3}')
+    case "$s" in
+      success) break ;;
+      failed) die "DAG run $run failed" ;;
+    esac
+    i=$((i + 5)); [ "$i" -ge "$E2E_TIMEOUT" ] && die "DAG run $run timeout (last state: ${s:-none})"; sleep 5
+  done
+  log "DAG run $run succeeded"
   n=$("${dc[@]}" exec -T api python -c "import json,os,urllib.request as u; b=os.environ['OPENSEARCH_URL']
 u.urlopen(u.Request(b + '/contracts/_refresh', method='POST'))
 q=json.dumps({'query': {'term': {'source_uri': '$src'}}}).encode()

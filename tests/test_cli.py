@@ -54,5 +54,7 @@ def test_run_source_uri(tmp_path, capsys):
 
 def test_run_failure_exit_code(tmp_path, capsys):
     d = project(tmp_path)
+    assert main(["--config-dir", d, "run", "", "--pipeline", "p"]) == 2  # empty Airflow param
+    assert json.loads(capsys.readouterr().out)["error"] == "empty path" and not SINKS.get("default")
     assert main(["--config-dir", d, "run", str(tmp_path / "missing.pdf"), "--pipeline", "p"]) == 1
     assert json.loads(capsys.readouterr().out)["status"] == "failed"

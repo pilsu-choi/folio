@@ -264,6 +264,7 @@ services:
     environment:
       <<: *folio-env
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "False"  # dev: triggered runs start without unpausing
       FOLIO_IMAGE: *image-folio
       FOLIO_AIRFLOW_RUNNER: docker
       FOLIO_DOCKER_NETWORK: ${FOLIO_DOCKER_NETWORK:-folio_default}
