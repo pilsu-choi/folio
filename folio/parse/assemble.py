@@ -222,10 +222,39 @@ def finalize(pages_blocks: list[list[dict]]) -> None:
             b["bbox"] = [round(x, 2) for x in b["bbox"]]
 
 
+# article label of Korean statutes/terms: "제3조", "제3조의2(정의)", "제3조 【정의】"
+_ARTICLE = re.compile(r"제\s*\d+\s*조(?:\s*의\s*\d+)?(?:\s*(?:\([^()\n]{1,40}\)|【[^】\n]{1,40}】))?")
+
+
+def _article(text: str) -> str | None:
+    """Article label opening a paragraph: alone, or titled and followed by the body ("제1조(목적) 이 …")."""
+    text = text.strip()
+    m = _ARTICLE.match(text)
+    if not m:
+        return None
+    rest = text[m.end():]
+    return m.group() if not rest or (m.group().endswith((")", "】")) and rest[0].isspace()) else None
+
+
 def apply_sections(blocks: list[dict], stack: list[tuple[int, str]] | None = None) -> list[tuple[int, str]]:
-    """Set `section_path` from the heading stack (a heading gets its parents' path). Returns the stack."""
+    """Set `section_path` from the heading stack (a heading gets its parents' path). Returns the stack.
+
+    A paragraph opening with an article label ("제N조(제목)") starts a section one level below the current
+    heading, replacing the previous article; a label-only paragraph becomes that heading.
+    """
     stack = [] if stack is None else stack
     for b in blocks:
+        label = _article(b.get("text") or "") if b["type"] == "paragraph" else None
+        if label:
+            i = next((k for k, (_, t) in enumerate(stack) if _article(t)), len(stack))
+            lvl = stack[i][0] if i < len(stack) else (stack[-1][0] + 1 if stack else 1)
+            del stack[i:]
+            if label == b["text"].strip():
+                b["type"], b["level"] = "heading", lvl
+            else:  # label and body in one block: the body sits inside the article section
+                b["section_path"] = [t for _, t in stack] + [label]
+                stack.append((lvl, label))
+                continue
         if b["type"] == "heading":
             lvl = b.get("level") or 1
             while stack and stack[-1][0] >= lvl:

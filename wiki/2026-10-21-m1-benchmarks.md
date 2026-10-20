@@ -105,14 +105,14 @@ PyPI 4.0.12(2026-10-11) 기준 Apache-2.0에 추가 조건이 붙는다. 계열�
 | --- | --- |
 | `folio/backends/ppstructure.py`가 paddle의 numpy 배열(`cell_box_list`)에 `or []`를 써서 표가 있는 페이지에서 `ValueError` | pgx에서 재현 후 수정, 회귀 테스트 추가(`tests/test_backends.py::test_ppstructure_numpy_results`). 같은 패턴의 `rec_scores`도 수정 |
 | `ppstructure.py`가 `cell_box_list`를 `<td>` 순서와 그대로 짝지어, 상자가 오른쪽 아래부터 오는 실제 표가 행·열 모두 뒤집힘 | 수정(`_reading_order`), 회귀 테스트 `test_ppstructure_cell_reading_order`. 실제 표 셀 정확도 0.0~0.12 → 0.28~0.42. 상자 수와 `<td>` 수가 다르면 여전히 어긋남 |
-| 표 헤더 행 하나가 `max_tokens`보다 길면 `adaptive`가 상한을 넘는 중복 청크를 수천 개 만든다(d01 31쪽, Docling의 139열 표) | 미수정. 벤치마크에서는 해당 표 2개를 모든 설정에서 제외 |
-| 약관 d12·d13의 `제N조` 줄이 헤딩으로 인식되지 않아 청킹이 페이지 단위로 내려간다 | 미수정, 미시험 |
+| 표 헤더 행 하나가 `max_tokens`보다 길면 `adaptive`가 상한을 넘는 중복 청크를 수천 개 만든다(d01 31쪽, Docling의 139열 표) | 수정(`folio/chunk/strategies.py`): 헤더가 `max_tokens`의 절반을 넘으면 조각마다 반복하지 않고 첫 행들처럼 나눈다. 회귀 테스트 `test_table_header_over_max_split_once_not_repeated`. pgx에서 d01(표 포함) 512/64 재청킹: 수정 전 6143개 중 5971개 상한 초과 → 수정 후 187개, 초과 0. 벤치마크 수치는 표를 뺀 채로 낸 것이라 그대로다 |
+| 약관 d12·d13의 `제N조` 줄이 헤딩으로 인식되지 않아 청킹이 페이지 단위로 내려간다 | 수정(`folio/parse/assemble.py` `apply_sections`): 문단이 `제N조(제목)`로 시작하면 현재 헤딩 아래 조 섹션을 연다. 조 표시만 있는 문단은 헤딩이 되고, 제목 뒤에 본문이 이어지면 문단의 `section_path`에 조를 넣는다. `제3조에 따라`처럼 본문 속 참조는 제외. 회귀 테스트 `test_article_paragraphs_become_sections`. pgx에서 기존 파싱 결과에 적용: d12 512/64 청크 24개 중 22개, d13 37개 중 34개가 조 경로를 가진다(수정 전 0). 검색 성능 재측정은 안 했다 |
 
 ## 미완료
 
 - 첫 고객사 샘플로 세 결론을 다시 확인한다.
 - 청킹 기본값을 512/64로 바꿀지, VLM을 Qwen3.5-9B로 정할지 사용자 결정.
 - VLM 출력용 HTML 표 파서, Qwen3.5-9B FP8 서빙 속도 확인.
-- `adaptive` 헤더 행 초과 버그 수정.
+- `제N조` 섹션 적용 후 청킹 Eval 재측정(d12·d13).
 - ARM GPU 호스트에서 PP-StructureV3 GPU를 쓸 방법(소스 빌드 등) 또는 Docling 기본 여부.
 - `bench/m1-models` 브랜치의 dev 통합.

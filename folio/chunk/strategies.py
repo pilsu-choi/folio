@@ -97,9 +97,18 @@ class Chunker:
             b = min(b - 1, b * 4 // 5)
 
     # ---- leaf splitting -------------------------------------------------------------------------------------------
+    def wide(self, leaf: Leaf) -> bool:
+        """Table header too big to repeat in every piece: it is split like body rows instead."""
+        return self.count(leaf.header) > self.max // 2
+
     def atoms_of(self, leaf: Leaf) -> tuple[list[Atom], str, Callable[[Atom], list[Atom]] | None]:
         if leaf.kind == "table" and leaf.atoms:
-            return [(t, a, b, None) for t, a, b in leaf.atoms], "\n", None
+            rows = [(t, a, b, None) for t, a, b in leaf.atoms]
+            if self.wide(leaf):  # header (with caption) becomes the first rows; no per-piece header
+                t, a, b, _ = rows[-1]
+                rows[-1] = ("\n".join(p for p in (t, leaf.post) if p), a, b, None)
+                rows.insert(0, ("\n".join(p for p in (leaf.pre, leaf.header) if p), 0, leaf.atoms[0][1] - 1, None))
+            return rows, "\n", None
         if leaf.kind == "list":
             lines = [ln for ln in leaf.text.split("\n") if ln.strip()]
             base = min(len(ln) - len(ln.lstrip()) for ln in lines)
@@ -130,7 +139,7 @@ class Chunker:
     def split(self, leaf: Leaf, path: list[str], lead: str) -> list[tuple[str, str]]:
         """Pieces (text, sub-range) of a leaf that does not fit as a whole. `lead` (headings) rides on piece 0."""
         lead = lead if lead and self.fits(lead + "\n\nx", path) else ""
-        table = leaf.kind == "table" and bool(leaf.atoms)
+        table = leaf.kind == "table" and bool(leaf.atoms) and not self.wide(leaf)
         wrap = (lambda t, pre=True, post=True: "\n".join(p for p in ((leaf.pre if pre else ""), leaf.header, t, (leaf.post if post else "")) if p)) if table else (lambda t, pre=True, post=True: t)
         atoms, sep, refine = self.atoms_of(leaf)
         strip = (lambda t: t.strip("\n")) if leaf.kind in ("code", "list", "table") else str.strip
