@@ -39,7 +39,7 @@ sources:
 
 ## 추가 변경 (2026-10-20): HWPX → PDF 변환기 결정 방식
 
-- 결정: EWL 방식을 따를 필요 없음. EWL 방식은 비교 후보 중 하나로 두고, 더 나은 방식이 있으면 그것을 채택한다 (사용자 지시).
+- 결정: 특정 기존 방식에 맞추지 않고 후보를 샘플로 비교해 가장 나은 방식을 채택한다 (사용자 지시).
 - PRD `DOCX · HWPX` 절에 선정 기준(컨테이너·폐쇄망 동작, 변환 품질, 속도·안정성, 라이선스)과 후보 목록을 추가하고, 열린 질문 문구를 수정했다.
 - 후보 목록(LibreOffice + H2Orestart 등, 한컴 변환 제품)은 기능·라이선스를 검증하지 않았다.
 
@@ -52,3 +52,7 @@ sources:
 - LibreOffice + H2Orestart (v0.8.0, 2026-10-18, GPL): headless 변환을 지원하고 JRE가 필요하다. https://extensions.libreoffice.org/en/extensions/show/27504
 - 한컴 한글 SDK: 상용이며 HWPX → PDF 변환을 지원한다. Linux 지원과 가격은 공개되지 않았다. 구 DocsConverter는 hwpx 처리 누락 사례가 있다. https://www.hancom.com/product/sdk/hwpSdk , https://forum.developer.hancom.com/t/docsconverter/738
 - 가정: 1순위 후보는 hwpforge·rhwp(경량, permissive 라이선스), 기준선은 LibreOffice+H2Orestart. 최종 결정은 샘플 벤치마크 후.
+
+## 후속 (2026-10-20)
+
+- 위 "가정"(hwpforge·rhwp 1순위)은 실제 벤치마크로 대체되었다. hwpforge는 샘플 11개 모두 실패해 제외했고, rhwp 기본 + LibreOffice·H2Orestart 대체로 잠정 결정했다. [벤치마크 기록](2026-10-20-hwpx-converter-benchmark.md)
