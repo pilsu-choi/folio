@@ -21,6 +21,8 @@ No default secret values exist. Either
 ## Infra toggles (FR-25)
 
 `infra.postgres|rabbitmq|opensearch|minio|milvus.enabled` deploy simple single-replica StatefulSets (dev/PoC).
+`infra.postgres.extraDatabases` adds databases/owners on the bundled PostgreSQL (e.g. Airflow metadata, see
+[../../airflow/README.md](../../airflow/README.md)); enable `infra.postgres.persistence` when sharing it.
 Disable them and fill `external.*` (OpenSearch URL, S3 endpoint, Milvus URI, structure/embed URLs) and the Secret
 (`FOLIO_DATABASE_URL`, `FOLIO_BROKER_URL`, ...) to use existing services. Only values change; image and code stay the same.
 

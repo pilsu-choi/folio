@@ -83,6 +83,9 @@ annotations:
 {{- $_ := set $d "POSTGRES_PASSWORD" $pw -}}
 {{- $_ := set $d "FOLIO_DATABASE_URL" (printf "postgresql+psycopg://%s:%s@%s-postgres:5432/%s" .user $pw $fn .database) -}}
 {{- $_ := set $d "PGVECTOR_DSN" (printf "postgresql://%s:%s@%s-postgres:5432/%s" .user $pw $fn .database) -}}
+{{- range .extraDatabases }}
+{{- $_ := set $d (include "folio.extraDbKey" .) (required (printf "infra.postgres.extraDatabases %s: password is required with secrets.create" .name) .password) -}}
+{{- end }}
 {{- end }}{{- end }}
 {{- with .Values.infra.rabbitmq }}{{- if .enabled }}
 {{- $pw := required "infra.rabbitmq.password is required when infra.rabbitmq.enabled and secrets.create" .password -}}
@@ -209,6 +212,13 @@ securityContext:
 {{- end }}
 {{- end -}}
 
+{{/* Secret key holding an extra database's password; name must be a plain SQL identifier */}}
+{{- define "folio.extraDbKey" -}}
+{{- if not (regexMatch "^[a-z_][a-z0-9_]*$" .name) }}{{ fail (printf "infra.postgres.extraDatabases: invalid name %q" .name) }}{{ end -}}
+{{- if not (regexMatch "^[a-z_][a-z0-9_]*$" .user) }}{{ fail (printf "infra.postgres.extraDatabases: invalid user %q" .user) }}{{ end -}}
+POSTGRES_{{ upper .name }}_PASSWORD
+{{- end -}}
+
 {{/* dependency wait initContainers for bundled infra (job mode) */}}
 {{- define "folio.waitFor" -}}
 {{- $fn := include "folio.fullname" . -}}
@@ -240,5 +250,34 @@ initContainers:
       - {{ . | quote }}
       {{- end }}
     {{- include "folio.containerSecurity" . | nindent 4 }}
+{{- with .Values.infra.postgres }}{{- if and .enabled .extraDatabases }}
+  # Extra databases + owners on the bundled server: re-running is safe (create if missing, reset password).
+  - name: create-databases
+    image: {{ include "folio.image" (dict "root" $ "repository" .image.repository "tag" .image.tag) }}
+    imagePullPolicy: {{ $.Values.image.pullPolicy }}
+    command: ["sh", "-c"]
+    args:
+      - |
+        set -e
+        {{- range .extraDatabases }}
+        psql -X -v ON_ERROR_STOP=1 -v db={{ .name }} -v usr={{ .user }} -v pw="$POSTGRES_{{ upper .name }}_PASSWORD" <<'SQL'
+        SELECT format('CREATE ROLE %I LOGIN', :'usr') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'usr')\gexec
+        ALTER ROLE :"usr" WITH LOGIN PASSWORD :'pw';
+        SELECT format('CREATE DATABASE %I OWNER %I', :'db', :'usr') WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'db')\gexec
+        SQL
+        echo "database {{ .name }} ready"
+        {{- end }}
+    env:
+      - {name: PGHOST, value: {{ printf "%s-postgres" (include "folio.fullname" $) | quote }}}
+      - {name: PGUSER, value: {{ .user | quote }}}
+      - {name: PGDATABASE, value: {{ .database | quote }}}
+      - name: PGPASSWORD
+        valueFrom: {secretKeyRef: {name: {{ include "folio.secretName" $ }}, key: POSTGRES_PASSWORD}}
+      {{- range .extraDatabases }}
+      - name: {{ include "folio.extraDbKey" . }}
+        valueFrom: {secretKeyRef: {name: {{ include "folio.secretName" $ }}, key: {{ include "folio.extraDbKey" . }}}}
+      {{- end }}
+    {{- include "folio.containerSecurity" $ | nindent 4 }}
+{{- end }}{{- end }}
 {{- end }}
 {{- end -}}

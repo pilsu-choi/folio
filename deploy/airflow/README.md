@@ -37,6 +37,30 @@ kubectl apply -n folio -f deploy/airflow/rbac-folio-namespace.yaml
 New DAGs are paused at creation (chart default): unpause `folio_ingest` in the UI or with `airflow dags unpause
 folio_ingest`, then trigger it with `{"uri": "s3://bucket/key.pdf", "pipeline": "contracts", "source_uri": ""}`.
 
+## Share folio's PostgreSQL (no external DB)
+
+The folio chart's bundled PostgreSQL can host the Airflow metadata DB as a separate database and owner, created
+idempotently by the folio init Job. Requirements: `infra.postgres.persistence.enabled=true` (the default emptyDir loses
+data on restart) and a backup of the PVC or `pg_dump` (single replica: a postgres outage stops folio and Airflow).
+
+```yaml
+# folio release values (namespace folio)
+infra:
+  postgres:
+    enabled: true
+    persistence: {enabled: true, size: 10Gi}
+    extraDatabases:
+      - {name: airflow, user: airflow, password: CHANGE_ME}   # with secrets.existingSecret: key POSTGRES_AIRFLOW_PASSWORD
+```
+
+```bash
+kubectl -n airflow create secret generic airflow-metadata \
+  --from-literal=connection='postgresql+psycopg2://airflow:CHANGE_ME@folio-postgres.folio.svc.cluster.local:5432/airflow'
+```
+
+Re-running the init Job (`helm upgrade`) keeps existing data and re-applies the password. `airflow` owns only its own
+database; it cannot write to the `folio` database.
+
 ## Env read by the DAG
 
 | Variable | Default | Meaning |
@@ -50,8 +74,8 @@ folio_ingest`, then trigger it with `{"uri": "s3://bucket/key.pdf", "pipeline": 
 
 ## Notes
 
-- Metadata DB: the chart's bundled PostgreSQL subchart (`bitnamilegacy/postgresql`) is for evaluation only; use an
-  external PostgreSQL via `data.metadataSecretName`.
+- Metadata DB: the Airflow chart's bundled PostgreSQL subchart (`bitnamilegacy/postgresql`) is for evaluation only;
+  use an external PostgreSQL or folio's bundled one (above) via `data.metadataSecretName`.
 - RBAC: the chart's worker SA (`<release>-worker`) runs the task with KubernetesExecutor. The Role grants pods
   create/get/list/watch/delete/patch, pods/log get and events list/watch in the folio namespace only.
 - `helm install --wait` / Argo CD: the values run DB migration and user creation as plain Jobs

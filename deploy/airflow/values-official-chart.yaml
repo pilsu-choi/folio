@@ -25,7 +25,8 @@ dags:
     subPath: dags
     # credentialsSecret: git-credentials   # GITSYNC_USERNAME / GITSYNC_PASSWORD
 
-# Metadata DB: use an external PostgreSQL (the bundled subchart is for evaluation only).
+# Metadata DB: an external PostgreSQL, or the folio chart's bundled one via infra.postgres.extraDatabases
+# (see README.md "Share folio's PostgreSQL"). The Airflow chart's own subchart is for evaluation only.
 postgresql:
   enabled: false
 data:
