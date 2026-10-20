@@ -71,6 +71,20 @@ def _poly_box(p) -> list[float]:
     return [min(xs), min(ys), max(xs), max(ys)]
 
 
+def _reading_order(boxes: list[list[float]]) -> list[list[float]]:
+    """Cell boxes in <td> order: rows by top edge, left to right. Paddle may return them bottom-right first."""
+    if not boxes:
+        return []
+    tol = min(b[3] - b[1] for b in boxes) / 2  # min height: rowspan cells would widen the row band
+    rows: list[list[list[float]]] = []
+    for b in sorted(boxes, key=lambda b: (b[1], b[0])):
+        if rows and b[1] - rows[-1][0][1] < tol:
+            rows[-1].append(b)
+        else:
+            rows.append([b])
+    return [b for row in rows for b in sorted(row, key=lambda b: b[0])]
+
+
 class PPStructureBackend:
     def __init__(self, lang: str = "korean", device: str = "cpu", cpu_threads: int | None = None,
                  **pipeline_kwargs) -> None:
@@ -132,7 +146,8 @@ class PPStructureBackend:
                 table_boxes.append((bbox, score))
 
         for i, t in enumerate(res.get("table_res_list") or []):
-            cells_px = t.get("cell_box_list") or []
+            cells_px = t.get("cell_box_list")
+            cells_px = [] if cells_px is None else _reading_order([_box(c) for c in cells_px])  # numpy array
             html = t.get("pred_html") or ""
             grid = _grid(html)
             if i < len(table_boxes):
@@ -153,7 +168,8 @@ class PPStructureBackend:
         if words is None:
             o = res.get("overall_ocr_res") or {}
             texts = o.get("rec_texts") or []
-            scores = o.get("rec_scores") or []
+            scores = o.get("rec_scores")
+            scores = [] if scores is None else list(scores)
             boxes = o.get("rec_boxes")
             polys = o.get("rec_polys") if o.get("rec_polys") is not None else o.get("dt_polys")
             ocr_words = []

@@ -11,7 +11,7 @@ Oct 20, 2026 · @pilsu
 - **현재 문제 1 — 재사용 불가**: 파싱·청킹·적재 코드가 고객사 요구사항과 한 덩어리라, 다음 프로젝트에서 복사 후 수정하게 된다.
 - **현재 문제 2 — 느린 Parse**: VLM으로 필드를 추출하면 문서당 처리 시간이 길다. 디지털 PDF는 텍스트 레이어로 글자를 얻고, DLA로 레이아웃만 잡으면 충분하다.
 - **현재 문제 3 — 재처리 비용**: 스키마나 매핑이 바뀌면 원본부터 다시 돌려 OCR까지 반복한다.
-- **레포의 책임 범위**: 이 레포는 "문서 → 인덱스 → 검색" 경로와 그 계약에 집중하고, 다른 레포는 이 레포를 라이브러리나 검색 API로 가져다 쓴다. 고객사마다 검색 래퍼를 따로 만들지 않도록 검색 API(`POST /v1/search`)까지 제공한다.
+- **레포의 책임 범위**: 이 레포는 "문서 → 인덱스 → 검색" 경로와 그 계약에 집중하고, 다른 레포는 이 레포를 라이브러리나 검색 API로 가져다 쓴다. 고객사마다 검색 래퍼를 따로 만들지 않도록 검색 API(`POST /v1/search`)와, 검색 결과를 근거로 답하는 멀티턴 Chat API(`POST /v1/chat`)까지 제공한다.
 
 ## 목표와 비목표
 
@@ -32,7 +32,7 @@ Oct 20, 2026 · @pilsu
 - 선언형 매핑 DSL, 플러그인 마켓·레지스트리
 - 단계별 큐 분리, 오토스케일링 정책
 - Kubernetes Operator·CRD, 클러스터·GPU 노드 프로비저닝 — 이미 준비된 클러스터에 Helm으로 올리는 것까지만 다룬다
-- 답변 생성(LLM 응답) 서비스 — 이 레포는 검색 인덱스와 검색 결과 반환(검색 API)까지만 책임진다
+- 대화 세션 저장, 에이전트 도구 호출 루프, 질문에서 필터 자동 추출 — `POST /v1/chat`은 무상태다. App이 매 요청에 대화 이력 전체와 권한 필터를 넣고, 대화 저장·에이전트 로직은 App이나 별도 레포가 맡는다
 - API 인증·인가 — folio API는 내부망 서비스로 둔다. 테넌트·ACL 필터 값은 App이 사용자 권한으로 정해 넘기고, folio는 `required_filters`로 누락만 막는다
 - SaaS 커넥터(Slack, Notion 등) — 수집은 파일·URI 입력까지만 다룬다
 
@@ -72,6 +72,12 @@ Oct 20, 2026 · @pilsu
 2. App이 `POST /v1/search`로 `{query, pipeline, k, filters}`를 보낸다. `filters`에는 사용자 권한으로 정한 `tenant_id`·`acl`과 도메인 조건(같음, 목록, `{gte, lte}` 범위)을 넣는다.
 3. 응답의 `hits[]`(`chunk_id`, `doc_id`, `score`, `content`, `record`)를 화면이나 답변 생성에 쓴다. 검색 튜닝을 바꿀 때 App 코드는 바뀌지 않는다.
 
+### 시나리오 5 — App에서 멀티턴 질의응답
+
+1. 구축 개발자가 파이프라인 YAML에 `generation:`(LLM 단계, 프롬프트, 토큰 예산)을 추가하고 `FOLIO_LLM_URL`에 OpenAI 호환 LLM 서버를 연결한다.
+2. App이 `POST /v1/chat`으로 `{messages, pipeline, k, filters}`를 보낸다. `messages`는 지금까지의 `user`·`assistant` 대화 전체이고 마지막은 `user`다. 대화 이력은 App이 보관한다.
+3. folio는 후속 질문을 독립 검색어로 바꿔(`query`) 검색하고, 번호 붙인 근거로 답한다. 응답 `answer`의 `[n]`은 `citations[]`와 `hits[n-1]`로 원문 청크를 가리킨다.
+
 ## 기능 요구사항
 
 P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 요구가 확인되면 한다. 수용 기준은 레포의 샘플 문서 세트(`tests/fixtures/`)로 검증한다.
@@ -103,6 +109,7 @@ P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 �
 | FR-17 | Retrieval | 하이브리드 검색(BM25 + 벡터, RRF) + rerank 라이브러리, OpenSearch·Milvus·pgvector 공통 인터페이스. 필터는 같음·목록·범위(`gt`·`gte`·`lt`·`lte`). 파이프라인 YAML `retrieval:`로 모드·`k`·BM25 필드 가중치(OpenSearch)·`rrf_k`·후보 수·rerank·필수 필터·사용자 retriever(`fn`) 설정 | P1 | 필터 인자로 도메인 필드 검색 가능, 세 스토어 모두 범위 필터 통합 테스트 통과, 가중치를 지원하지 않는 스토어에 가중치를 주면 설정 오류 |
 | FR-18 | Eval | Testset 생성, Recall@k·MRR·nDCG 평가. 서비스와 같은 `retrieval:` 설정으로 검색 | P2 | 설정 파일의 Git 커밋별로 결과 비교 가능 |
 | FR-30 | Service | Search API `POST /v1/search` (`query`, `pipeline`, `k`≤100, `mode`, `filters`) → `hits[]`. 파이프라인의 임베딩 단계·`retrieval:` 설정을 그대로 사용. 잘못된 필터·모드·누락된 필수 필터는 400 | P1 | 업로드 후 검색 결과가 반환되는 E2E 통과, `required_filters` 누락 시 400 |
+| FR-31 | Service | Chat API `POST /v1/chat` (`messages`, `pipeline`, `k`, `mode`, `filters`) → `{answer, query, citations[], hits[]}`. 무상태 멀티턴: 이력은 요청에 포함, 후속 질문은 검색 전에 독립 검색어로 재작성(첫 턴은 생략), 이전 답변의 `[n]` 표시는 제거. 근거·이력은 토큰 예산 안에서 자름. LLM 단계는 `generation.chat`(`module:function`, 기본 OpenAI 호환). `system` 역할 거부(422), `generation:` 없는 파이프라인·필수 필터 누락 400, LLM 실패 502 | P2 | 멀티턴 요청에서 재작성된 `query`로 검색, 인용 번호가 `hits`의 청크와 일치, 오류 코드가 명세대로 반환 |
 | FR-22 | Deploy | 컨테이너 이미지: `folio`(API·워커·CLI 공용, 실행 명령으로 역할 선택), 구조 분석 모델 서버, 고객사 이미지 빌드용 베이스 | P0 | 같은 이미지 태그가 Compose와 k8s 양쪽에서 E2E 통과, non-root 실행, 이미지 안에 비밀값 없음 |
 | FR-23 | Deploy | Docker Compose 배포(앱 + PostgreSQL·RabbitMQ·OpenSearch·S3 호환 스토리지·모델 서버), GPU 서비스 선택 | P0 | 빈 서버에서 `docker compose up` 후 시나리오 3 통과 |
 | FR-24 | Deploy | Helm 차트: API·워커·모델 서버 Deployment, `folio init`·`schema apply` 실행 Job(hook), ConfigMap(파이프라인 YAML)·Secret(접속 정보), GPU 리소스·nodeSelector·toleration 설정 | P0 | kind(또는 k3s) 클러스터에서 `helm install` 후 시나리오 3 통과, `helm upgrade` 중 진행 중인 job 유실 없음 |
@@ -173,10 +180,15 @@ retrieval:                            # 생략 시 hybrid, k=10, content만 BM25
   candidates: 50                      # 단계별 후보 수, 기본 max(k*3, 30). rerank는 이 후보를 보고 k개로 자른다
   rerank: {fn: folio.retrieval.rerank:http_rerank, top_n: 10}   # 선택, FOLIO_RERANK_URL
   required_filters: [tenant_id]       # 검색 요청에 반드시 있어야 하는 필터
+generation:                           # 선택, 있으면 POST /v1/chat 사용 가능 (true = 기본값)
+  chat: {fn: folio.generation:http, model: qwen3-32b, max_tokens: 1024}   # FOLIO_LLM_URL
+  rewrite: true                       # 후속 질문을 독립 검색어로 재작성
+  max_context_tokens: 6000            # 근거 청크 예산 (1위 청크는 항상 포함)
+  max_history_tokens: 2000            # 대화 이력 예산, 오래된 턴부터 버림
 storage: s3://folio-artifacts/       # 중간 산출물 위치
 ```
 
-단계 함수 시그니처는 `parse(uri, **opts) -> DocumentJSON`, `chunk(doc, **opts) -> list[dict]`, `map(doc, chunk) -> dict`, `embed(texts, **opts) -> list[list[float]]`로 고정한다.
+단계 함수 시그니처는 `parse(uri, **opts) -> DocumentJSON`, `chunk(doc, **opts) -> list[dict]`, `map(doc, chunk) -> dict`, `embed(texts, **opts) -> list[list[float]]`, 생성 단계 `chat(messages, **opts) -> str`로 고정한다.
 
 ## 파싱 백엔드
 
@@ -188,7 +200,7 @@ storage: s3://folio-artifacts/       # 중간 산출물 위치
 | --- | --- | --- | --- | --- |
 | [Docling](https://arxiv.org/html/2408.09869v5) | 레이아웃 모델 + TableFormer, OCR은 선택 | PDF 백엔드에서 좌표 포함 텍스트 토큰을 그대로 쓴다 | MIT | 기본 백엔드 후보 — 설계 원리가 이 PRD와 같다 |
 | [PaddleOCR PP-StructureV3](https://www.paddleocr.ai/latest/en/version3.x/pipeline_usage/PP-StructureV3.html) | 레이아웃 + OCR + 표 구조·셀 검출 파이프라인, CPU/GPU | 문서상 명시 없음 → 레이아웃·표 결과만 쓰고 글자는 우리 매칭으로 | Apache-2.0 | 기본 백엔드 후보 — 한글 OCR·스캔 비중이 높으면 유리 |
-| [MinerU](https://knightli.com:8443/en/2026/06/26/mineru-34-backend-modes-pipeline-hybrid-vlm/) (pipeline / hybrid) | pipeline은 전문 모델 조합, hybrid는 어려운 영역만 VLM | pipeline·hybrid 모두 네이티브 텍스트 추출이 먼저 | 확인 필요 | 대안 — hybrid 방식이 우리 폴백 구조와 같다 |
+| [MinerU](https://knightli.com:8443/en/2026/06/26/mineru-34-backend-modes-pipeline-hybrid-vlm/) (pipeline / hybrid) | pipeline은 전문 모델 조합, hybrid는 어려운 영역만 VLM | pipeline·hybrid 모두 네이티브 텍스트 추출이 먼저 | [Apache-2.0 + 추가 조건](https://github.com/opendatalab/MinerU/blob/master/LICENSE.md): 계열사 합산 MAU 1억 또는 월 매출 2천만 달러 초과 시 별도 상용 라이선스, 온라인 서비스 제공 시 MinerU 사용 표기, 위반 시 자동 종료 (4.0.12 기준) | 대안 — hybrid 방식이 우리 폴백 구조와 같다. 대형 고객사는 매출 조건에 걸릴 수 있어 기본 후보에서 제외 |
 | E2E VLM 파서 (PaddleOCR-VL-1.5, GLM-OCR 등) | 페이지 이미지 → 구조화 결과 한 번에 | 사용 안 함 (페이지를 이미지로 읽음) | 모델별 확인 | VLM 후보 — 그림·차트 설명 품질을 함께 확인 |
 | 범용 VLM (Qwen-VL 계열 등) | 이미지 + 지시문 → 텍스트(Markdown·HTML 표 등) | 사용 안 함 | 모델별 확인 | VLM 후보 — 스캔 OCR 정확도를 함께 확인 |
 
@@ -206,6 +218,17 @@ E2E 문서 VLM은 OCR·표에 강하지만 그림 설명이 약할 수 있고, �
 | 그림 설명 | 차트·도식 샘플에서 수치·라벨 누락 없이 검색 가능한 설명을 만드는지 (수동 평가) |
 | 속도·자원 | 페이지당 시간, GPU 1장(메모리 상한은 고객사 환경 기준)에 올라가는지 |
 | 서빙·라이선스 | OpenAI 호환 서버(vLLM 등)로 폐쇄망 서빙 가능, 고객사 배포에 문제 없는 라이선스 |
+
+M1 벤치마크 결과(2026-10-21, 공개 한글 샘플, 잠정): **Qwen3.5-9B**를 잠정 선택했다. 그림 설명은 범용 VLM만 할 수 있어 모델 1개 조건을 문서 전용 VLM으로는 채울 수 없다. 상세는 [M1 벤치마크](wiki/2026-10-21-m1-benchmarks.md)에 있다.
+
+| 모델 | 스캔 OCR 유사도 / CER | 표 셀 정확도 | 그림 사실 재현율 | 스캔 s/page (bf16, GB10) | 라이선스 |
+| --- | --- | --- | --- | --- | --- |
+| Qwen3.5-9B (범용) | 0.895 / 0.228 | 0.93 (HTML 지시) | 0.90 | 78 | Apache-2.0 |
+| Qwen3-VL-8B-Instruct (범용) | 0.865 / 0.196 | 0.81 (HTML 지시) | 0.77 | 80 | Apache-2.0 |
+| GLM-OCR (문서) | 0.811 / 0.301 | 0.79 | 0.73 (그림 안 글자를 옮겨 적음) | 11.7 | MIT |
+| PaddleOCR-VL-1.6 (문서) | 0.836 / 0.383 | 0.75 | 0.62 (그림 10개 중 4개 반복 출력) | 8.3 | Apache-2.0 |
+
+채택 전 남은 일: 병합 셀 표는 HTML 지시에서만 정확하므로 VLM 출력의 HTML 표 파서가 필요하다(현재는 파이프 표만 읽음). Qwen3.5-9B는 문서 VLM보다 약 10배 느리다(FP8 서빙 미시험). 사고 모드는 끈다(`enable_thinking=false`).
 
 ### 기본 구성 (M1 벤치마크 전 가정)
 
@@ -304,7 +327,7 @@ Word(Microsoft 365)가 저장한 PDF를 정답으로 두고, 공공기관이 공
 
 ### 구조 트리
 
-Document JSON의 `heading`과 `section_path`로 트리를 만든다. 헤딩이 없는 형식은 슬라이드(PPTX)·시트(XLSX)·페이지를 상위 노드로 쓴다. 리프는 원자 단위인 `paragraph`, `list`, `table`, `kv`, `figure`, `code` 블록이다. `header`·`footer`는 청크에 넣지 않는다.
+Document JSON의 `heading`과 `section_path`로 트리를 만든다. 헤딩이 없는 형식은 슬라이드(PPTX)·시트(XLSX)·페이지를 상위 노드로 쓴다. 리프는 원자 단위인 `paragraph`, `list`, `table`, `kv`, `figure`, `code` 블록이다. `header`·`footer`는 청크에 넣지 않는다. 파싱 단계에서 `제N조(제목)`로 시작하는 문단은 조 섹션으로 `section_path`에 들어간다(조 표시만 있는 문단은 `heading`).
 
 ### 알고리즘
 
@@ -318,7 +341,7 @@ Document JSON의 `heading`과 `section_path`로 트리를 만든다. 헤딩이 �
 | --- | --- | --- |
 | `paragraph` | 문장 | 문장 중간에서 자르지 않음 |
 | `list` | 항목 | 하위 항목은 상위 항목과 함께 |
-| `table` | 행 묶음 | 각 청크에 헤더 행 반복, 병합 셀(`spans`)이 걸친 행은 함께 |
+| `table` | 행 묶음 | 각 청크에 헤더 행 반복(헤더가 `max_tokens`의 절반을 넘으면 반복하지 않고 본문 행처럼 나눔), 병합 셀(`spans`)이 걸친 행은 함께 |
 | `code` | 줄 | 빈 줄 경계를 우선 |
 | `figure` | 나누지 않음 | 캡션(`caption`)과 함께 |
 
@@ -330,6 +353,8 @@ Document JSON의 `heading`과 `section_path`로 트리를 만든다. 헤딩이 �
 | `min_tokens` | 128 | 이보다 작은 이웃 청크를 합친다 |
 | `tokenizer` | 임베딩 모델 토크나이저 | 토큰 수 계산 기준. 지정이 없으면 문자 수 근사 |
 | `overlap` | 0 | 구조 경계로 자르므로 기본은 겹침 없음. `fixed` 분할 구간에만 적용 |
+
+M1 벤치마크(2026-10-21, 공개 한글 디지털 문서 16개, 질의 249개, bge-m3, 같은 검색 토큰 예산 비교)에서는 `max_tokens=512`, `min_tokens=64`가 잠정 최적이었다. 다만 `max_tokens` 256~1024는 2k 예산에서 통계적으로 구분되지 않았고, 1536·2048만 확실히 나빴다. 기본값 변경은 사용자 결정으로 남긴다. 상세는 [M1 벤치마크](wiki/2026-10-21-m1-benchmarks.md)에 있다.
 
 기본값은 M1에서 Eval(FR-18) 기준으로 조정한다. `max_tokens`를 없앨 수는 없다. 임베딩 모델 입력 길이에 한계가 있고, 너무 큰 청크는 검색 정밀도를 떨어뜨리기 때문이다.
 
@@ -440,6 +465,7 @@ M1에서 디지털 PDF 하나로 처음부터 끝까지 도는 것을 먼저 만
 | M2 | FR-02·05 이미지 경로, FR-06 VLM 기본 적용 (M3 선택 항목에서 이동) | OCR 폴백과 같은 경로이고, M1 벤치마크로 고른 VLM을 띄운다 |
 | M2 | FR-27 PPTX, FR-28 XLSX, FR-29 Markdown·TXT | 그림·차트는 FR-06의 VLM을 재사용한다. Markdown·TXT는 모델 없이 구현돼 청킹 테스트 입력으로도 쓴다 |
 | M3 | FR-30 Search API, FR-17 `retrieval:` 설정·범위 필터 | 고객사마다 검색 래퍼를 다시 만들지 않게 한다. FR-18 Eval과 같은 검색 경로를 쓴다 |
+| M3 | FR-31 Chat API (무상태 멀티턴 생성) | FR-30 검색 경로를 그대로 쓰고, 운영 LLM은 VLM처럼 고객사 환경에서 정한다 |
 
 ## 구현 현황 (2026-10-21)
 
@@ -448,7 +474,7 @@ FR-21(DOCX·HWPX `native`, 보류)을 제외한 FR을 구현했다. FR-20(DOCX·
 | 상태 | FR |
 | --- | --- |
 | 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 20(DOCX 13·HWPX 11·HWP 1개를 변환 서버로 파싱, 모든 텍스트 블록에 쪽·bbox), 15(Compose Airflow + DockerOperator, k3s에 공식 Airflow 차트 설치 후 KubernetesExecutor → KubernetesPodOperator, folio 내장 PostgreSQL을 메타데이터 DB로 공유), 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~30 |
-| 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), PPTX `convert` 모드(픽스처 4장을 변환 서버와 이미지 안 LibreOffice로 변환, 쪽·bbox 확인. 실제 고객 슬라이드 미확인), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인) |
+| 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), PPTX `convert` 모드(픽스처 4장을 변환 서버와 이미지 안 LibreOffice로 변환, 쪽·bbox 확인. 실제 고객 슬라이드 미확인), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인), FR-31(stub LLM으로 재작성·인용·오류 코드만 확인, 실제 LLM 모델 미선정) |
 | 구현, 미검증 | FR-15 운영 Airflow 가이드의 원격 로그 설정(예시만 제공), FR-26 Helm 사설 레지스트리 경로 |
 | 보류 | FR-21 (DOCX·HWPX `native`) |
 
@@ -457,19 +483,22 @@ FR-21(DOCX·HWPX `native`, 보류)을 제외한 FR을 구현했다. FR-20(DOCX·
 - 구조 분석 백엔드: 픽스처에서 heuristic·Docling·PP-StructureV3 모두 디지털 텍스트·표 결과가 같았다. OCR 유사도는 0.72 / 0.75 / 0.91, CPU 기준 초/페이지는 0.04 / 1.75 / 20.6이다(PP-StructureV3는 모델 로드 포함).
 - 기본 구조 분석 백엔드는 PP-StructureV3 GPU다(2026-10-20 사용자 결정). Compose `gpu` 프로필과 Helm 기본값이 GPU 서버를 띄우고, GPU가 없으면 `cpu`(Compose 프로필, `values-cpu.yaml`), 개발·CI는 `heuristic`을 쓴다. 폐쇄망 번들 기본 변형은 `STRUCTURE_VARIANTS=gpu`다. 모델을 미리 로드한 상태의 픽스처 11페이지 측정은 GPU(RTX 4070) 0.33~0.42 s/page, CPU 4스레드(pgx aarch64) 17.6 s/page, 최대 메모리 11.6 GiB다. 상세는 [PP-StructureV3 기본 백엔드](wiki/2026-10-21-ppstructure-gpu-default.md)에 있다.
 - 검색: `POST /v1/search`와 파이프라인 YAML `retrieval:`을 구현했다. 서비스·`folio eval run`·라이브러리 모두 `folio.pipeline.retriever(cfg)` 한 경로로 retriever를 만든다. 상세는 [검색 API 작업 기록](wiki/2026-10-20-implementation-search-api.md)에 있다.
+- 생성: `POST /v1/chat`과 YAML `generation:`을 구현했다(무상태 멀티턴, 기본 꺼짐). `folio eval testset --method llm`도 같은 chat 클라이언트(`folio.generation:http`)를 쓴다. 상세는 [멀티턴 생성 작업 기록](wiki/2026-10-21-generation-multiturn.md)에 있다.
 - `minio/minio`가 Docker Hub에서 더 이상 배포되지 않아, 내장 S3를 digest로 고정한 `cgr.dev/chainguard/minio`로 바꿨다.
 
 ## 열린 질문
 
 - [x] 레포·패키지 이름: `folio`로 확정. CLI도 `folio`
 - [x] 기본 구조 분석 백엔드: PP-StructureV3 GPU로 결정(2026-10-20 사용자 결정)
-- [ ] PP-StructureV3 기본값을 고객사 샘플(한글 포함)로 재확인. MinerU 라이선스 확인
+- [ ] PP-StructureV3 기본값을 고객사 샘플(한글 포함)로 재확인. 공개 샘플 비교는 [M1 벤치마크](wiki/2026-10-21-m1-benchmarks.md)에 있다
+- [x] MinerU 라이선스: Apache-2.0 + 매출·MAU 조건과 표기 의무. 기본 후보에서 제외
+- [ ] ARM GPU 호스트(예: DGX Spark GB10, aarch64 sm_121): paddlepaddle-gpu 3.3.1(cu129)·3.5 nightly(cu130)가 `run_check()`에서 실패해 PP-StructureV3가 CPU로만 돈다. 이런 고객사 환경을 지원할지, 그때 Docling(GPU 동작 확인)을 기본으로 쓸지
 - [ ] HWPX → PDF 변환기: 공개 샘플 벤치마크로 rhwp 기본 + LibreOffice·H2Orestart 대체로 잠정 결정. 첫 고객사 샘플로 재확인 필요
 - [ ] DOCX → PDF 변환기: 공개 샘플 벤치마크(Word PDF 정답)로 LibreOffice 기본으로 잠정 결정, OnlyOffice 제외. 첫 고객사 샘플로 재확인 필요
 - [ ] 변환 PDF 보관: bbox는 그 파싱에서 만든 PDF 기준이므로, 인용 하이라이트용으로 변환 PDF를 원본과 함께 저장·제공할지(현재는 `meta.convert.pdf_hash`만 기록, LibreOffice 재변환은 바이트가 달라짐)
 - [x] VLM 모델 수: 스캔 파싱·그림 설명·복잡 표를 모델 1개로 처리 (이미지 콘텐츠에 VLM 기본 적용도 결정됨)
-- [ ] VLM 모델 선정: [VLM 모델](#vlm-모델-1개) 기준으로 M1에서 E2E 문서 VLM과 범용 VLM 후보를 비교
-- [ ] `adaptive` 청킹 기본값: `max_tokens`·`min_tokens`를 임베딩 모델과 Eval 결과로 확정
+- [ ] VLM 모델 선정: 공개 샘플로 Qwen3.5-9B 잠정 선택([VLM 모델](#vlm-모델-1개)). 고객사 샘플 재확인, HTML 표 파서, FP8 속도 확인 필요
+- [ ] `adaptive` 청킹 기본값: 공개 샘플로 `max_tokens=512`·`min_tokens=64`가 잠정 최적([파라미터](#파라미터)). 현재 기본값 1024/128을 바꿀지 사용자 결정 필요
 - [ ] 첫 적용 고객사와 샘플 문서 세트: 수용 기준과 성능 기준선의 근거가 된다
 - [ ] 마일스톤별 일정과 담당자
 - [ ] 라이선스·배포 형태: 사내 패키지 저장소 배포인지, 고객사에 소스로 전달하는지

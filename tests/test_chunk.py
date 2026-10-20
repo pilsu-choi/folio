@@ -65,6 +65,17 @@ def test_table_and_list_within_max_not_split():
     assert any("- item 0 text" in c["content"] and "- item 9 text" in c["content"] for c in cs)
 
 
+def test_table_header_over_max_split_once_not_repeated():
+    """A header row wider than max_tokens used to be repeated into thousands of over-size 1-token windows."""
+    rows = [[f"col{i}" for i in range(80)]] + [[f"v{r}_{i}" for i in range(80)] for r in range(3)]
+    d = doc([B("caption", "Table 9", []), B("table", cells=rows)])
+    cs = chunk.adaptive(d, max_tokens=100, min_tokens=0)
+    check(cs, 100)
+    assert len(cs) < 40
+    body = "\n".join(c["content"] for c in cs)
+    assert body.count("col0 ") == 1 and "Table 9" in cs[0]["content"] and "v2_79" in body
+
+
 def test_big_table_row_groups_header_repeated_rowspan_together():
     rows = [["name", "value"]] + [[f"row{i}", f"val{i}"] for i in range(60)]
     spans = [CellSpan(row=10, col=0, rowspan=3)]

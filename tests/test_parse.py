@@ -179,3 +179,20 @@ def test_words_split_on_gaps_without_space_glyphs(rotation):
     tw.write_text(page)
     page = doc.reload_page(page)
     assert [a.text for a in extract_atoms(page)[1]] == ["본계", "약은부품", "경상북도", "법"]
+
+
+def test_article_paragraphs_become_sections():
+    from folio.parse.assemble import apply_sections
+
+    blocks = [{"type": "heading", "text": "예금거래기본약관", "level": 1},
+              {"type": "paragraph", "text": "제1조(적용범위) 이 약관은 예금거래에 적용한다."},
+              {"type": "paragraph", "text": "제2조(실명거래)"},
+              {"type": "paragraph", "text": "거래처는 실명으로 거래한다."},
+              {"type": "paragraph", "text": "제3조에 따라 처리한다."},
+              {"type": "heading", "text": "부칙", "level": 1},
+              {"type": "paragraph", "text": "이 약관은 공포일부터 시행한다."}]
+    apply_sections(blocks)
+    assert [b["section_path"] for b in blocks] == [
+        [], ["예금거래기본약관", "제1조(적용범위)"], ["예금거래기본약관"], ["예금거래기본약관", "제2조(실명거래)"],
+        ["예금거래기본약관", "제2조(실명거래)"], [], ["부칙"]]
+    assert blocks[1]["type"] == "paragraph" and (blocks[2]["type"], blocks[2]["level"]) == ("heading", 2)
