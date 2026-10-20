@@ -39,9 +39,25 @@ wait_job() {
   done
 }
 
+# search_hits BASE_URL QUERY -> prints number of hits from POST /v1/search
+search_hits() {
+  curl -fsS -X POST -H 'Content-Type: application/json' -d "{\"query\": \"$2\", \"k\": 5}" "$1/v1/search" \
+    | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["hits"]))'
+}
+
+# wait_search BASE_URL QUERY : at least one hit (the index refreshes asynchronously)
+wait_search() {
+  local i=0 n
+  until n=$(search_hits "$1" "$2" 2>/dev/null) && [ "${n:-0}" -gt 0 ]; do
+    i=$((i + 2)); [ "$i" -ge 60 ] && die "POST /v1/search returned no hits for '$2'"; sleep 2
+  done
+  log "search '$2' -> $n hits"
+}
+
 # basic_scenario BASE_URL
 basic_scenario() {
   [ -f "$E2E_PDF" ] || die "sample PDF not found: $E2E_PDF"
   wait_http "$1/readyz"
   wait_job "$1" "$(ingest "$1")"
+  wait_search "$1" "${E2E_QUERY:-contract}"
 }

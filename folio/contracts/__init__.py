@@ -11,7 +11,7 @@ from folio.contracts.chunk import (
     settings_hash,
     validate_chunk_record,
 )
-from folio.contracts.config import PipelineConfig, StepSpec, load_config, parse_config
+from folio.contracts.config import PipelineConfig, RetrievalConfig, StepSpec, load_config, parse_config
 from folio.contracts.document import (
     Block,
     BlockType,
@@ -33,6 +33,7 @@ __all__ = [
     "Document",
     "Page",
     "PipelineConfig",
+    "RetrievalConfig",
     "Sink",
     "StepSpec",
     "TextSource",

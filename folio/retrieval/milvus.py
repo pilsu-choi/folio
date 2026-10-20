@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from folio.retrieval.base import Hit, Retriever
+from folio.retrieval.base import RANGE_OPS, Hit, Retriever, is_range
 
 
 def _lit(v) -> str:
@@ -10,10 +10,13 @@ def _lit(v) -> str:
 
 
 def build_filter(filters: dict, fields: dict[str, dict]) -> str:
-    """Milvus boolean expression. ARRAY fields use array_contains_any; other list values use `in`."""
+    """Milvus boolean expression. ARRAY fields use array_contains_any; other list values use `in`; a dict is a range.
+    Field names are validated identifiers (``check_filters``)."""
     parts = []
     for k, v in filters.items():
-        if isinstance(v, (list, tuple, set)):
+        if is_range(v):
+            parts += [f"{k} {RANGE_OPS[op]} {_lit(b)}" for op, b in v.items()]
+        elif isinstance(v, (list, tuple, set)):
             lst = "[" + ", ".join(_lit(x) for x in v) + "]"
             parts.append(f"array_contains_any({k}, {lst})" if fields.get(k, {}).get("type") == "ARRAY" else f"{k} in {lst}")
         else:
@@ -22,8 +25,8 @@ def build_filter(filters: dict, fields: dict[str, dict]) -> str:
 
 
 class MilvusRetriever(Retriever):
-    def __init__(self, sink, embed):
-        super().__init__(sink, embed)
+    def __init__(self, sink, embed, **settings):
+        super().__init__(sink, embed, **settings)
         spec = sink._spec()
         self.fields = {f["name"]: f for f in spec["fields"]}
         self.bm25 = spec.get("bm25")

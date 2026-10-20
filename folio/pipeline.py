@@ -25,13 +25,15 @@ from folio.errors import ConfigError, ContractError, DimensionMismatchError
 from folio.logging import log_event
 from folio.storage import open_storage, read_uri
 
-__all__ = ["PipelineResult", "delete_document", "load_config", "load_pipeline", "reprocess", "run_pipeline"]
+__all__ = ["PipelineResult", "delete_document", "load_config", "load_pipeline", "reprocess", "retriever", "run_pipeline",
+           "search"]
 
 STAGES = ["parse", "chunk", "map", "embed", "index"]
 DEFAULT_MAP = "folio.map:common"
 Progress = Callable[[str, str, int], None]  # (stage, status running|done|failed, ms)
 
 _SINKS: dict[str, Any] = {}
+_RETRIEVERS: dict[str, Any] = {}
 
 
 @dataclass
@@ -63,10 +65,14 @@ def _storage(cfg: PipelineConfig):
     return open_storage(os.environ.get("FOLIO_STORAGE_URI") or cfg.storage)
 
 
+def _key(cfg: PipelineConfig, *parts: Any) -> str:
+    return json.dumps([cfg.sink, cfg.config_dir, *parts], sort_keys=True, default=str)
+
+
 def _sink(cfg: PipelineConfig):
     from folio.sinks import create_sink
 
-    key = json.dumps([cfg.sink, cfg.config_dir], sort_keys=True, default=str)
+    key = _key(cfg)
     if key not in _SINKS:
         _SINKS[key] = create_sink(cfg.sink, config_dir=cfg.config_dir)
     return _SINKS[key]
@@ -263,3 +269,31 @@ def reprocess(
 def delete_document(cfg: PipelineConfig, doc_id: str) -> None:
     _sink(cfg).delete(doc_id)
     _storage(cfg).delete(f"{cfg.index}/{doc_id}")
+
+
+def _no_embed(texts: list[str]):
+    raise ConfigError("vector/hybrid search needs an embed step (pipeline has embed: null); use mode bm25")
+
+
+def retriever(cfg: PipelineConfig):
+    """The pipeline's retriever: its sink, its ``embed`` step (same model as ingest) and ``retrieval:`` settings."""
+    from folio.retrieval import create_retriever
+
+    key = _key(cfg, cfg.embed, cfg.retrieval)
+    if key not in _RETRIEVERS:
+        _prepare_path(cfg)
+        embed = _fn(cfg.embed) if cfg.embed is not None else _no_embed
+        _RETRIEVERS[key] = create_retriever(cfg.sink, cfg.config_dir, embed, retrieval=cfg.retrieval, sink=_sink(cfg))
+    return _RETRIEVERS[key]
+
+
+def search(cfg: PipelineConfig, query: str, k: int | None = None, filters: dict | None = None,
+           mode: str | None = None) -> list:
+    """Search the pipeline's index. Raises ``ValueError`` for a missing ``retrieval.required_filters`` field."""
+    from folio.retrieval import check_filters
+
+    filters = check_filters(filters)
+    missing = [f for f in cfg.retrieval.required_filters if f not in filters]
+    if missing:
+        raise ValueError(f"missing required filters: {missing}")
+    return retriever(cfg).search(query, k=k, filters=filters, mode=mode)

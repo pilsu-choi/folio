@@ -16,4 +16,10 @@ embed:
 sink:
   type: opensearch
   index: contracts
+retrieval:                 # POST /v1/search and folio.pipeline.search defaults
+  mode: hybrid             # hybrid | bm25 | vector
+  k: 10
+  fields: {content: 1, contract_no: 3, party: 2}   # BM25 weights (OpenSearch)
+  # rerank: {fn: folio.retrieval.rerank:http_rerank, top_n: 10}   # needs FOLIO_RERANK_URL
+  # required_filters: [tenant_id]                                 # reject searches without it
 storage: ${FOLIO_STORAGE_URI:-.folio/artifacts}

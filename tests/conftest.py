@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from folio.contracts import Block, Document, Page, content_hash, make_chunk_id, make_doc_id, parse_config
+from folio.retrieval import Hit, Retriever
 from folio.storage import read_uri
 
 CALLS = {"parse": 0, "chunk": 0, "embed": 0}
@@ -99,6 +100,26 @@ class MemorySink:
 
 def memory_sink(**opts):
     return MemorySink(opts.get("name", "default"), opts.get("dim"))
+
+
+class MemoryRetriever(Retriever):
+    """Substring match over MemorySink rows with equality filters; the vector leg is empty."""
+
+    def _bm25(self, query, n, filters):
+        rows = [r for r in self.sink.rows.values()
+                if any(w in r["content"] for w in query.split()) and all(r.get(k) == v for k, v in filters.items())]
+        return [Hit(r["chunk_id"], r["doc_id"], 1.0, r["content"], r) for r in rows][:n]
+
+    def _vector(self, vector, n, filters):
+        return []
+
+
+def memory_retriever(sink, embed, **opts):
+    return MemoryRetriever(sink, embed, **opts)
+
+
+def reverse_rerank(query, hits, **opts):
+    return list(reversed(hits))
 
 
 @pytest.fixture(autouse=True)

@@ -25,7 +25,8 @@ def records(doc_id, n, tenant="t1", acl=None, text="kubernetes deployment guide"
         out.append({"doc_id": doc_id, "chunk_id": f"{doc_id}-{i}", "content": content, "page": i + 1,
                     "section_path": ["A", "B"], "source_uri": f"file:///{doc_id}.pdf", "chunk_type": "section",
                     "bbox": None, "pages": [i + 1], "chunk_strategy": "section", "tenant_id": tenant,
-                    "acl": acl or ["group:all"], "doc_type": doc_type, "embedding": embed_text(content, DIM)})
+                    "acl": acl or ["group:all"], "doc_type": doc_type, "seq": i,
+                    "embedding": embed_text(content, DIM)})
     return out
 
 
@@ -121,6 +122,25 @@ def test_hybrid_search_tenant_and_acl_filters(env):
     top = r.search("part1 of t1c", k=3, filters={"tenant_id": "t1"})
     assert top[0].chunk_id == "t1c-1" and top[0].content.endswith("t1c") and "embedding" not in top[0].record
     assert r.search("kubernetes", k=3, filters={"tenant_id": "nobody"}) == []
+    for mode in ("hybrid", "bm25", "vector"):  # range: real int column, string column, metadata/dynamic fields
+        hits = r.search("kubernetes", k=20, filters={"tenant_id": "t1", "page": {"gte": 2}}, mode=mode)
+        assert hits and {h.chunk_id for h in hits} == {"t1a-1", "t1b-1", "t1c-1"}, mode
+        hits = r.search("kubernetes", k=20, filters={"tenant_id": {"gt": "t1"}}, mode=mode)
+        assert {h.doc_id for h in hits} == {"t2a"}, mode
+        hits = r.search("kubernetes", k=20, filters={"tenant_id": "t2", "seq": {"gte": 1, "lt": 2}}, mode=mode)
+        assert [h.chunk_id for h in hits] == ["t2a-1"], mode
+        hits = r.search("kubernetes", k=20, filters={"tenant_id": "t1", "doc_type": {"lt": "g"}}, mode=mode)
+        assert {h.doc_id for h in hits} == {"t1b"}, mode
+
+
+def test_opensearch_field_weights(env):
+    if env.kind != "opensearch":
+        pytest.skip("opensearch only")
+    env.sink.upsert(records("faqdoc", 1, doc_type="faq") + records("mandoc", 1, text="faq handbook"))
+    plain = env.retriever.search("faq", k=2, mode="bm25")
+    weighted = create_retriever(env.spec, retrieval={"fields": {"content": 1, "doc_type": 5}}, sink=env.sink,
+                                embed=embed).search("faq", k=2, mode="bm25")
+    assert plain[0].doc_id == "mandoc" and weighted[0].doc_id == "faqdoc"
 
 
 def test_opensearch_schema_evolution_and_reindex_alias_swap(env):

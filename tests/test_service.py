@@ -16,6 +16,7 @@ def client(tmp_path, monkeypatch):
         "parse: tests.conftest:fake_parse\nchunk: tests.conftest:fake_chunk\n"
         "map: tests.conftest:identity_map\nembed: tests.conftest:fake_embed\n"
         "sink: {fn: 'tests.conftest:memory_sink', index: idx}\n"
+        "retrieval: {fn: 'tests.conftest:memory_retriever'}\n"
         f"storage: {tmp_path}/store\n")
     monkeypatch.setenv("FOLIO_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("FOLIO_DATABASE_URL", f"sqlite:///{tmp_path}/jobs.db")
@@ -77,3 +78,27 @@ def test_readyz_503_when_db_down(client, monkeypatch):
     monkeypatch.setattr(api.JobStore, "ping", lambda self: (_ for _ in ()).throw(RuntimeError("down")))
     r = client.get("/readyz")
     assert r.status_code == 503 and "down" in r.json()["checks"]["db"]
+
+
+def test_search_endpoint(client, tmp_path):
+    job = client.get(f"/v1/jobs/{upload(client)}").json()
+    r = client.post("/v1/search", json={"query": "제1조", "pipeline": "contracts", "k": 5})
+    assert r.status_code == 200
+    hits = r.json()["hits"]
+    assert len(hits) == 1 and hits[0]["doc_id"] == job["doc_id"] and hits[0]["content"] == "제1조"
+    assert client.post("/v1/search", json={"query": "제1조", "filters": {"doc_id": "other"}}).json()["hits"] == []
+    assert client.post("/v1/search", json={"query": "x", "pipeline": "nope"}).status_code == 400
+    assert client.post("/v1/search", json={"query": "x", "k": 0}).status_code == 422
+    assert client.post("/v1/search", json={"query": "x", "mode": "fuzzy"}).status_code == 400
+    assert client.post("/v1/search", json={"query": "x", "filters": {"page": {"near": 1}}}).status_code == 400
+    assert client.post("/v1/search", json={"query": "x", "filters": {"a b": 1}}).status_code == 400
+    # required_filters: missing or null tenant_id is rejected
+    (tmp_path / "pipelines" / "secure.yaml").write_text(
+        (tmp_path / "pipelines" / "contracts.yaml").read_text().replace(
+            "retrieval: {fn: 'tests.conftest:memory_retriever'}",
+            "retrieval: {fn: 'tests.conftest:memory_retriever', required_filters: [tenant_id]}"))
+    for filters in ({}, {"tenant_id": None}):
+        r = client.post("/v1/search", json={"query": "제1조", "pipeline": "secure", "filters": filters})
+        assert r.status_code == 400 and "tenant_id" in r.json()["detail"]
+    r = client.post("/v1/search", json={"query": "제1조", "pipeline": "secure", "filters": {"tenant_id": "t1"}})
+    assert r.status_code == 200 and r.json()["hits"] == []

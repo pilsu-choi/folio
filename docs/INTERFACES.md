@@ -51,6 +51,26 @@ Built-in sinks implement `upsert`, `delete` and these optional methods (pipeline
 Schema files: `{config_dir}/schemas/opensearch/{index}.json`, `{config_dir}/schemas/milvus/{collection}.json`.
 pgvector never runs DDL.
 
+## Retrieval
+
+```python
+folio.pipeline.retriever(cfg) -> Retriever          # cached; cfg.sink + cfg.embed (same model as ingest) + cfg.retrieval
+folio.pipeline.search(cfg, query, k=None, filters=None, mode=None) -> list[Hit]   # + required_filters check
+folio.retrieval.create_retriever(sink_spec, config_dir=None, embed=None, *, retrieval=None, sink=None) -> Retriever
+Retriever.search(query, k=None, filters=None, mode=None) -> list[Hit]   # Hit(chunk_id, doc_id, score, content, record)
+```
+
+- `retrieval:` (`RetrievalConfig`, `extra=forbid`): `mode` (`hybrid|bm25|vector`, default hybrid), `k` (10), `fields`
+  (BM25 field -> weight, default `{content: 1}`; only OpenSearch accepts other fields, Milvus/pgvector raise `ConfigError`),
+  `rrf_k` (60), `candidates` (per-leg, default `max(k*3, 30)`), `rerank` (step `fn(query, hits, **opts) -> hits`, sees
+  the candidates before the cut to `k`), `required_filters` (list of filter names), `fn` (custom
+  `factory(sink, embed, **settings) -> object with search(...)`; required for a custom `sink.fn`).
+- `filters`: `{field: value}`; scalar = equality, list = any element, dict = range over `gt|gte|lt|lte` (number or string
+  bounds). `None` values are dropped. Field names must be identifiers; violations raise `ValueError`.
+  pgvector: range on a real column compares the column, on `metadata` casts to numeric for number bounds, text otherwise;
+  range on an array column is a `ConfigError`.
+- Service: `POST /v1/search` maps `ValueError`/`ConfigError` to 400; `k` is capped at 100.
+
 ## Storage
 
 ```python
@@ -92,7 +112,7 @@ Stages: `parse → chunk → map → embed → index`. `PipelineResult` has `doc
 
 ## Commands (image entrypoint is `folio`)
 
-`folio api` (FastAPI on :8080), `folio worker` (Celery), `folio init`, `folio schema apply [--reindex]`,
+`folio api` (FastAPI on :8080: ingest, jobs, search), `folio worker` (Celery), `folio init`, `folio schema apply [--reindex]`,
 `folio run`, `folio reprocess`, `folio eval ...`, `folio structure-server` (structure backend HTTP server on :9000),
 `folio embed-stub` (deterministic OpenAI-compatible embedding server for dev/tests on :8001).
 All HTTP servers expose `/healthz` and `/readyz`.

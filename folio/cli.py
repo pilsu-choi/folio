@@ -172,17 +172,11 @@ def cmd_eval(args) -> int:
         Path(args.out).write_text(json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
         _out({"testset": args.out, "items": len(items)})
     elif args.eval_cmd == "run":
-        from folio._loader import load_callable
-        from folio.retrieval import create_retriever
+        from folio.pipeline import retriever
 
         cfg = _load(args, args.pipeline)
-        embed = None
-        if cfg.embed is not None:
-            fn, opts = load_callable(cfg.embed.fn), cfg.embed.opts
-            embed = lambda texts: fn(texts, **opts)
         items = json.loads(Path(args.testset).read_text(encoding="utf-8"))
-        retriever = create_retriever(cfg.sink, _config_dir(args), embed)
-        result = ev.run(items, retriever, tuple(int(k) for k in args.ks.split(",")),
+        result = ev.run(items, retriever(cfg), tuple(int(k) for k in args.ks.split(",")),
                         config_dir=_config_dir(args), mode=args.mode)
         path = ev.save_result(result, args.out)
         _out({"result": str(path), "metrics": result["metrics"]})
@@ -257,7 +251,7 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--pipeline", required=True)
     r.add_argument("--testset", required=True)
     r.add_argument("--ks", default="1,5,10")
-    r.add_argument("--mode", choices=["hybrid", "bm25", "vector"], default="hybrid")
+    r.add_argument("--mode", choices=["hybrid", "bm25", "vector"], default=None, help="default: pipeline retrieval.mode")
     r.add_argument("--out", default="eval-out")
     c = es.add_parser("compare")
     c.add_argument("a")

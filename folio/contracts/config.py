@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -42,6 +42,38 @@ class StepSpec(BaseModel):
         raise ValueError(f"step must be a string or mapping, got {type(value).__name__}")
 
 
+class RetrievalConfig(BaseModel):
+    """Search settings for the pipeline's index (``retrieval:`` in the YAML). Requests may override only
+    ``k``, ``mode`` and ``filters``; field weights, fusion and rerank stay in config."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    fn: str | None = Field(default=None, description="custom retriever factory(sink, embed, **settings)")
+    mode: Literal["hybrid", "bm25", "vector"] = "hybrid"
+    k: int = Field(default=10, ge=1)
+    fields: dict[str, float] = Field(default_factory=lambda: {"content": 1.0}, description="BM25 fields -> weight")
+    rrf_k: int = Field(default=60, ge=1)
+    candidates: int | None = Field(default=None, ge=1, description="per-leg candidates; default max(k*3, 30)")
+    rerank: StepSpec | None = None
+    required_filters: list[str] = Field(default_factory=list)
+
+    @field_validator("rerank", mode="before")
+    @classmethod
+    def _coerce_rerank(cls, value: Any) -> Any:
+        return StepSpec.coerce(value)
+
+    @field_validator("fields")
+    @classmethod
+    def _fields_nonempty(cls, value: dict[str, float]) -> dict[str, float]:
+        if not value:
+            raise ValueError("retrieval.fields must name at least one field")
+        return value
+
+    def settings(self) -> dict[str, Any]:
+        """Constructor kwargs for a retriever (everything but ``fn``/``rerank``/``required_filters``)."""
+        return self.model_dump(exclude={"fn", "rerank", "required_filters"})
+
+
 class PipelineConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -51,6 +83,7 @@ class PipelineConfig(BaseModel):
     map: StepSpec | None = None
     embed: StepSpec | None = Field(default_factory=lambda: StepSpec(fn=DEFAULT_EMBED))
     sink: dict[str, Any]
+    retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     storage: str = ".folio/artifacts"
     config_dir: str | None = Field(default=None, description="dir holding schemas/ and mappers.py")
 
