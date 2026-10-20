@@ -91,7 +91,7 @@ P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 �
 | FR-12 | Pipeline | `run_pipeline(uri, cfg, stop_after)` + YAML의 `module:function` 로더 | P0 | 사용자 함수로 어느 단계든 교체 가능, 문서로 예제 제공 |
 | FR-13 | Pipeline | 원본·Document JSON·청크 저장, `reprocess --from parse\|chunk\|map` | P0 | `--from map` 재처리에서 구조 분석·OCR 호출 0회 |
 | FR-14 | Service | Ingest API, Job 조회, Celery 워커 1종 | P0 | 업로드 → `succeeded`까지 E2E 테스트 통과, 실패 시 에러 메시지 조회 가능 |
-| FR-15 | Service | Airflow 예시 DAG(PythonOperator로 `run_pipeline` 호출) | P1 | 예시 DAG가 로컬 Airflow에서 실행 |
+| FR-15 | Service | Airflow 예시 DAG(folio 이미지로 `folio run` 실행: DockerOperator 기본, KubernetesPodOperator 선택). Airflow에는 folio 의존성을 설치하지 않는다 | P1 | 예시 DAG가 로컬 Airflow에서 실행 |
 | FR-16 | CLI | `init`, `schema apply [--reindex]`, `run`, `reprocess` | P0 | `init` 반복 실행이 안전(멱등), `--reindex`는 alias 교체로 무중단 |
 | FR-17 | Retrieval | 하이브리드 검색(BM25 + 벡터) + rerank 라이브러리, OpenSearch·Milvus·pgvector 공통 인터페이스 | P1 | 필터 인자로 도메인 필드 검색 가능 |
 | FR-18 | Eval | Testset 생성, Recall@k·MRR·nDCG 평가 | P2 | 설정 파일의 Git 커밋별로 결과 비교 가능 |
@@ -389,7 +389,7 @@ Document JSON의 `heading`과 `section_path`로 트리를 만든다. 헤딩이 �
 | 메타 DB | PostgreSQL | `jobs` 테이블 하나 |
 | 저장소 | S3 호환 Object Storage | 로컬 파일시스템 폴백 |
 | 검색 인덱스 | OpenSearch (기본), Milvus, pgvector |  |
-| 배치 | Airflow (선택) | 예시 DAG만 제공 |
+| 배치 | Airflow (선택) | 예시 DAG + Compose `airflow` 프로필(개발용). 작업은 folio 컨테이너에서 실행 |
 | 배포 | Docker 이미지, Docker Compose v2, Kubernetes + Helm 3 | 지원 k8s 최소 버전은 열린 질문 |
 
 ## 마일스톤
@@ -409,13 +409,13 @@ M1에서 디지털 PDF 하나로 처음부터 끝까지 도는 것을 먼저 만
 
 ## 구현 현황 (2026-10-20)
 
-DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 검증 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md)과 [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md) 작업 기록에 있다.
+DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 검증 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md), [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md), [Airflow 컨테이너 DAG](wiki/2026-10-20-airflow-container-dag.md) 작업 기록에 있다.
 
 | 상태 | FR |
 | --- | --- |
-| 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~29 |
+| 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 15(Compose Airflow + DockerOperator), 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~29 |
 | 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인) |
-| 구현, 미검증 | FR-15(Airflow DAG 미실행), FR-26 Helm 사설 레지스트리 경로, PPTX `convert` 모드(LibreOffice 미포함) |
+| 구현, 미검증 | FR-15 KubernetesPodOperator 경로(DAG import·Helm 렌더링만 확인), FR-26 Helm 사설 레지스트리 경로, PPTX `convert` 모드(LibreOffice 미포함) |
 | 보류 | FR-20, FR-21 (DOCX·HWPX) |
 
 - VLM 기본 적용은 `parse.vlm: auto`로 구현했다. `FOLIO_VLM_URL`이 있으면 VLM 경로(기본)를 쓰고, 없으면 구조 분석 OCR을 쓰며 `meta.vlm`에 사유를 남긴다. VLM 호출이 실패한 페이지만 OCR로 폴백하고 `meta.vlm_fallbacks`에 기록한다.

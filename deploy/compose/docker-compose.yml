@@ -252,6 +252,37 @@ services:
     depends_on:
       init: {condition: service_completed_successfully}
 
+  # Example Airflow (FR-15), profile `airflow`: `airflow standalone` (SQLite, dev only) with dags/folio_ingest.py.
+  # The DAG runs `folio run` in a sibling folio container through the host Docker socket (DockerOperator), so the
+  # Airflow image has no folio dependencies. Socket access = root on the host: dev / closed networks only.
+  # DOCKER_GID: gid of /var/run/docker.sock as seen in containers (`stat -c %g`). FOLIO_DOCKER_NETWORK must be this
+  # project's network (`<project>_default`) so the folio container reaches opensearch/minio/structure/embed.
+  airflow:
+    image: ${AIRFLOW_IMAGE:-apache/airflow:3.1.0-python3.12}
+    profiles: [airflow]
+    command: ["standalone"]
+    environment:
+      <<: *folio-env
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      FOLIO_IMAGE: *image-folio
+      FOLIO_AIRFLOW_RUNNER: docker
+      FOLIO_DOCKER_NETWORK: ${FOLIO_DOCKER_NETWORK:-folio_default}
+    volumes:
+      - ${FOLIO_PROJECT_DIR:-../../project-template}/dags:/opt/airflow/dags:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add: ["${DOCKER_GID:-0}"]
+    ports:
+      - "${AIRFLOW_PORT:-8081}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://127.0.0.1:8080/api/v2/monitor/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    depends_on:
+      init: {condition: service_completed_successfully}
+    restart: unless-stopped
+
 volumes:
   pg-data:
   rabbit-data:

@@ -1,0 +1,12 @@
+{{- /* folio.env as a ConfigMap, for pods started outside the chart (Airflow KubernetesPodOperator, FR-15) */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "folio.fullname" . }}-env
+  labels: {{- include "folio.labels" . | nindent 4 }}
+data:
+  {{- range (include "folio.env" . | fromYamlArray) }}
+  {{- if hasKey . "value" }}
+  {{ .name }}: {{ .value | toString | quote }}
+  {{- end }}
+  {{- end }}

@@ -5,7 +5,7 @@
     pipelines/contracts.yaml            stages as module:function; `map: mappers:map_contract`
     mappers.py                          domain fields (contract_no, party, article)
     samples/                            put sample documents here (PDF, images, PPTX, XLSX, Markdown, TXT)
-    dags/folio_ingest.py                Airflow example (PythonOperator -> run_pipeline)
+    dags/folio_ingest.py                Airflow example: `folio run` in the folio image (DockerOperator / KubernetesPodOperator)
     Dockerfile                          FROM folio image + COPY project to /app/project
 
 Usage: `export FOLIO_CONFIG_DIR=$PWD; folio init; folio run samples/ --pipeline contracts`.

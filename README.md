@@ -12,7 +12,8 @@ parse (PDF 텍스트 레이어 + 구조 분석 백엔드, OCR·VLM 폴백) → c
 - 입력 형식: PDF, 이미지(PNG·JPG·TIFF·BMP·WebP), PPTX, XLSX, Markdown, TXT(UTF-8·CP949 자동 판별).
 - VLM: `parse.vlm: auto`가 기본이다. `FOLIO_VLM_URL`이 있으면 스캔·품질 미달 페이지, 이미지, 그림 설명, 구조가 약한 표를 VLM으로 처리하고, 없으면 OCR로 처리한다. VLM 모델은 아직 정하지 않았다(개발용 `folio vlm-stub`만 있음).
 - 청킹: `adaptive`가 기본이다. `max_tokens` 안에 들어가는 가장 큰 구조 단위를 청크로 만든다. 대안은 `page`·`fixed`.
-- 검증한 것: 단위 테스트, Sink 통합 테스트(OpenSearch·Milvus·pgvector), Compose E2E(전 형식, VLM stub 포함), kind + Helm E2E(업그레이드·워커 강제 종료 포함), 오프라인 번들 설치. 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md), [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md) 작업 기록에 있다.
+- Airflow: 예시 DAG(`project-template/dags/folio_ingest.py`)는 folio 이미지로 `folio run`을 실행한다(DockerOperator 기본, KubernetesPodOperator 선택). Airflow에는 folio 의존성이 필요 없다. Compose `airflow` 프로필로 로컬 Airflow를 띄운다.
+- 검증한 것: 단위 테스트, Sink 통합 테스트(OpenSearch·Milvus·pgvector), Compose E2E(전 형식, VLM stub 포함), Compose Airflow DAG E2E(DockerOperator), kind + Helm E2E(업그레이드·워커 강제 종료 포함), 오프라인 번들 설치. 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md), [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md), [Airflow 컨테이너 DAG](wiki/2026-10-20-airflow-container-dag.md) 작업 기록에 있다.
 - 미정: 기본 구조 분석 백엔드(Docling vs PP-StructureV3)는 고객사 샘플 벤치마크 후 정한다. `FOLIO_STRUCTURE_URL`이 없으면 모델 없는 `heuristic` 백엔드를 쓴다.
 
 ## 설치
@@ -72,6 +73,7 @@ storage: ${FOLIO_STORAGE_URI:-.folio/artifacts}
 - Docker Compose: `deploy/compose/` (`cp .env.example .env` → `docker compose up -d`)
 - Kubernetes: `deploy/helm/folio/` (`helm install folio deploy/helm/folio -f values-dev.yaml`)
 - 폐쇄망: `deploy/bundle/make_bundle.sh` → `install.sh`
+- Airflow(개발용): `.env`의 `COMPOSE_PROFILES`에 `airflow` 추가, `DOCKER_GID`·`FOLIO_DOCKER_NETWORK` 설정 → UI `localhost:8081`
 
 자세한 내용은 [deploy/README.md](deploy/README.md)에 있다.
 
@@ -81,6 +83,7 @@ storage: ${FOLIO_STORAGE_URI:-.folio/artifacts}
 pytest -q                                              # 단위 테스트 (모델·외부 서비스 불필요)
 pytest -q -m integration tests/integration/test_sinks_integration.py   # OpenSearch·pgvector·Milvus 컨테이너 기동
 deploy/compose/e2e.sh                                  # Compose E2E
+AIRFLOW=1 deploy/compose/e2e.sh                        # + Airflow DAG(DockerOperator) 실행·인덱스 적재 확인
 deploy/kind/e2e.sh                                     # kind + Helm E2E (업그레이드 포함)
 python scripts/bench_backends.py --backends heuristic,docling,ppstructure   # 구조 분석 백엔드 벤치마크
 ```

@@ -93,6 +93,6 @@ Stages: `parse → chunk → map → embed → index`. `PipelineResult` has `doc
 ## Commands (image entrypoint is `folio`)
 
 `folio api` (FastAPI on :8080), `folio worker` (Celery), `folio init`, `folio schema apply [--reindex]`,
-`folio run`, `folio reprocess`, `folio eval ...`, `folio structure-server` (structure backend HTTP server on :9000),
+`folio run [--source-uri]`, `folio reprocess`, `folio eval ...`, `folio structure-server` (structure backend HTTP server on :9000),
 `folio embed-stub` (deterministic OpenAI-compatible embedding server for dev/tests on :8001).
 All HTTP servers expose `/healthz` and `/readyz`.

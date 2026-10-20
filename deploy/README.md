@@ -40,6 +40,13 @@ curl localhost:8080/readyz
 - Offline: `-f docker-compose.yml -f docker-compose.offline.yml` (no build, `pull_policy: never`).
 - Worker `stop_grace_period` is 120s so SIGTERM (Celery warm shutdown) finishes the running task.
 - OpenSearch security is disabled in the bundled service: dev / closed network only.
+- Airflow example (FR-15): `--profile airflow` adds `airflow standalone` (UI on `${AIRFLOW_PORT:-8081}`, SQLite, dev only)
+  with `project-template/dags/folio_ingest.py`. The DAG runs `folio run` in a sibling folio container via the
+  mounted Docker socket (DockerOperator), so Airflow has no folio dependencies. Set `DOCKER_GID` (gid of
+  `/var/run/docker.sock`) and `FOLIO_DOCKER_NETWORK=<project>_default`; the spawned container uses the project baked
+  into `FOLIO_IMAGE` (build a customer image for your own pipelines). Socket access is root-equivalent on the host.
+  Kubernetes: `FOLIO_AIRFLOW_RUNNER=kubernetes` switches to KubernetesPodOperator with env from the chart's
+  `<fullname>-env` ConfigMap and Secret (`FOLIO_K8S_FULLNAME`, `FOLIO_K8S_NAMESPACE`, `FOLIO_K8S_SECRET`).
 
 ## Kubernetes
 
@@ -63,4 +70,5 @@ tar xzf folio-bundle-0.1.0.tar.gz && cd folio-bundle-0.1.0
 
 `deploy/compose/e2e.sh` and `deploy/kind/e2e.sh` upload `tests/fixtures/digital.pdf` via `POST /v1/ingest` and poll
 `GET /v1/jobs/{id}` to `succeeded`; the kind script then runs `helm upgrade` with 5 jobs in flight and checks they all finish.
-CI: `.github/workflows/ci.yml`.
+`AIRFLOW=1 deploy/compose/e2e.sh` additionally uploads the PDF to S3, runs `airflow dags test folio_ingest` and checks
+the chunks reached OpenSearch. CI: `.github/workflows/ci.yml`.
