@@ -2,7 +2,7 @@
 # Whole vlm_scan bench under the GPU lock: start m1-vlm (Qwen3.5-9B), run the three policies, stop m1-vlm.
 #   flock ~/folio-m1-bench/gpu.lock bench/m1/vlm_scan/run_all.sh   (run from ~/folio-m1-bench/folio-scan)
 set -u
-B=~/folio-m1-bench; O=$B/out/vlm_scan; mkdir -p $O
+B=~/folio-m1-bench; O=${OUT:-$B/out/vlm_scan}; mkdir -p $O
 PY=$B/venv-paddle/bin/python
 GMU=0.3 bash bench/m1/vlm/serve.sh Qwen3.5-9B > $O/serve.id
 for i in $(seq 120); do curl -sf localhost:8010/v1/models >/dev/null && break; sleep 10; done

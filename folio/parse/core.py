@@ -59,9 +59,9 @@ class Options:
     min_text_area_ratio: float = 0.01
     # VLM on digital pages: embedded-image figures and low-quality structure tables (FR-06)
     figure_min_area: float = 0.01
-    # VLM on image pages: "page" = whole page to VLM; "ocr_first" = OCR first, VLM for the whole page only
-    # when OCR confidence (char-weighted mean) < ocr_min_conf, else VLM just for table/figure regions
-    vlm_scan: str = "page"
+    # VLM on image pages: "ocr_first" (default) = OCR first, VLM for the whole page only
+    # when OCR confidence (char-weighted mean) < ocr_min_conf, else VLM just for table/figure regions; "page" = whole page to VLM
+    vlm_scan: str = "ocr_first"
     ocr_min_conf: float = 0.85
     table_min_coverage: float = 0.8
     table_max_empty: float = 0.6

@@ -79,10 +79,10 @@ P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 �
 | ID | 영역 | 요구사항 | 우선순위 | 수용 기준 |
 | --- | --- | --- | --- | --- |
 | FR-01 | Parse | 디지털 PDF를 텍스트 레이어 + 구조 분석 백엔드 결과의 좌표 매칭으로 Document JSON으로 변환 | P0 | 디지털 PDF 샘플에서 OCR 호출 0회, 블록 텍스트가 PyMuPDF 추출 원문과 일치 |
-| FR-02 | Parse | 페이지별 텍스트 레이어 품질 판정, 기준 미달 페이지만 이미지 경로(VLM 기본, VLM을 끄면 구조 분석 OCR)로 폴백 | P0 | 스캔·깨진 폰트 페이지만 `text_source=vlm`(VLM을 끄면 `ocr`), 나머지는 `pdf_text` |
+| FR-02 | Parse | 페이지별 텍스트 레이어 품질 판정, 기준 미달 페이지만 이미지 경로(OCR 먼저, 표·그림과 저신뢰 페이지는 VLM, VLM을 끄면 OCR만)로 폴백 | P0 | 스캔·깨진 폰트 페이지만 `text_source=ocr`/`vlm`, 나머지는 `pdf_text` |
 | FR-03 | Parse | 구조 분석 백엔드의 표 구조로 셀 단위 `cells` 구성 | P0 | 샘플 표의 행·열 수와 셀 텍스트가 정답 파일과 일치 |
 | FR-04 | Parse | 회전·CropBox 보정, char 단위 매칭 옵션(한글 변환 PDF) | P1 | 회전 페이지·HWP 변환 PDF 샘플에서 블록 텍스트 누락 없음 |
-| FR-05 | Parse | 이미지 입력(PNG, JPG, TIFF, BMP, WebP)을 VLM 경로로 처리(기본). VLM을 끄면 구조 분석 OCR로 처리. 다중 페이지 TIFF는 프레임마다 페이지 1개 | P1 | 이미지 샘플이 같은 Document JSON 형식으로 출력되고 `text_source=vlm`, VLM을 끈 설정에서는 `ocr` |
+| FR-05 | Parse | 이미지 입력(PNG, JPG, TIFF, BMP, WebP)을 스캔 페이지와 같은 이미지 경로로 처리. 다중 페이지 TIFF는 프레임마다 페이지 1개 | P1 | 이미지 샘플이 같은 Document JSON 형식으로 출력되고, 본문은 `ocr`(단어 bbox 유지), VLM이 다시 읽은 표·저신뢰 페이지는 `vlm` |
 | FR-06 | Parse | VLM 백엔드를 이미지 콘텐츠에 기본 적용: 스캔·품질 미달 페이지, 문서 안 그림·차트 설명(`figure.text`), 구조 분석 결과가 기준 미달인 복잡 표. `parse.vlm: false`로 끌 수 있음 | P1 | 디지털 텍스트만 있는 샘플에서 VLM 호출 0회, 그림 포함 샘플에서 `figure` 블록마다 `text_source=vlm` 설명 생성, 호출 수를 `meta`에 기록 |
 | FR-19 | Parse | `StructureBackend` 인터페이스 + 후보 백엔드 2종 어댑터, 벤치마크 스크립트 | P0 | 백엔드를 바꿔도 같은 샘플의 Document JSON 스키마 검증 통과, 백엔드별 정확도·속도 리포트 |
 | FR-20 | Parse | DOCX·HWPX `convert` 모드(PDF 변환 후 Parse 경로), 기본값 | P1 | DOCX·HWPX 샘플이 페이지·bbox 포함 Document JSON으로 출력 |
@@ -221,7 +221,7 @@ M1 벤치마크 결과(2026-10-21, 공개 한글 샘플, 잠정): **Qwen3.5-9B**
 ### 기본 구성 (M1 벤치마크 전 가정)
 
 1. 디지털 페이지: 텍스트 레이어 + 구조 분석 백엔드의 레이아웃·표 결과 → 좌표 매칭. VLM 호출 없음.
-2. 이미지 콘텐츠(이미지 파일, 스캔·품질 미달 페이지): VLM 백엔드로 처리(기본). `parse.vlm: false`이면 구조 분석 백엔드의 OCR 결과 사용.
+2. 이미지 콘텐츠(이미지 파일, 스캔·품질 미달 페이지): 구조 분석 백엔드로 OCR을 먼저 하고 단어 위치를 유지한다. 표 영역은 VLM으로 다시 읽고 그림 영역은 VLM 설명을 덧붙인다. OCR 신뢰도(글자 수 가중 평균)가 `ocr_min_conf`(0.85, 잠정) 미만이면 페이지 전체를 VLM으로 처리한다(`parse.vlm_scan: ocr_first`, 기본). `vlm_scan: page`는 페이지 전체를 VLM으로 처리한다. `parse.vlm: false`이면 OCR 결과만 쓴다. 근거: [스캔 페이지 VLM 정책 비교](wiki/2026-10-21-vlm-scan-ocr-first.md).
 3. 디지털 페이지 안의 `figure` 영역과 구조 분석 결과가 기준 미달인 복잡 표: 해당 영역 이미지만 VLM에 보내 설명·표 구조를 받는다(기본).
 
 모델 서빙은 많아야 2개(구조 분석 + VLM)다. GPU가 없는 환경은 `parse.vlm: false`로 VLM 없이 운영한다.

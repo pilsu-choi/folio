@@ -53,7 +53,7 @@ def test_auto_with_env_endpoint_enabled(monkeypatch):
 
 def test_scanned_pages_and_images_use_vlm(stub):
     cfg, seen = stub
-    doc = default(str(FIX / "mixed.pdf"), backend=FakeBackend(), vlm=cfg)
+    doc = default(str(FIX / "mixed.pdf"), backend=FakeBackend(), vlm=cfg, vlm_scan="page")
     assert [{b.text_source for b in p.blocks} for p in doc.pages] == [{"pdf_text"}, {"vlm"}, {"vlm"}]
     assert doc.meta["calls"] == {"structure": 1, "ocr": 0, "vlm": 2} and len(seen) == 2
     assert doc.meta["vlm"]["enabled"] and doc.meta["vlm_fallbacks"] == []
@@ -61,7 +61,7 @@ def test_scanned_pages_and_images_use_vlm(stub):
     assert scanned and all(b.bbox == [0.0, 0.0, 595.0, 842.0] for b in scanned)
     validate_doc(doc)
     for name in ("image.png", "image.bmp", "image.webp", "multi.tiff"):
-        d = default(str(FIX / name), backend=FakeBackend(), vlm=cfg)
+        d = default(str(FIX / name), backend=FakeBackend(), vlm=cfg, vlm_scan="page")
         assert srcs(d) == {"vlm"} and d.meta["calls"]["vlm"] == len(d.pages) and d.meta["calls"]["ocr"] == 0, name
         validate_doc(d)
 
@@ -123,7 +123,8 @@ def test_vlm_http_failure_falls_back_to_ocr():
 
     client = httpx.Client(transport=httpx.MockTransport(boom))
     fb = FakeBackend(ocr_words_for(["스캔 문서", "OCR text"]))
-    doc = default(str(FIX / "mixed.pdf"), backend=fb, vlm={"url": "http://x/v1", "model": "m", "client": client})
+    doc = default(str(FIX / "mixed.pdf"), backend=fb, vlm={"url": "http://x/v1", "model": "m", "client": client},
+                  vlm_scan="page")
     assert [{b.text_source for b in p.blocks} for p in doc.pages] == [{"pdf_text"}, {"ocr"}, {"ocr"}]
     assert doc.meta["errors"] == [] and doc.meta["calls"]["vlm"] == 2 and doc.meta["calls"]["ocr"] == 2
     fbs = doc.meta["vlm_fallbacks"]

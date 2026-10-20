@@ -92,13 +92,13 @@ flowchart TD
     T -- "PDF" --> Q{"페이지의 글자 레이어<br/>품질이 괜찮은가?"}
     Q -- "예" --> D["PDF 글자 + 구조 분석 모델<br/>text_source = pdf_text"]
     Q -- "아니오 (스캔·깨진 폰트)" --> IMG{"VLM 서버가 있나?<br/>FOLIO_VLM_URL"}
-    IMG -- "예" --> V["VLM으로 읽기<br/>text_source = vlm"]
+    IMG -- "예" --> OF["OCR 먼저 (단어 위치 유지)<br/>표는 VLM으로 다시 읽기, 그림은 VLM 설명<br/>OCR 신뢰도가 낮으면 페이지 전체를 VLM"]
     IMG -- "아니오" --> O["OCR로 읽기<br/>text_source = ocr"]
     D --> EN["그림·약한 표만 VLM 보강<br/>VLM 있을 때"]
 ```
 
 - **구조 분석 모델**: 페이지에서 제목·문단·표 영역을 찾는 모델. 기본은 PP-StructureV3 GPU 서버다. GPU가 없으면 CPU 버전(약 40배 느림, 메모리 약 12 GB), 개발·CI는 모델 없는 `heuristic`을 쓴다. 라이브러리 단독 사용 시 `FOLIO_STRUCTURE_URL`이 없으면 `heuristic`이다.
-- **VLM**: `parse.vlm: auto`가 기본이다. `FOLIO_VLM_URL`이 없으면 VLM 대신 OCR을 쓴다. 운영용 VLM 모델은 아직 정하지 않았다(개발용 `folio vlm-stub`만 있음).
+- **VLM**: `parse.vlm: auto`가 기본이다. `FOLIO_VLM_URL`이 없으면 VLM 대신 OCR을 쓴다. 스캔 페이지는 OCR을 먼저 돌리고 표·그림만 VLM에 보낸다(`vlm_scan: ocr_first`, 페이지 전체를 VLM에 보내려면 `page`). 운영용 VLM 모델은 아직 정하지 않았다(개발용 `folio vlm-stub`만 있음).
 - **청킹**: 기본 `adaptive`. 대안은 `page`, `fixed`.
 
 ## 검색 흐름
