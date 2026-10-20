@@ -11,7 +11,7 @@ Oct 20, 2026 · @pilsu
 - **현재 문제 1 — 재사용 불가**: 파싱·청킹·적재 코드가 고객사 요구사항과 한 덩어리라, 다음 프로젝트에서 복사 후 수정하게 된다.
 - **현재 문제 2 — 느린 Parse**: VLM으로 필드를 추출하면 문서당 처리 시간이 길다. 디지털 PDF는 텍스트 레이어로 글자를 얻고, DLA로 레이아웃만 잡으면 충분하다.
 - **현재 문제 3 — 재처리 비용**: 스키마나 매핑이 바뀌면 원본부터 다시 돌려 OCR까지 반복한다.
-- **레포의 책임 범위**: 이 레포는 "문서 → 인덱스 → 검색" 경로와 그 계약에 집중하고, 다른 레포는 이 레포를 라이브러리나 검색 API로 가져다 쓴다. 고객사마다 검색 래퍼를 따로 만들지 않도록 검색 API(`POST /v1/search`)까지 제공한다.
+- **레포의 책임 범위**: 이 레포는 "문서 → 인덱스 → 검색" 경로와 그 계약에 집중하고, 다른 레포는 이 레포를 라이브러리나 검색 API로 가져다 쓴다. 고객사마다 검색 래퍼를 따로 만들지 않도록 검색 API(`POST /v1/search`)와, 검색 결과를 근거로 답하는 멀티턴 Chat API(`POST /v1/chat`)까지 제공한다.
 
 ## 목표와 비목표
 
@@ -32,7 +32,7 @@ Oct 20, 2026 · @pilsu
 - 선언형 매핑 DSL, 플러그인 마켓·레지스트리
 - 단계별 큐 분리, 오토스케일링 정책
 - Kubernetes Operator·CRD, 클러스터·GPU 노드 프로비저닝 — 이미 준비된 클러스터에 Helm으로 올리는 것까지만 다룬다
-- 답변 생성(LLM 응답) 서비스 — 이 레포는 검색 인덱스와 검색 결과 반환(검색 API)까지만 책임진다
+- 대화 세션 저장, 에이전트 도구 호출 루프, 질문에서 필터 자동 추출 — `POST /v1/chat`은 무상태다. App이 매 요청에 대화 이력 전체와 권한 필터를 넣고, 대화 저장·에이전트 로직은 App이나 별도 레포가 맡는다
 - API 인증·인가 — folio API는 내부망 서비스로 둔다. 테넌트·ACL 필터 값은 App이 사용자 권한으로 정해 넘기고, folio는 `required_filters`로 누락만 막는다
 - SaaS 커넥터(Slack, Notion 등) — 수집은 파일·URI 입력까지만 다룬다
 
@@ -72,6 +72,12 @@ Oct 20, 2026 · @pilsu
 2. App이 `POST /v1/search`로 `{query, pipeline, k, filters}`를 보낸다. `filters`에는 사용자 권한으로 정한 `tenant_id`·`acl`과 도메인 조건(같음, 목록, `{gte, lte}` 범위)을 넣는다.
 3. 응답의 `hits[]`(`chunk_id`, `doc_id`, `score`, `content`, `record`)를 화면이나 답변 생성에 쓴다. 검색 튜닝을 바꿀 때 App 코드는 바뀌지 않는다.
 
+### 시나리오 5 — App에서 멀티턴 질의응답
+
+1. 구축 개발자가 파이프라인 YAML에 `generation:`(LLM 단계, 프롬프트, 토큰 예산)을 추가하고 `FOLIO_LLM_URL`에 OpenAI 호환 LLM 서버를 연결한다.
+2. App이 `POST /v1/chat`으로 `{messages, pipeline, k, filters}`를 보낸다. `messages`는 지금까지의 `user`·`assistant` 대화 전체이고 마지막은 `user`다. 대화 이력은 App이 보관한다.
+3. folio는 후속 질문을 독립 검색어로 바꿔(`query`) 검색하고, 번호 붙인 근거로 답한다. 응답 `answer`의 `[n]`은 `citations[]`와 `hits[n-1]`로 원문 청크를 가리킨다.
+
 ## 기능 요구사항
 
 P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 요구가 확인되면 한다. 수용 기준은 레포의 샘플 문서 세트(`tests/fixtures/`)로 검증한다.
@@ -103,6 +109,7 @@ P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 �
 | FR-17 | Retrieval | 하이브리드 검색(BM25 + 벡터, RRF) + rerank 라이브러리, OpenSearch·Milvus·pgvector 공통 인터페이스. 필터는 같음·목록·범위(`gt`·`gte`·`lt`·`lte`). 파이프라인 YAML `retrieval:`로 모드·`k`·BM25 필드 가중치(OpenSearch)·`rrf_k`·후보 수·rerank·필수 필터·사용자 retriever(`fn`) 설정 | P1 | 필터 인자로 도메인 필드 검색 가능, 세 스토어 모두 범위 필터 통합 테스트 통과, 가중치를 지원하지 않는 스토어에 가중치를 주면 설정 오류 |
 | FR-18 | Eval | Testset 생성, Recall@k·MRR·nDCG 평가. 서비스와 같은 `retrieval:` 설정으로 검색 | P2 | 설정 파일의 Git 커밋별로 결과 비교 가능 |
 | FR-30 | Service | Search API `POST /v1/search` (`query`, `pipeline`, `k`≤100, `mode`, `filters`) → `hits[]`. 파이프라인의 임베딩 단계·`retrieval:` 설정을 그대로 사용. 잘못된 필터·모드·누락된 필수 필터는 400 | P1 | 업로드 후 검색 결과가 반환되는 E2E 통과, `required_filters` 누락 시 400 |
+| FR-31 | Service | Chat API `POST /v1/chat` (`messages`, `pipeline`, `k`, `mode`, `filters`) → `{answer, query, citations[], hits[]}`. 무상태 멀티턴: 이력은 요청에 포함, 후속 질문은 검색 전에 독립 검색어로 재작성(첫 턴은 생략), 이전 답변의 `[n]` 표시는 제거. 근거·이력은 토큰 예산 안에서 자름. LLM 단계는 `generation.chat`(`module:function`, 기본 OpenAI 호환). `system` 역할 거부(422), `generation:` 없는 파이프라인·필수 필터 누락 400, LLM 실패 502 | P2 | 멀티턴 요청에서 재작성된 `query`로 검색, 인용 번호가 `hits`의 청크와 일치, 오류 코드가 명세대로 반환 |
 | FR-22 | Deploy | 컨테이너 이미지: `folio`(API·워커·CLI 공용, 실행 명령으로 역할 선택), 구조 분석 모델 서버, 고객사 이미지 빌드용 베이스 | P0 | 같은 이미지 태그가 Compose와 k8s 양쪽에서 E2E 통과, non-root 실행, 이미지 안에 비밀값 없음 |
 | FR-23 | Deploy | Docker Compose 배포(앱 + PostgreSQL·RabbitMQ·OpenSearch·S3 호환 스토리지·모델 서버), GPU 서비스 선택 | P0 | 빈 서버에서 `docker compose up` 후 시나리오 3 통과 |
 | FR-24 | Deploy | Helm 차트: API·워커·모델 서버 Deployment, `folio init`·`schema apply` 실행 Job(hook), ConfigMap(파이프라인 YAML)·Secret(접속 정보), GPU 리소스·nodeSelector·toleration 설정 | P0 | kind(또는 k3s) 클러스터에서 `helm install` 후 시나리오 3 통과, `helm upgrade` 중 진행 중인 job 유실 없음 |
@@ -173,10 +180,15 @@ retrieval:                            # 생략 시 hybrid, k=10, content만 BM25
   candidates: 50                      # 단계별 후보 수, 기본 max(k*3, 30). rerank는 이 후보를 보고 k개로 자른다
   rerank: {fn: folio.retrieval.rerank:http_rerank, top_n: 10}   # 선택, FOLIO_RERANK_URL
   required_filters: [tenant_id]       # 검색 요청에 반드시 있어야 하는 필터
+generation:                           # 선택, 있으면 POST /v1/chat 사용 가능 (true = 기본값)
+  chat: {fn: folio.generation:http, model: qwen3-32b, max_tokens: 1024}   # FOLIO_LLM_URL
+  rewrite: true                       # 후속 질문을 독립 검색어로 재작성
+  max_context_tokens: 6000            # 근거 청크 예산 (1위 청크는 항상 포함)
+  max_history_tokens: 2000            # 대화 이력 예산, 오래된 턴부터 버림
 storage: s3://folio-artifacts/       # 중간 산출물 위치
 ```
 
-단계 함수 시그니처는 `parse(uri, **opts) -> DocumentJSON`, `chunk(doc, **opts) -> list[dict]`, `map(doc, chunk) -> dict`, `embed(texts, **opts) -> list[list[float]]`로 고정한다.
+단계 함수 시그니처는 `parse(uri, **opts) -> DocumentJSON`, `chunk(doc, **opts) -> list[dict]`, `map(doc, chunk) -> dict`, `embed(texts, **opts) -> list[list[float]]`, 생성 단계 `chat(messages, **opts) -> str`로 고정한다.
 
 ## 파싱 백엔드
 
@@ -450,6 +462,7 @@ M1에서 디지털 PDF 하나로 처음부터 끝까지 도는 것을 먼저 만
 | M2 | FR-02·05 이미지 경로, FR-06 VLM 기본 적용 (M3 선택 항목에서 이동) | OCR 폴백과 같은 경로이고, M1 벤치마크로 고른 VLM을 띄운다 |
 | M2 | FR-27 PPTX, FR-28 XLSX, FR-29 Markdown·TXT | 그림·차트는 FR-06의 VLM을 재사용한다. Markdown·TXT는 모델 없이 구현돼 청킹 테스트 입력으로도 쓴다 |
 | M3 | FR-30 Search API, FR-17 `retrieval:` 설정·범위 필터 | 고객사마다 검색 래퍼를 다시 만들지 않게 한다. FR-18 Eval과 같은 검색 경로를 쓴다 |
+| M3 | FR-31 Chat API (무상태 멀티턴 생성) | FR-30 검색 경로를 그대로 쓰고, 운영 LLM은 VLM처럼 고객사 환경에서 정한다 |
 
 ## 구현 현황 (2026-10-20)
 
@@ -458,7 +471,7 @@ DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 검증 상세�
 | 상태 | FR |
 | --- | --- |
 | 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 15(Compose Airflow + DockerOperator, k3s에 공식 Airflow 차트 설치 후 KubernetesExecutor → KubernetesPodOperator, folio 내장 PostgreSQL을 메타데이터 DB로 공유), 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~30 |
-| 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인) |
+| 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인), FR-31(stub LLM으로 재작성·인용·오류 코드만 확인, 실제 LLM 모델 미선정) |
 | 구현, 미검증 | FR-15 운영 Airflow 가이드의 원격 로그 설정(예시만 제공), FR-26 Helm 사설 레지스트리 경로, PPTX `convert` 모드(LibreOffice 미포함) |
 | 보류 | FR-20, FR-21 (DOCX·HWPX) |
 
@@ -467,6 +480,7 @@ DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 검증 상세�
 - 구조 분석 백엔드: 픽스처에서 heuristic·Docling·PP-StructureV3 모두 디지털 텍스트·표 결과가 같았다. OCR 유사도는 0.72 / 0.75 / 0.91, CPU 기준 초/페이지는 0.04 / 1.75 / 20.6이다(PP-StructureV3는 모델 로드 포함).
 - 기본 구조 분석 백엔드는 PP-StructureV3 GPU다(2026-10-20 사용자 결정). Compose `gpu` 프로필과 Helm 기본값이 GPU 서버를 띄우고, GPU가 없으면 `cpu`(Compose 프로필, `values-cpu.yaml`), 개발·CI는 `heuristic`을 쓴다. 폐쇄망 번들 기본 변형은 `STRUCTURE_VARIANTS=gpu`다. 모델을 미리 로드한 상태의 픽스처 11페이지 측정은 GPU(RTX 4070) 0.33~0.42 s/page, CPU 4스레드(pgx aarch64) 17.6 s/page, 최대 메모리 11.6 GiB다. 상세는 [PP-StructureV3 기본 백엔드](wiki/2026-10-21-ppstructure-gpu-default.md)에 있다.
 - 검색: `POST /v1/search`와 파이프라인 YAML `retrieval:`을 구현했다. 서비스·`folio eval run`·라이브러리 모두 `folio.pipeline.retriever(cfg)` 한 경로로 retriever를 만든다. 상세는 [검색 API 작업 기록](wiki/2026-10-20-implementation-search-api.md)에 있다.
+- 생성: `POST /v1/chat`과 YAML `generation:`을 구현했다(무상태 멀티턴, 기본 꺼짐). `folio eval testset --method llm`도 같은 chat 클라이언트(`folio.generation:http`)를 쓴다. 상세는 [멀티턴 생성 작업 기록](wiki/2026-10-21-generation-multiturn.md)에 있다.
 - `minio/minio`가 Docker Hub에서 더 이상 배포되지 않아, 내장 S3를 digest로 고정한 `cgr.dev/chainguard/minio`로 바꿨다.
 
 ## 열린 질문

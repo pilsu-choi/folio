@@ -6,7 +6,7 @@ import os
 import random
 import re
 
-import httpx
+from folio.generation import http as chat
 
 _SENT = re.compile(r"(?<=[.!?。])\s+|\n+")
 _STOP = {"the", "a", "an", "of", "and", "or", "to", "in", "on", "for", "is", "are", "was", "were", "be", "with", "as", "by", "at", "this", "that", "it"}
@@ -23,12 +23,9 @@ def _heuristic_query(text: str) -> str:
 def _llm_query(text: str, url: str, model: str | None, api_key: str | None) -> str:
     prompt = ("Write one short search query a user could type to find the passage below. "
               "Do not copy whole sentences. Output only the query.\n\nPassage:\n" + text[:3000])
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    r = httpx.post(url.rstrip("/") + "/chat/completions", headers=headers, timeout=120, json={
-        "model": model or os.environ.get("FOLIO_VLM_MODEL", ""), "temperature": 0,
-        "messages": [{"role": "user", "content": prompt}]})
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"].strip().strip('"')
+    model = model or os.environ.get("FOLIO_LLM_MODEL") or os.environ.get("FOLIO_VLM_MODEL", "")
+    reply = chat([{"role": "user", "content": prompt}], url=url, model=model, api_key=api_key, max_tokens=128)
+    return reply.strip().strip('"')
 
 
 def generate(chunks: list[dict], n: int, method: str = "heuristic", llm_url: str | None = None,
@@ -41,9 +38,9 @@ def generate(chunks: list[dict], n: int, method: str = "heuristic", llm_url: str
     out = []
     for c in chosen:
         if method == "llm":
-            url = llm_url or os.environ.get("FOLIO_VLM_URL")
+            url = llm_url or os.environ.get("FOLIO_LLM_URL") or os.environ.get("FOLIO_VLM_URL")
             if not url:
-                raise ValueError("llm method needs llm_url (or FOLIO_VLM_URL)")
+                raise ValueError("llm method needs llm_url (or FOLIO_LLM_URL / FOLIO_VLM_URL)")
             query = _llm_query(c["content"], url, model, api_key)
         else:
             query = _heuristic_query(c["content"])

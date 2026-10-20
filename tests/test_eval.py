@@ -1,7 +1,6 @@
 import json
 import subprocess
 
-import httpx
 import pytest
 
 from folio import eval as feval
@@ -31,11 +30,11 @@ def test_testset_heuristic_deterministic():
 
 
 def test_testset_llm(monkeypatch):
-    def fake_post(url, **kw):
-        assert url == "http://llm/v1/chat/completions"
-        return httpx.Response(200, json={"choices": [{"message": {"content": '"my query"'}}]}, request=httpx.Request("POST", url))
+    def fake_chat(messages, *, url, model, api_key, max_tokens):
+        assert url == "http://llm/v1" and model == "m" and messages[0]["role"] == "user"
+        return '"my query"'
 
-    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(testset, "chat", fake_chat)
     ts = testset.generate(CHUNKS, 2, method="llm", llm_url="http://llm/v1", model="m")
     assert [t["query"] for t in ts] == ["my query"] * 2
 

@@ -33,7 +33,7 @@ def http(
     with httpx.Client(timeout=timeout, headers=headers, transport=transport) as client:
         for start in range(0, len(texts), batch_size):
             batch = texts[start : start + batch_size]
-            data = _post(client, f"{url}/embeddings", {"model": model, "input": batch}, retries, backoff)
+            data = post_json(client, f"{url}/embeddings", {"model": model, "input": batch}, retries, backoff)
             items = sorted(data["data"], key=lambda d: d.get("index", 0))
             if len(items) != len(batch):
                 raise FolioError(f"embed.http: expected {len(batch)} vectors, got {len(items)}")
@@ -41,7 +41,9 @@ def http(
     return out
 
 
-def _post(client: httpx.Client, endpoint: str, body: dict, retries: int, backoff: float) -> dict:
+def post_json(client: httpx.Client, endpoint: str, body: dict, retries: int, backoff: float,
+              name: str = "embed.http") -> dict:
+    """POST ``body``; retries 5xx/connection errors with exponential backoff, raises 4xx at once."""
     last: Exception | None = None
     for attempt in range(retries):
         try:
@@ -49,9 +51,9 @@ def _post(client: httpx.Client, endpoint: str, body: dict, retries: int, backoff
             if r.status_code < 500:
                 r.raise_for_status()
                 return r.json()
-            last = FolioError(f"embed.http: server error {r.status_code}")
+            last = FolioError(f"{name}: server error {r.status_code}")
         except httpx.TransportError as exc:
             last = exc
         if attempt < retries - 1:
             time.sleep(backoff * 2**attempt)
-    raise FolioError(f"embed.http: failed after {retries} tries: {last}") from last
+    raise FolioError(f"{name}: failed after {retries} tries: {last}") from last

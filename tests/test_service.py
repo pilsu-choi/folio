@@ -102,3 +102,27 @@ def test_search_endpoint(client, tmp_path):
         assert r.status_code == 400 and "tenant_id" in r.json()["detail"]
     r = client.post("/v1/search", json={"query": "제1조", "pipeline": "secure", "filters": {"tenant_id": "t1"}})
     assert r.status_code == 200 and r.json()["hits"] == []
+
+
+def test_chat_endpoint(client, tmp_path):
+    upload(client)
+    assert client.post("/v1/chat", json={"messages": [{"role": "user", "content": "제1조"}]}).status_code == 400
+    (tmp_path / "pipelines" / "chat.yaml").write_text(
+        (tmp_path / "pipelines" / "contracts.yaml").read_text()
+        + "generation: {chat: 'tests.test_generation:fake_chat', rewrite: false}\n")
+    msgs = [{"role": "user", "content": "제1조"}, {"role": "assistant", "content": "a [1]"},
+            {"role": "user", "content": "제1조"}]
+    r = client.post("/v1/chat", json={"messages": msgs, "pipeline": "chat", "k": 3})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["query"] == "제1조" and body["answer"].endswith("[9].")
+    assert body["hits"][0]["content"] == "제1조" and body["citations"][0]["chunk_id"] == body["hits"][0]["chunk_id"]
+    system = [{"role": "system", "content": "x"}, {"role": "user", "content": "q"}]
+    assert client.post("/v1/chat", json={"messages": system, "pipeline": "chat"}).status_code == 422
+    assert client.post("/v1/chat", json={"messages": [], "pipeline": "chat"}).status_code == 422
+    last_bot = [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]
+    assert client.post("/v1/chat", json={"messages": last_bot, "pipeline": "chat"}).status_code == 400
+    (tmp_path / "pipelines" / "down.yaml").write_text(
+        (tmp_path / "pipelines" / "chat.yaml").read_text().replace("fake_chat", "broken_chat"))
+    r = client.post("/v1/chat", json={"messages": msgs[:1], "pipeline": "down"})
+    assert r.status_code == 502 and "llm down" in r.json()["detail"]

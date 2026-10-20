@@ -71,6 +71,26 @@ Retriever.search(query, k=None, filters=None, mode=None) -> list[Hit]   # Hit(ch
   range on an array column is a `ConfigError`.
 - Service: `POST /v1/search` maps `ValueError`/`ConfigError` to 400; `k` is capped at 100.
 
+## Generation
+
+```python
+folio.generation.answer(cfg, messages, k=None, filters=None, mode=None) -> Answer   # Answer(answer, query, citations, hits)
+folio.generation.http(messages, *, url, model, api_key, temperature=0, max_tokens=1024, timeout=120) -> str
+```
+
+- `generation:` (`GenerationConfig`, `extra=forbid`, default absent = off; `true` = defaults): `chat` (step
+  `fn(messages, **opts) -> str`, default `folio.generation:http`, env `FOLIO_LLM_URL`/`FOLIO_LLM_MODEL`/`FOLIO_LLM_API_KEY`),
+  `system` (instruction override; numbered passages are appended), `rewrite` (true), `max_context_tokens` (6000; top hit
+  always kept), `max_history_tokens` (2000; oldest turns dropped, kept history starts with a user turn).
+- Stateless multi-turn: `messages` is the whole conversation, roles `user`/`assistant`, last one `user`. With history
+  and `rewrite`, one chat call rewrites the last question into a standalone `query`; the first turn skips it. Search
+  uses `folio.pipeline.search` (same `retrieval:` and `required_filters`). `[n]` markers are stripped from past assistant
+  turns. `citations` = `[n]` in the reply within `1..len(hits)`, each `{n, chunk_id, doc_id}` of `hits[n-1]`.
+- Errors: no `generation:` -> `ConfigError`, bad messages/filters -> `ValueError`, chat step failure -> `GenerationError`.
+- Service: `POST /v1/chat {messages (1..50, content <= 20000 chars), pipeline, k, mode, filters}` ->
+  `{pipeline, answer, query, citations, hits}`; `system` role or empty messages 422, `ValueError`/`ConfigError` 400,
+  `GenerationError` 502. No streaming yet.
+
 ## Storage
 
 ```python
@@ -108,11 +128,12 @@ Stages: `parse → chunk → map → embed → index`. `PipelineResult` has `doc
 | `FOLIO_VLM_URL`, `FOLIO_VLM_MODEL` | VLM for image content (OpenAI-compatible chat); unset = VLM off (`vlm="auto"`) |
 | `FOLIO_EMBED_URL`, `FOLIO_EMBED_MODEL`, `FOLIO_EMBED_API_KEY` | embedding endpoint |
 | `FOLIO_RERANK_URL` | optional rerank endpoint |
+| `FOLIO_LLM_URL`, `FOLIO_LLM_MODEL`, `FOLIO_LLM_API_KEY` | chat LLM for `generation:` / `POST /v1/chat` and `eval testset --method llm` (OpenAI-compatible; testset falls back to `FOLIO_VLM_URL`/`FOLIO_VLM_MODEL`) |
 | `FOLIO_LOG_LEVEL` | logging level |
 
 ## Commands (image entrypoint is `folio`)
 
-`folio api` (FastAPI on :8080: ingest, jobs, search), `folio worker` (Celery), `folio init`, `folio schema apply [--reindex]`,
+`folio api` (FastAPI on :8080: ingest, jobs, search, chat), `folio worker` (Celery), `folio init`, `folio schema apply [--reindex]`,
 `folio run [--source-uri]`, `folio reprocess`, `folio eval ...`, `folio structure-server` (structure backend HTTP server on :9000),
 `folio embed-stub` (deterministic OpenAI-compatible embedding server for dev/tests on :8001).
 All HTTP servers expose `/healthz` and `/readyz`.

@@ -160,6 +160,12 @@ annotations:
 {{- if .Values.external.rerank.url }}
 - {name: FOLIO_RERANK_URL, value: {{ .Values.external.rerank.url | quote }}}
 {{- end }}
+{{- if .Values.external.llm.url }}
+- {name: FOLIO_LLM_URL, value: {{ .Values.external.llm.url | quote }}}
+{{- end }}
+{{- if .Values.external.llm.model }}
+- {name: FOLIO_LLM_MODEL, value: {{ .Values.external.llm.model | quote }}}
+{{- end }}
 {{- with .Values.extraEnv }}
 {{ toYaml . }}
 {{- end }}
