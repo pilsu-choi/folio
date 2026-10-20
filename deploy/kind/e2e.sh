@@ -25,8 +25,10 @@ for i in "${images[@]}"; do
   kind load docker-image --name "$CLUSTER" "$i"
 done
 
+# FOLIO_TAG applies to every folio-built image (app, structure, opensearch), not just the app
+tags=(--set image.tag="$TAG" --set structure.image.tag="$TAG-cpu" --set infra.opensearch.image.tag="$TAG")
 $HELM upgrade --install "$REL" "$root/deploy/helm/folio" -n "$NS" --create-namespace \
-  -f "$root/deploy/helm/folio/values-dev.yaml" --set image.tag="$TAG" --wait --timeout 10m
+  -f "$root/deploy/helm/folio/values-dev.yaml" "${tags[@]}" --wait --timeout 10m
 
 api="${REL}-api"   # fullname = release name when it contains "folio" (default REL=folio)
 kubectl -n "$NS" port-forward "svc/$api" "$PORT:8080" >/dev/null 2>&1 &
@@ -42,7 +44,7 @@ log "scenario 2: helm upgrade with jobs in flight"
 jobs=()
 for _ in 1 2 3 4 5; do jobs+=("$(ingest "$base")"); done
 $HELM upgrade "$REL" "$root/deploy/helm/folio" -n "$NS" \
-  -f "$root/deploy/helm/folio/values-dev.yaml" --set image.tag="$TAG" \
+  -f "$root/deploy/helm/folio/values-dev.yaml" "${tags[@]}" \
   --set-string worker.podAnnotations.e2e-rollout="$RANDOM" --set-string api.podAnnotations.e2e-rollout="$RANDOM" \
   --wait --timeout 10m &
 up=$!
@@ -58,5 +60,6 @@ for id in "${jobs[@]}"; do
   log "job $id survived upgrade"
 done
 wait "$up" || die "helm upgrade failed"
+restart_pf  # the api pod may have been replaced after the last job finished
 wait_http "$base/readyz" 120
 log "kind E2E passed"

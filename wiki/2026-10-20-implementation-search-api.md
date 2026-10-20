@@ -70,12 +70,15 @@ sources:
   - 2차: 커밋 `5fe6293`, 고유 태그 `FOLIO_TAG=search-e2e`. Compose는 `project-template`을 `/app/project`에 마운트하므로, 템플릿의 `retrieval:`(필드 가중치 포함) 설정으로 검색 1건을 확인했다.
   - 1차 실행이 공유 로컬 태그 `folio:0.1.0`을 이 브랜치 코드로 다시 빌드했을 수 있다. 빌드 없이(`NO_BUILD=1`) 이 태그를 쓰는 다른 worktree는 다시 빌드해야 한다.
 - Helm: `helm template ... -f values-dev.yaml` 렌더링에서 api Deployment에 `FOLIO_EMBED_URL`·`OPENSEARCH_URL`·`FOLIO_CONFIG_DIR`가 들어가는 것을 확인했다. api와 worker가 같은 `folio.env`를 쓰므로, api 파드에서 하이브리드 검색에 필요한 임베딩 설정이 있다.
-- kind + Helm E2E: 미완료.
-  - 1차: 클러스터 생성 직후 `helm install`에서 `User "kubernetes-admin" cannot get resource "services"` 오류로 시나리오 전에 실패했다. RBAC 바인딩 준비 전 경합으로 추정하며 확인하지는 않았다.
-  - 2차: RBAC 준비를 기다린 뒤 재실행하던 중 세션과 Docker Desktop이 종료되어 결과가 없다.
+- kind + Helm E2E: 2026-10-21 로컬에서 통과했다(`FOLIO_TAG=search-e2e LOCAL_PORT=18081 deploy/kind/e2e.sh`).
+  - 확인한 것: Helm 설치 → 적재 `succeeded` → `POST /v1/search` 1건, job 5개 처리 중 `helm upgrade`에서 유실 0, 업그레이드 후 `readyz`.
+  - 안전장치: kind 노드 컨테이너에 `docker update --memory 8g --cpus 8`을 걸고, `nice -n 10`으로 돌렸다. 사용 가능한 메모리가 2GB 밑이면 클러스터를 지우는 감시를 붙였다. 노드 메모리는 최대 2.9GB였고, 끝난 뒤 클러스터를 삭제했다.
+  - 이 과정에서 기존 `deploy/kind/e2e.sh` 결함 두 가지를 고쳤다.
+    - `FOLIO_TAG`가 앱 이미지에만 적용돼, 구조 분석 서버·OpenSearch가 `0.1.0` 태그를 찾다가 `ImagePullBackOff`가 났다. 이제 `structure.image.tag`·`infra.opensearch.image.tag`에도 넘긴다.
+    - job이 api 파드 교체보다 먼저 끝나면 마지막 `readyz` 확인이 끊긴 포트포워딩으로 접속해 실패했다. 확인 전에 포트포워딩을 다시 연결한다.
+  - 앞선 시도: 1차는 클러스터 생성 직후 RBAC 경합(추정)으로 실패했고, 2차는 세션과 Docker 종료로 중단됐다.
 
 ## 미완료·후속
 
-- kind + Helm E2E를 검색 단계 포함으로 통과시키는 일이 남았다. Docker Desktop을 켠 뒤 `FOLIO_TAG=search-e2e deploy/kind/e2e.sh`를 실행한다(이미지는 다시 빌드해야 할 수 있음).
 - API 인증은 범위 밖이다. 외부에 노출해야 하면 게이트웨이나 App 백엔드 뒤에 둔다.
 - Milvus 한국어 BM25 분석기, 실제 rerank 모델 연동은 확인하지 않았다(rerank는 mock 전송으로만 테스트).
