@@ -183,6 +183,10 @@ services:
     environment:
       FOLIO_STRUCTURE_BACKEND: ppstructure
       FOLIO_STRUCTURE_DEVICE: cpu
+      # Bound inference threads so a GPU-less host is not saturated; keep in line with `cpus` below.
+      FOLIO_STRUCTURE_CPU_THREADS: ${FOLIO_STRUCTURE_CPU_THREADS:-4}
+      OMP_NUM_THREADS: ${FOLIO_STRUCTURE_CPU_THREADS:-4}
+    cpus: ${FOLIO_STRUCTURE_CPUS:-4}
     deploy: {}
 
   structure-dev:

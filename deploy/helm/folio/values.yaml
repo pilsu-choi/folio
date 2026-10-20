@@ -139,6 +139,7 @@ structure:
   # Default: PP-StructureV3 on one NVIDIA GPU (needs the NVIDIA device plugin). No GPU: values-cpu.yaml.
   backend: ppstructure      # ppstructure | docling | heuristic (must match the image build)
   image: {repository: folio-structure, tag: ""}   # default: <appVersion>-<gpu|cpu>, or -heuristic
+  cpuThreads: ""            # FOLIO_STRUCTURE_CPU_THREADS; set to the CPU limit when running on CPU
   gpu:
     enabled: true
     count: 1

@@ -116,6 +116,8 @@ def test_server_device_from_env(monkeypatch):
     monkeypatch.setenv("FOLIO_STRUCTURE_BACKEND", "ppstructure")
     monkeypatch.setenv("FOLIO_STRUCTURE_DEVICE", "gpu")
     assert _spec_from_env() == {"fn": "ppstructure", "device": "gpu"}
+    monkeypatch.setenv("FOLIO_STRUCTURE_CPU_THREADS", "4")
+    assert _spec_from_env() == {"fn": "ppstructure", "device": "gpu", "cpu_threads": "4"}
     monkeypatch.setenv("FOLIO_STRUCTURE_BACKEND", "heuristic")
     assert _spec_from_env() == "heuristic"
 
@@ -125,3 +127,4 @@ def test_ppstructure_device_names():
 
     assert PPStructureBackend(device="gpu").device == "gpu:0"
     assert PPStructureBackend(device="cpu").device == "cpu"
+    assert PPStructureBackend(cpu_threads="4").pipeline_kwargs == {"cpu_threads": 4}

@@ -21,10 +21,12 @@ _LABELS = {
 
 
 class DoclingBackend:
-    def __init__(self, do_ocr_languages=("ko", "en"), table_mode: str = "accurate", device: str = "cpu", **kw):
+    def __init__(self, do_ocr_languages=("ko", "en"), table_mode: str = "accurate", device: str = "cpu",
+                 cpu_threads: int | None = None, **kw):
         self.langs = list(do_ocr_languages)
         self.table_mode = table_mode
         self.device = "cuda" if device == "gpu" else device  # docling AcceleratorDevice names
+        self.cpu_threads = int(cpu_threads) if cpu_threads else None
         self.kw = kw
         self._converters: dict[bool, object] = {}
         self._lock = threading.Lock()
@@ -47,7 +49,8 @@ class DoclingBackend:
             except ImportError as e:  # pragma: no cover
                 raise ImportError("DoclingBackend requires docling: pip install docling") from e
             o = PdfPipelineOptions(do_table_structure=True, do_ocr=ocr, generate_parsed_pages=True, **self.kw)
-            o.accelerator_options = AcceleratorOptions(device=self.device)
+            o.accelerator_options = AcceleratorOptions(
+                device=self.device, **({"num_threads": self.cpu_threads} if self.cpu_threads else {}))
             o.table_structure_options.mode = TableFormerMode(self.table_mode)
             o.table_structure_options.do_cell_matching = ocr  # no text cells without OCR: use model boxes
             o.layout_options.keep_empty_clusters = True  # keep layout items when no OCR text exists

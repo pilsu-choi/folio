@@ -72,10 +72,13 @@ def _poly_box(p) -> list[float]:
 
 
 class PPStructureBackend:
-    def __init__(self, lang: str = "korean", device: str = "cpu", **pipeline_kwargs) -> None:
+    def __init__(self, lang: str = "korean", device: str = "cpu", cpu_threads: int | None = None,
+                 **pipeline_kwargs) -> None:
         self.lang = lang
         self.device = "gpu:0" if device in ("gpu", "cuda") else device  # paddle device names
         self.pipeline_kwargs = pipeline_kwargs
+        if cpu_threads:  # bound CPU inference threads (default: paddle picks, which can saturate the host)
+            self.pipeline_kwargs["cpu_threads"] = int(cpu_threads)
         self._pipeline = None
         self._lock = threading.Lock()
 

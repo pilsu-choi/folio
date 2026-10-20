@@ -13,12 +13,14 @@ from folio.backends.base import PageStructure, Word
 
 
 def _spec_from_env() -> Any:
-    """FOLIO_STRUCTURE_BACKEND (alias | module:Class, default heuristic) + FOLIO_STRUCTURE_DEVICE (cpu | gpu)."""
+    """FOLIO_STRUCTURE_BACKEND (alias | module:Class, default heuristic), FOLIO_STRUCTURE_DEVICE (cpu | gpu),
+    FOLIO_STRUCTURE_CPU_THREADS (bound CPU inference threads; set it to the container's CPU limit)."""
     spec = os.environ.get("FOLIO_STRUCTURE_BACKEND") or "heuristic"
-    device = os.environ.get("FOLIO_STRUCTURE_DEVICE")
-    if device and spec != "heuristic":  # the heuristic backend has no device
-        return {"fn": spec, "device": device}
-    return spec
+    if spec == "heuristic":  # model-free: no device / threads
+        return spec
+    kwargs = {k: v for k, v in (("device", os.environ.get("FOLIO_STRUCTURE_DEVICE")),
+                                ("cpu_threads", os.environ.get("FOLIO_STRUCTURE_CPU_THREADS"))) if v}
+    return {"fn": spec, **kwargs} if kwargs else spec
 
 
 def create_app(backend_spec: Any = None, warmup: bool = True):

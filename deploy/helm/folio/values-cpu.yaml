@@ -2,6 +2,7 @@
 structure:
   backend: ppstructure
   gpu: {enabled: false}
+  cpuThreads: 4             # matches the CPU request below; paddle otherwise uses every core
   resources:
     requests: {cpu: "4", memory: 6Gi}
     limits: {memory: 10Gi}
