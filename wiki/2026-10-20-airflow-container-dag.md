@@ -74,7 +74,7 @@ sources:
 - 결정(사용자 요청): 운영 Airflow 자체는 설치하지 않는다. 대신 공식 Apache Airflow Helm 차트 기준의 설치 가이드와 values 예시, folio namespace용 RBAC를 제공한다. 위치는 [deploy/airflow/README.md](../deploy/airflow/README.md)이고 PRD 기술 스택 표에 반영했다.
 - `values-official-chart.yaml`: 차트 1.22.0(Airflow 3.2.2), KubernetesExecutor, FOLIO env, git-sync DAG, 외부 PostgreSQL(`data.metadataSecretName`), Redis 끔, API·JWT secret 이름 고정.
 - `rbac-folio-namespace.yaml`: Role(pods create/get/list/watch/delete/patch, pods/log get, events list/watch)과 RoleBinding(subject `airflow/airflow-worker`).
-- 검증: `helm template airflow apache-airflow/airflow --version 1.22.0 -f values-official-chart.yaml` 렌더링이 성공했다. worker SA 이름이 `airflow-worker`이고, task pod template에 `FOLIO_*` env가 들어가는 것을 확인했다. 실제 설치·실행은 하지 않았다(미검증).
+- 검증: `helm template airflow apache-airflow/airflow --version 1.22.0 -f values-official-chart.yaml` 렌더링이 성공했다. worker SA 이름이 `airflow-worker`이고, task pod template에 `FOLIO_*` env가 들어가는 것을 확인했다. 차트 기본 이미지 `apache/airflow:3.2.2`(2.27GB, 확인 후 삭제)에서 DAG import도 확인했다. kubernetes·docker runner 모두 `import_errors` 없음. 실제 설치·실행은 하지 않았다(미검증).
 
 ## 미완료와 한계
 

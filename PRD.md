@@ -412,7 +412,7 @@ DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 검증 상세�
 
 | 상태 | FR |
 | --- | --- |
-| 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 15(Compose Airflow + DockerOperator, k3s + KubernetesPodOperator), 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~29 |
+| 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 15(Compose Airflow + DockerOperator, k3s KubernetesPodOperator는 `dags test`로만), 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~29 |
 | 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인) |
 | 구현, 미검증 | FR-15 운영 Airflow 가이드(공식 차트 1.22.0 `helm template` 렌더링만 확인, 설치 미실행), FR-26 Helm 사설 레지스트리 경로, PPTX `convert` 모드(LibreOffice 미포함) |
 | 보류 | FR-20, FR-21 (DOCX·HWPX) |

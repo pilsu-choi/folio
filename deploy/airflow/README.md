@@ -13,7 +13,8 @@ in its own image, so nothing from folio is installed into Airflow.
 
 ## Install with the official chart
 
-Tested renders: chart `apache-airflow/airflow` 1.22.0 (Airflow 3.2.2). Airflow in namespace `airflow`, folio release
+Checked: chart `apache-airflow/airflow` 1.22.0 (Airflow 3.2.2) renders with these values and the DAG imports on 3.2.2;
+the install itself is not tested yet. Airflow in namespace `airflow`, folio release
 `folio` in namespace `folio` (installed with `deploy/helm/folio`; it creates the `folio-env` ConfigMap and the Secret).
 
 ```bash
