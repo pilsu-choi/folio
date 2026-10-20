@@ -59,6 +59,10 @@ class Options:
     min_text_area_ratio: float = 0.01
     # VLM on digital pages: embedded-image figures and low-quality structure tables (FR-06)
     figure_min_area: float = 0.01
+    # VLM on image pages: "page" = whole page to VLM; "ocr_first" = OCR first, VLM for the whole page only
+    # when OCR confidence (char-weighted mean) < ocr_min_conf, else VLM just for table/figure regions
+    vlm_scan: str = "page"
+    ocr_min_conf: float = 0.85
     table_min_coverage: float = 0.8
     table_max_empty: float = 0.6
     # native formats
@@ -118,11 +122,16 @@ def default(uri: str, **opts: Any) -> Document:
     image files and low-quality PDF pages -> VLM markdown (`text_source=vlm`); figures (PDF embedded images
     >= `figure_min_area` of the page, PPTX pictures, XLSX images) -> description; structure tables with
     `< table_min_coverage` word coverage, `> table_max_empty` empty cells or < 2 columns -> VLM table.
+    `vlm_scan="page"|"ocr_first"`: with "ocr_first" image pages are OCRed first and keep OCR word bboxes; only
+    pages with OCR confidence `< ocr_min_conf` go to the VLM whole; on the others tables are redone and figures
+    described by the VLM.
     A failed VLM request falls back to OCR (pages) or the structure result and is listed in
     `meta.vlm_fallbacks`. `meta.calls.vlm` counts requests; `meta.vlm` records enabled/reason.
     Native: `pptx_mode="native"|"convert"`, `pptx_notes=False`, `xlsx_include_hidden=False`.
     """
     o = Options(**opts)
+    if o.vlm_scan not in ("page", "ocr_first"):
+        raise ValueError(f"vlm_scan must be 'page' or 'ocr_first', got {o.vlm_scan!r}")
     data = read_bytes(uri)
     mime = detect_mime(data, uri)
     if mime in (MIME_DOCX, MIME_HWPX, "application/x-hwp"):
@@ -284,14 +293,24 @@ class _Run:
                 "quality": None}
 
     def _image_path(self, n: int, png: bytes, w: float, h: float, scale: float) -> list[dict]:
-        """Image content page: VLM markdown when enabled (and it answers), else structure-backend OCR."""
+        """Image content page: VLM markdown when enabled (and it answers), else structure-backend OCR.
+        `vlm_scan="ocr_first"`: OCR first; confident pages keep OCR blocks with VLM tables/figures."""
+        ocr = None
+        if self.sess.enabled and self.o.vlm_scan == "ocr_first":
+            try:
+                ocr, conf = self._ocr(n, png, scale)
+            except Exception as exc:  # the VLM still gets the page
+                self.errors.append({"page": n, "error": f"ocr failed: {type(exc).__name__}: {exc}"})
+                ocr, conf = [], 0.0
+            if ocr and conf >= self.o.ocr_min_conf:
+                return self._vlm_regions(n, png, ocr, scale, lambda b: True)
         md = self.sess.ask("page", png, n)
         if md is not None:
             blocks = md_blocks(md, "vlm", [0.0, 0.0, w, h])
             if blocks:
                 return blocks
             self.sess.note(n, "page", "no blocks in response")
-        return self._ocr(n, png, scale)
+        return ocr if ocr is not None else self._ocr(n, png, scale)[0]
 
     def _digital(self, n: int, png: bytes, words: list[Atom], atoms: list[Atom], scale: float) -> list[dict]:
         if not atoms:
@@ -306,28 +325,21 @@ class _Run:
             struct = PageStructure()
         return build_blocks(atoms, struct, scale, "pdf_text", self.o.char_match)
 
-    def _ocr(self, n: int, png: bytes, scale: float) -> list[dict]:
+    def _ocr(self, n: int, png: bytes, scale: float) -> tuple[list[dict], float]:
+        """-> (blocks, char-weighted mean word confidence; 1.0 when the backend reports none)."""
         struct = self.backend.analyze(png, None)
         self.calls["ocr"] += 1
         words = [Atom(w.text, (w.bbox[0] * scale, w.bbox[1] * scale, w.bbox[2] * scale, w.bbox[3] * scale),
                       0, 0, 0.0, w.conf) for w in (struct.ocr_words or []) if w.text.strip()]
         if not words:
-            return []
-        return build_blocks(cluster_lines(words), struct, scale, "ocr")
+            return [], 0.0
+        scored = [(len(a.text), a.conf) for a in words if a.conf is not None]
+        conf = sum(k * c for k, c in scored) / sum(k for k, _ in scored) if scored else 1.0
+        return build_blocks(cluster_lines(words), struct, scale, "ocr"), conf
 
     def _enrich(self, n: int, page, png: bytes, words: list[Atom], blocks: list[dict], scale: float) -> list[dict]:
         """VLM on a digital page: describe figures (incl. embedded images the backend missed), redo weak tables."""
-        im = Image.open(io.BytesIO(png))
         area = page.rect.width * page.rect.height
-
-        def crop(box) -> bytes | None:
-            x0, y0, x1, y1 = (v / scale for v in box)
-            if x1 - x0 < 8 or y1 - y0 < 8:
-                return None
-            out = io.BytesIO()
-            im.crop((max(int(x0), 0), max(int(y0), 0), min(int(x1) + 1, im.width), min(int(y1) + 1, im.height))
-                    ).convert("RGB").save(out, "PNG")
-            return out.getvalue()
 
         def overlap(a, b) -> float:
             iw = min(a[2], b[2]) - max(a[0], b[0])
@@ -352,12 +364,28 @@ class _Run:
         # a table region over an embedded image with no text in it is a false positive of the backend
         blocks[:] = [b for b in blocks if not (b["type"] == "table" and not any(c for r in b["cells"] for c in r)
                                                and any(overlap(b["bbox"], f["bbox"]) > 0.5 for f in figs))]
-        for f in figs:
+        return self._vlm_regions(n, png, blocks, scale,
+                                 lambda b: b["text_source"] == "pdf_text" and _table_is_weak(b, words, self.o))
+
+    def _vlm_regions(self, n: int, png: bytes, blocks: list[dict], scale: float, redo) -> list[dict]:
+        """Describe figure blocks and redo the tables `redo` selects, from crops of the page image."""
+        im = Image.open(io.BytesIO(png))
+
+        def crop(box) -> bytes | None:
+            x0, y0, x1, y1 = (v / scale for v in box)
+            if x1 - x0 < 8 or y1 - y0 < 8:
+                return None
+            out = io.BytesIO()
+            im.crop((max(int(x0), 0), max(int(y0), 0), min(int(x1) + 1, im.width), min(int(y1) + 1, im.height))
+                    ).convert("RGB").save(out, "PNG")
+            return out.getvalue()
+
+        for f in (b for b in blocks if b["type"] == "figure"):
             desc = self.sess.ask("figure", crop(f["bbox"]), n)
             if desc:
                 f["text"], f["text_source"] = desc.strip(), "vlm"
         for b in blocks:
-            if b["type"] == "table" and b["text_source"] == "pdf_text" and _table_is_weak(b, words, self.o):
+            if b["type"] == "table" and redo(b):
                 md = self.sess.ask("table", crop(b["bbox"]), n)
                 tb = next((x for x in md_blocks(md) if x["type"] == "table"), None) if md is not None else None
                 if tb:

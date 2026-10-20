@@ -165,3 +165,44 @@ def test_stub_server_prompts():
     assert call(png, task="table").startswith("| col1")
     assert "Scanned" in call(png, task="page") or "스캔" in call(png, task="page") or call(png).strip()
     assert set(PROMPTS) == {"page", "figure", "table"}
+
+
+def _low_conf(words, conf):
+    return [w.model_copy(update={"conf": conf}) for w in words]
+
+
+class OcrTableBackend(FakeBackend):
+    """OCR pages: preset words plus one table region with a 1x1 cell over them."""
+
+    def analyze(self, page_image, words):
+        s = super().analyze(page_image, words)
+        if words is None:
+            s.regions.append(Region(type="table", bbox=[90, 90, 600, 200]))
+            s.tables.append(Table(bbox=[90, 90, 600, 200], cells=[TableCell(bbox=[90, 90, 600, 200], row=0, col=0)]))
+        return s
+
+
+def test_ocr_first_keeps_ocr_bboxes_and_redoes_tables(stub):
+    cfg, seen = stub
+    fb = OcrTableBackend(ocr_words_for(["스캔 문서", "OCR text"]))
+    doc = default(str(FIX / "image.png"), backend=fb, vlm=cfg, vlm_scan="ocr_first")
+    blocks = doc.pages[0].blocks
+    assert {b.text_source for b in blocks} == {"vlm"} and [b.type for b in blocks] == ["table"]
+    assert blocks[0].bbox != [0.0, 0.0, doc.pages[0].width, doc.pages[0].height]
+    assert doc.meta["calls"]["ocr"] == 1 and seen == ["/v1/chat/completions"]  # one table request, no page request
+    validate_doc(doc)
+    plain = default(str(FIX / "image.png"), backend=FakeBackend(ocr_words_for(["스캔 문서", "OCR text"])), vlm=cfg,
+                    vlm_scan="ocr_first")
+    assert srcs(plain) == {"ocr"} and plain.meta["calls"]["vlm"] == 0
+
+
+def test_ocr_first_low_confidence_goes_to_vlm_page(stub):
+    cfg, _ = stub
+    fb = FakeBackend(_low_conf(ocr_words_for(["흐린 스캔"]), 0.4))
+    doc = default(str(FIX / "image.png"), backend=fb, vlm=cfg, vlm_scan="ocr_first")
+    assert srcs(doc) == {"vlm"} and doc.meta["calls"] == {"structure": 0, "ocr": 1, "vlm": 1}
+    off = default(str(FIX / "image.png"), backend=FakeBackend(_low_conf(ocr_words_for(["흐린 스캔"]), 0.4)),
+                  vlm=False, vlm_scan="ocr_first")  # no VLM: plain OCR, as before
+    assert srcs(off) == {"ocr"}
+    with pytest.raises(ValueError):
+        default(str(FIX / "image.png"), backend=FakeBackend(), vlm=cfg, vlm_scan="nope")
