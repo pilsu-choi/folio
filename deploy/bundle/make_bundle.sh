@@ -3,7 +3,7 @@
 #   deploy/bundle/make_bundle.sh [--version 0.1.0] [--models DIR] [--out DIR] [--no-build] [--pull]
 #     --models DIR  include model weights (copied to models/ in the bundle), e.g. a pre-populated /models
 #                   volume with paddlex/official_models (PP-StructureV3 + korean OCR) for air-gapped hosts
-#   env STRUCTURE_VARIANTS="gpu cpu" (default) | add "heuristic" for dev
+#   env STRUCTURE_VARIANTS="gpu" (default) | "cpu" | "gpu cpu" | add "heuristic" for dev
 #     --no-build    fail instead of building images that are not present locally
 #     --pull        docker pull third-party images (postgres, rabbitmq, minio) when missing locally
 # Output: <out>/folio-bundle-<version>.tar.gz
@@ -23,8 +23,9 @@ while [ $# -gt 0 ]; do
 done
 HELM=${HELM:-helm}
 MINIO_IMAGE=cgr.dev/chainguard/minio:latest@sha256:cff197fef764642223ef9f4444c903d51aee9b544a7be8bc007fef6b7b00d136
-# Structure server variants to ship: gpu (default PP-StructureV3), cpu (no-GPU fallback), heuristic (dev).
-STRUCTURE_VARIANTS=${STRUCTURE_VARIANTS:-gpu cpu}
+# Structure server variants to ship, chosen per customer: gpu (default, PP-StructureV3), cpu (hosts without a GPU),
+# heuristic (dev). e.g. STRUCTURE_VARIANTS="gpu cpu" for mixed sites.
+STRUCTURE_VARIANTS=${STRUCTURE_VARIANTS:-gpu}
 images=("folio:$VERSION" "folio-opensearch:$VERSION" "postgres:16" "rabbitmq:3-management-alpine" "$MINIO_IMAGE")
 for v in $STRUCTURE_VARIANTS; do images+=("folio-structure:$VERSION-$v"); done
 
