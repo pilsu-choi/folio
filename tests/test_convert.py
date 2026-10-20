@@ -13,7 +13,7 @@ import pytest
 from folio.contracts import content_hash
 from folio.parse import convert as cv
 from folio.parse import default
-from folio.parse.convert import MIME_DOCX, MIME_HWPX, ConvertError
+from folio.parse.convert import MIME_DOCX, MIME_HWP, MIME_HWPX, ConvertError
 from tests._parse_helpers import FakeBackend, validate_doc
 
 LINES = ["Convert mode heading", "First paragraph of the converted document.", "Second paragraph here."]
@@ -46,10 +46,11 @@ def fake_converter(data: bytes, mime: str) -> bytes:
 
 
 @pytest.mark.parametrize("ext,marker,mime", [("docx", "word/document.xml", MIME_DOCX),
-                                             ("hwpx", "Contents/header.xml", MIME_HWPX)])
+                                             ("hwpx", "Contents/header.xml", MIME_HWPX),
+                                             ("hwp", None, MIME_HWP)])
 def test_convert_mode_produces_pages_and_bbox(tmp_path, ext, marker, mime):
     src = tmp_path / f"a.{ext}"
-    src.write_bytes(office_zip(marker))
+    src.write_bytes(office_zip(marker) if marker else b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1 hwp")
     doc = default(str(src), converter=fake_converter, backend=FakeBackend())
     assert fake_converter.seen == mime
     # identity comes from the original bytes; coordinates from the converted PDF

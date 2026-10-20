@@ -1,8 +1,8 @@
-"""Office/HWP -> PDF conversion for the `convert` modes (FR-20 DOCX·HWPX, PPTX `pptx_mode="convert"`).
+"""Office/HWP -> PDF conversion for the `convert` modes (FR-20 DOCX·HWPX·HWP, PPTX `pptx_mode="convert"`).
 
 Converter choice (`converter` parse option, default "auto"):
   "auto"   -> the convert server when FOLIO_CONVERT_URL is set, else local binaries
-  "local"  -> local binaries in `CHAINS` order (DOCX/PPTX: LibreOffice; HWPX: rhwp, then LibreOffice+H2Orestart)
+  "local"  -> local binaries in `CHAINS` order (DOCX/PPTX: LibreOffice; HWPX/HWP: rhwp, then LO+H2Orestart)
   {"url", "timeout"} | "http" -> convert server (`folio convert-server`, folio.parse.convert_server)
   "module:function" | callable(data, mime) -> PDF bytes (or (PDF bytes, info dict))
 The returned info goes to Document `meta.convert`; bbox values are only valid for that exact PDF (`pdf_hash`).
@@ -31,9 +31,12 @@ from folio.errors import FolioError
 MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 MIME_PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 MIME_HWPX = "application/hwp+zip"
-EXT = {MIME_DOCX: "docx", MIME_PPTX: "pptx", MIME_HWPX: "hwpx"}
-CHAINS = {MIME_DOCX: ["libreoffice"], MIME_PPTX: ["libreoffice"], MIME_HWPX: ["rhwp", "libreoffice"]}
-_LO_FILTER = {MIME_DOCX: "pdf:writer_pdf_Export", MIME_PPTX: "pdf:impress_pdf_Export", MIME_HWPX: "pdf:writer_pdf_Export"}
+MIME_HWP = "application/x-hwp"
+EXT = {MIME_DOCX: "docx", MIME_PPTX: "pptx", MIME_HWPX: "hwpx", MIME_HWP: "hwp"}
+CHAINS = {MIME_DOCX: ["libreoffice"], MIME_PPTX: ["libreoffice"],
+          MIME_HWPX: ["rhwp", "libreoffice"], MIME_HWP: ["rhwp", "libreoffice"]}
+_LO_FILTER = {MIME_DOCX: "pdf:writer_pdf_Export", MIME_PPTX: "pdf:impress_pdf_Export",
+              MIME_HWPX: "pdf:writer_pdf_Export", MIME_HWP: "pdf:writer_pdf_Export"}
 
 
 class ConvertError(FolioError):
@@ -83,8 +86,8 @@ def libreoffice(data: bytes, mime: str, timeout: float) -> bytes:
     exe = _soffice()
     if not exe:
         raise ConvertError("LibreOffice (soffice) not found; install it or set FOLIO_CONVERT_URL")
-    if mime == MIME_HWPX and not _has_h2orestart():
-        raise ConvertError("LibreOffice cannot open HWPX without the H2Orestart extension")
+    if mime in (MIME_HWPX, MIME_HWP) and not _has_h2orestart():
+        raise ConvertError("LibreOffice cannot open HWP/HWPX without the H2Orestart extension")
     with tempfile.TemporaryDirectory(prefix="folio-lo-") as d:
         src = Path(d) / f"in.{EXT[mime]}"
         src.write_bytes(data)

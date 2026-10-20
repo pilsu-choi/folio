@@ -49,6 +49,7 @@ external:
   s3: {endpoint: ""}
   milvus: {uri: ""}
   structure: {url: ""}    # used when structure.enabled=false
+  convert: {url: ""}      # DOCX/HWPX/PPTX -> PDF server, used when convert.enabled=false
   embed: {url: "", model: ""}   # used when embedStub.enabled=false
   # VLM (OpenAI-compatible, e.g. vLLM) for scanned pages/images/figures/complex tables. Empty = OCR path (parse vlm: auto).
   vlm: {url: "", model: ""}
@@ -159,6 +160,25 @@ structure:
   resources:
     requests: {cpu: "1", memory: 4Gi}
     limits: {memory: 8Gi}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+
+# DOCX/HWPX (and PPTX convert mode) -> PDF conversion server: LibreOffice + rhwp + open fonts (FR-20).
+# Conversion is CPU-bound and runs at most `workers` documents at once per pod; scale with replicas.
+convert:
+  enabled: true
+  replicas: 1
+  image: {repository: folio-convert, tag: ""}   # default: appVersion
+  workers: 2                # FOLIO_CONVERT_WORKERS: concurrent conversions per pod (keep <= CPU limit)
+  timeout: 300              # FOLIO_CONVERT_TIMEOUT: seconds per document
+  # Customer-licensed fonts (e.g. Malgun Gothic, Hancom fonts) from a PVC, mounted read-only at
+  # /usr/share/fonts/custom. Without it, open fonts substitute them (deploy/docker/convert-fonts.conf).
+  fonts: {existingClaim: ""}
+  resources:
+    requests: {cpu: "1", memory: 1Gi}
+    limits: {cpu: "2", memory: 3Gi}
   nodeSelector: {}
   tolerations: []
   affinity: {}

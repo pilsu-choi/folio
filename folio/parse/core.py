@@ -21,7 +21,7 @@ from folio.contracts import Block, Document, Page, content_hash, make_doc_id
 from folio.errors import FolioError
 from folio.parse import vlm as vlm_mod
 from folio.parse.assemble import build_blocks, cluster_lines, finalize
-from folio.parse.convert import MIME_DOCX, MIME_HWPX, MIME_PPTX, to_pdf
+from folio.parse.convert import MIME_DOCX, MIME_HWP, MIME_HWPX, MIME_PPTX, to_pdf
 from folio.parse.text import md_blocks, parse_text
 from folio.parse.textlayer import Atom, assess_page, extract_atoms
 
@@ -31,7 +31,7 @@ MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _EXT_MIME = {".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
              ".tif": "image/tiff", ".tiff": "image/tiff", ".bmp": "image/bmp", ".webp": "image/webp",
              ".docx": MIME_DOCX, ".pptx": MIME_PPTX, ".xlsx": MIME_XLSX, ".hwpx": MIME_HWPX,
-             ".hwp": "application/x-hwp", ".md": "text/markdown", ".markdown": "text/markdown",
+             ".hwp": MIME_HWP, ".md": "text/markdown", ".markdown": "text/markdown",
              ".txt": "text/plain", ".text": "text/plain"}
 _ZIP_MARKERS = {"ppt/presentation.xml": MIME_PPTX, "xl/workbook.xml": MIME_XLSX,
                 "word/document.xml": MIME_DOCX, "Contents/header.xml": MIME_HWPX}
@@ -111,7 +111,7 @@ def detect_mime(data: bytes, uri: str) -> str:
 
 def default(uri: str, **opts: Any) -> Document:
     """Parse `uri` into a Document. Dispatch by content/extension: PDF, images (PNG/JPG/TIFF/BMP/WebP),
-    DOCX, HWPX, PPTX, XLSX, Markdown, TXT (binary HWP: NotImplementedError).
+    DOCX, HWPX, HWP, PPTX, XLSX, Markdown, TXT.
 
     Opts: `backend` ("auto"|alias|"module:Class"|{fn, **kw}|object), `ocr_fallback=True`, `dpi=144`,
     `char_match=False`, text-layer thresholds (`min_chars`, `max_bad_char_ratio`, `image_ratio_min`,
@@ -123,7 +123,7 @@ def default(uri: str, **opts: Any) -> Document:
     `< table_min_coverage` word coverage, `> table_max_empty` empty cells or < 2 columns -> VLM table.
     A failed VLM request falls back to OCR (pages) or the structure result and is listed in
     `meta.vlm_fallbacks`. `meta.calls.vlm` counts requests; `meta.vlm` records enabled/reason.
-    Convert: `docx_mode`/`hwpx_mode="convert"` (default; "native" is FR-21, not implemented), `pptx_mode="convert"`
+    Convert: `docx_mode`/`hwpx_mode="convert"` (default; `hwpx_mode` also covers binary HWP; "native" is FR-21), `pptx_mode="convert"`
     -> PDF via `converter="auto"` (FOLIO_CONVERT_URL server, else local LibreOffice/rhwp; see folio.parse.convert),
     `convert_timeout` (s, default FOLIO_CONVERT_TIMEOUT or 300). `meta.convert` records converter, version, ms and
     `pdf_hash`: pages, bbox and coordinates refer to that converted PDF. `mime_type`/`content_hash` stay the original's.
@@ -132,13 +132,11 @@ def default(uri: str, **opts: Any) -> Document:
     o = Options(**opts)
     data = read_bytes(uri)
     mime = detect_mime(data, uri)
-    if mime == "application/x-hwp":
-        raise NotImplementedError("binary HWP is not supported; save as HWPX")
-    mode = {MIME_DOCX: o.docx_mode, MIME_HWPX: o.hwpx_mode, MIME_PPTX: o.pptx_mode}.get(mime)
+    mode = {MIME_DOCX: o.docx_mode, MIME_HWPX: o.hwpx_mode, MIME_HWP: o.hwpx_mode, MIME_PPTX: o.pptx_mode}.get(mime)
     if mode not in (None, "native", "convert"):
         raise ValueError(f"unknown mode {mode!r} for {mime}")
     if mode == "native" and mime != MIME_PPTX:
-        raise NotImplementedError("DOCX/HWPX native mode is not implemented yet (FR-21); use convert")
+        raise NotImplementedError("DOCX/HWPX/HWP native mode is not implemented yet (FR-21); use convert")
     converted = mode == "convert"
     t0 = time.perf_counter()
     caller, vinfo = vlm_mod.resolve(o.vlm)

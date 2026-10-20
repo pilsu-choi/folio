@@ -20,3 +20,15 @@ spec:
     - {name: http, port: 9000, targetPort: http}
   selector: {{- include "folio.selector" (dict "root" . "component" "structure") | nindent 4 }}
 {{- end }}
+{{- if .Values.convert.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "folio.fullname" . }}-convert
+  labels: {{- include "folio.labels" . | nindent 4 }}
+spec:
+  ports:
+    - {name: http, port: 9100, targetPort: http}
+  selector: {{- include "folio.selector" (dict "root" . "component" "convert") | nindent 4 }}
+{{- end }}

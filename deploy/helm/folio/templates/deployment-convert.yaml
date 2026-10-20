@@ -1,0 +1,64 @@
+{{- if .Values.convert.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "folio.fullname" . }}-convert
+  labels: {{- include "folio.labels" . | nindent 4 }}
+    app.kubernetes.io/component: convert
+spec:
+  replicas: {{ .Values.convert.replicas }}
+  selector:
+    matchLabels: {{- include "folio.selector" (dict "root" . "component" "convert") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "folio.selector" (dict "root" . "component" "convert") | nindent 8 }}
+      {{- with .Values.convert.podAnnotations }}
+      annotations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "folio.serviceAccountName" . }}
+      {{- include "folio.imagePullSecrets" . | nindent 6 }}
+      {{- include "folio.podSecurity" . | nindent 6 }}
+      containers:
+        - name: convert
+          image: {{ include "folio.image" (dict "root" . "repository" .Values.convert.image.repository "tag" (default .Chart.AppVersion .Values.convert.image.tag)) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["convert-server", "--port", "9100"]
+          ports:
+            - {name: http, containerPort: 9100}
+          env:
+            - {name: FOLIO_CONVERT_WORKERS, value: {{ .Values.convert.workers | quote }}}
+            - {name: FOLIO_CONVERT_TIMEOUT, value: {{ .Values.convert.timeout | quote }}}
+            - {name: FOLIO_LOG_LEVEL, value: {{ .Values.config.logLevel | quote }}}
+            - {name: HOME, value: /tmp}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+            timeoutSeconds: 5
+          {{- include "folio.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            {{- with .Values.convert.fonts.existingClaim }}
+            - {name: fonts, mountPath: /usr/share/fonts/custom, readOnly: true}
+            {{- end }}
+          resources: {{- toYaml .Values.convert.resources | nindent 12 }}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+        {{- with .Values.convert.fonts.existingClaim }}
+        - name: fonts
+          persistentVolumeClaim: {claimName: {{ . | quote }}, readOnly: true}
+        {{- end }}
+      {{- with .Values.convert.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.convert.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.convert.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -136,6 +136,11 @@ annotations:
 {{- else if .Values.external.structure.url }}
 - {name: FOLIO_STRUCTURE_URL, value: {{ .Values.external.structure.url | quote }}}
 {{- end }}
+{{- if .Values.convert.enabled }}
+- {name: FOLIO_CONVERT_URL, value: "http://{{ $fn }}-convert:9100"}
+{{- else if .Values.external.convert.url }}
+- {name: FOLIO_CONVERT_URL, value: {{ .Values.external.convert.url | quote }}}
+{{- end }}
 {{- if .Values.embedStub.enabled }}
 - {name: FOLIO_EMBED_URL, value: "http://{{ $fn }}-embed:8001/v1"}
 - {name: FOLIO_EMBED_MODEL, value: {{ .Values.embedStub.model | quote }}}

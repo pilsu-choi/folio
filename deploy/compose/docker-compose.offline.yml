@@ -9,6 +9,7 @@ services:
   structure-gpu:  {build: !reset null, pull_policy: never}
   structure-cpu:  {build: !reset null, pull_policy: never}
   structure-dev:  {build: !reset null, pull_policy: never}
+  convert:        {build: !reset null, pull_policy: never}
   embed:          {build: !reset null, pull_policy: never}
   init:           {build: !reset null, pull_policy: never}
   api:            {build: !reset null, pull_policy: never}
