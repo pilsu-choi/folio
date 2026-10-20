@@ -78,6 +78,9 @@ Retriever.search(query, k=None, filters=None, mode=None) -> list[Hit]   # Hit(ch
   range on an array column is a `ConfigError`.
 - Service: `POST /v1/search` maps `ValueError`/`ConfigError` to 400; `k` is capped at 100. Response `hits[].record` is
   the stored chunk record without `embedding` (same for `/v1/chat`).
+- Service: `GET /v1/documents/{doc_id}/pdf?pipeline=` -> `application/pdf` (`ETag` = content hash) that hit `page`/`bbox`
+  refer to: `converted.pdf` for convert modes, else `source.pdf`; 404 when neither exists (images, native formats).
+  `doc_id` must match `[A-Za-z0-9_-]{1,128}` (400 otherwise, also for `DELETE`). No ACL: the App gates access.
 
 ## Generation
 
@@ -145,6 +148,7 @@ by `pdf_hash`; rewritten on every re-parse, removed when a re-parse does not con
 ```python
 folio.pipeline.run_pipeline(uri, cfg: PipelineConfig, stop_after: str | None = None) -> PipelineResult
 folio.pipeline.reprocess(cfg, start_from: "parse"|"chunk"|"map", doc_ids: list[str] | None = None) -> list[PipelineResult]
+folio.pipeline.document_pdf(cfg, doc_id) -> bytes | None   # PDF the bbox values refer to (converted.pdf, else source.pdf)
 ```
 
 Stages: `parse → chunk → map → embed → index`. `PipelineResult` has `doc_id`, `status` (`succeeded|partial|failed`),

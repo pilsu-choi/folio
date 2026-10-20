@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from typing import Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from service import settings
@@ -72,11 +72,31 @@ def get_job(job_id: str):
 @app.delete("/v1/documents/{doc_id}")
 def delete_document(doc_id: str, pipeline: str | None = None):
     from folio.pipeline import delete_document as delete
-    from folio.pipeline import load_pipeline
 
-    cfg = load_pipeline(pipeline or settings.default_pipeline(), settings.config_dir())
-    delete(cfg, doc_id)
+    _, cfg = _pipeline(pipeline)
+    try:
+        delete(cfg, doc_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     return {"doc_id": doc_id, "deleted": True}
+
+
+@app.get("/v1/documents/{doc_id}/pdf")
+def document_pdf(doc_id: str, pipeline: str | None = None):
+    """PDF for citation highlights: hit `page`/`bbox` (pt, top-left origin) refer to it. No ACL here: the App decides
+    who may open which doc_id (e.g. only ids from hits the user's filtered search returned)."""
+    from folio.contracts import content_hash
+    from folio.pipeline import document_pdf as get_pdf
+
+    _, cfg = _pipeline(pipeline)
+    try:
+        pdf = get_pdf(cfg, doc_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if pdf is None:
+        raise HTTPException(404, "no PDF for this document (not ingested, or a format without pages)")
+    return Response(pdf, media_type="application/pdf",
+                    headers={"ETag": f'"{content_hash(pdf)}"', "Content-Disposition": f'inline; filename="{doc_id}.pdf"'})
 
 
 class _Retrieve(BaseModel):

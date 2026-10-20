@@ -128,3 +128,19 @@ def test_chat_endpoint(client, tmp_path):
         (tmp_path / "pipelines" / "chat.yaml").read_text().replace("fake_chat", "broken_chat"))
     r = client.post("/v1/chat", json={"messages": msgs[:1], "pipeline": "down"})
     assert r.status_code == 502 and "llm down" in r.json()["detail"]
+
+
+def test_document_pdf_for_highlights(client, tmp_path):
+    job = client.get(f"/v1/jobs/{upload(client)}").json()
+    r = client.get(f"/v1/documents/{job['doc_id']}/pdf?pipeline=contracts")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
+    assert r.content == "제1조\n제2조\n".encode() and r.headers["etag"].startswith('"sha256:')  # PDF source as-is
+    converted = tmp_path / "store" / "idx" / job["doc_id"] / "converted.pdf"
+    converted.write_bytes(b"%PDF-converted")  # convert modes: the PDF that bbox refers to wins
+    assert client.get(f"/v1/documents/{job['doc_id']}/pdf?pipeline=contracts").content == b"%PDF-converted"
+    assert client.get("/v1/documents/" + "0" * 32 + "/pdf?pipeline=contracts").status_code == 404
+    assert client.get("/v1/documents/../pdf?pipeline=contracts").status_code == 404  # not routed
+    assert client.get("/v1/documents/a.b/pdf?pipeline=contracts").status_code == 400
+    assert client.delete("/v1/documents/%2E%2E?pipeline=contracts").status_code == 400  # would be the index's parent
+    assert client.delete("/v1/documents/a.b?pipeline=contracts").status_code == 400
+    assert (tmp_path / "store" / "idx" / job["doc_id"]).is_dir()

@@ -319,6 +319,7 @@ storage: ${FOLIO_STORAGE_URI:-.folio/artifacts}
 | `GET /v1/jobs/{id}` | `queued` \| `running` \| `succeeded` \| `partial` \| `failed`, 단계별 상태·소요 시간, 에러 메시지 |
 | `POST /v1/search` | JSON `query`, `pipeline`, `k`(≤100), `mode`, `filters` → `{pipeline, hits: [{chunk_id, doc_id, score, content, record}]}` (`record`에서 `embedding`은 뺀다). 잘못된 필터·모드, 필수 필터 누락은 400 |
 | `POST /v1/chat` | JSON `messages`(`user`·`assistant` 대화 전체, 마지막은 `user`), `pipeline`, `k`, `mode`, `filters` → `{pipeline, answer, query, citations: [{n, chunk_id, doc_id}], hits}`. 무상태라 이력은 App이 보관한다. `generation:` 없는 파이프라인·필수 필터 누락 400, `system` 역할 422, LLM 실패 502 |
+| `GET /v1/documents/{doc_id}/pdf?pipeline=` | 인용 하이라이트용 PDF. hit의 `page`·`bbox`(pt, 왼쪽 위 원점)가 가리키는 PDF다. 변환 문서는 `converted.pdf`, PDF 입력은 원본을 준다. 쪽이 없는 형식은 404. 접근 권한은 App이 판단한다 |
 | `DELETE /v1/documents/{doc_id}?pipeline=` | 인덱스의 청크와 저장된 중간 결과 삭제 |
 | `/healthz`, `/readyz` | 상태 확인 |
 

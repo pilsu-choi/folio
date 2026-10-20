@@ -96,6 +96,13 @@ sources:
 - 구현: `folio.parse.default`가 변환한 PDF 바이트를 Document의 비직렬화 속성(`_converted_pdf`)으로 넘긴다. 파이프라인은 parse 단계에서 이를 `{index}/{doc_id}/converted.pdf`로 저장하고, `document.json`의 `meta.convert.pdf_key`와 `manifest.json`의 `converted_pdf`에 기록한다. 다시 parse하면 덮어쓰고, 변환 없이 parse된 경우(예: PPTX를 `native`로 다시 처리)에는 지운다. chunk·map부터의 재처리는 PDF를 건드리지 않는다. 문서 삭제는 `{index}/{doc_id}` 전체를 지우므로 함께 지워진다.
 - 검증: 단위 테스트(`test_converted_pdf_is_stored_next_to_source`)로 저장, `pdf_hash` 일치, manifest 기록, chunk 재처리 후 유지를 확인했다. 전체 단위 테스트 158개 통과. 변환 서버 컨테이너(`folio-convert:dev`)를 띄우고 `run_pipeline(..., stop_after="parse")`로 `contract.docx`(LibreOffice, 47KB)와 `form002.hwpx`(rhwp, 929KB)를 처리했다. 두 문서 모두 `converted.pdf`가 저장됐고 `pdf_hash`와 일치했다. Compose E2E와 S3 저장소로는 확인하지 않았다.
 
+## 하이라이트용 PDF API
+
+- `GET /v1/documents/{doc_id}/pdf?pipeline=`: hit의 `page`·`bbox`가 가리키는 PDF를 준다. 변환 문서는 `converted.pdf`, PDF 입력은 `source.pdf`다. 이미지·PPTX `native`·XLSX처럼 PDF가 없으면 404다. `ETag`는 내용 해시다. 라이브러리 함수는 `folio.pipeline.document_pdf(cfg, doc_id)`다.
+- 권한: folio API에는 인증·ACL이 없다(검색 API와 같다). 어떤 사용자가 어떤 `doc_id`를 열 수 있는지는 App이 판단한다. 예를 들어 그 사용자의 필터로 검색된 hit의 `doc_id`만 허용한다.
+- 수정: `DELETE /v1/documents/{doc_id}`는 `doc_id`를 검사하지 않고 저장소 경로에 붙였다. `%2E%2E`(`..`)를 보내면 인덱스의 상위 디렉터리를 지울 수 있었다. 두 엔드포인트 모두 `doc_id`가 `[A-Za-z0-9_-]{1,128}`가 아니면 400을 준다. 없는 파이프라인 이름은 이제 500이 아니라 400이다.
+- 검증: 서비스 테스트(`test_document_pdf_for_highlights`)로 PDF 원본 응답, `converted.pdf` 우선, 404, 잘못된 `doc_id` 400, 인코딩된 `..` 삭제 거부를 확인했다. 전체 단위 테스트 171개가 통과했다. 실제 API 서버·S3로는 확인하지 않았다.
+
 ## 미확인·남은 일
 
 - arm64 이미지 빌드, `H2ORESTART=0` 빌드는 하지 않았다.
@@ -103,5 +110,5 @@ sources:
 - 동시 부하(워커 여러 개가 변환 서버를 동시에 호출)와 장시간 안정성은 측정하지 않았다.
 - 이미지 크기 중 상당 부분은 `service` extra의 의존성(celery, sqlalchemy, onnxruntime 등)이다. 변환 서버에는 fastapi·uvicorn만 필요하므로 extra를 나누면 줄일 수 있다.
 - rhwp는 fontconfig 별칭을 쓰지 않고 자체 대체(Noto CJK)를 한다. `--fallback-sans`·`--fallback-serif`로 바꿀 수 있지만 설정으로 노출하지 않았다.
-- 변환 PDF를 앱에 내려주는 API는 없다. 앱은 artifact 저장소(로컬·S3)의 `converted.pdf`를 직접 읽는다.
+- 채팅 UI(FR-32)에 하이라이트를 붙이는 작업은 하지 않았다.
 - 원격 저장소가 없어 로컬 `dev`에서 `feat/docx-hwpx-convert` 브랜치·worktree로 작업했다.

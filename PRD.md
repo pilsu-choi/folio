@@ -506,7 +506,7 @@ FR-21(DOCX·HWPX `native`, 보류)을 제외한 FR을 구현했다. FR-20(DOCX·
 - [ ] ARM GPU 호스트(예: DGX Spark GB10, aarch64 sm_121): paddlepaddle-gpu 3.3.1(cu129)·3.5 nightly(cu130)가 `run_check()`에서 실패해 PP-StructureV3가 CPU로만 돈다. 이런 고객사 환경을 지원할지, 그때 Docling(GPU 동작 확인)을 기본으로 쓸지
 - [ ] HWPX → PDF 변환기: 공개 샘플 벤치마크로 rhwp 기본 + LibreOffice·H2Orestart 대체로 잠정 결정. 첫 고객사 샘플로 재확인 필요
 - [ ] DOCX → PDF 변환기: 공개 샘플 벤치마크(Word PDF 정답)로 LibreOffice 기본으로 잠정 결정, OnlyOffice 제외. 첫 고객사 샘플로 재확인 필요
-- [x] 변환 PDF 보관: 원본 옆에 `converted.pdf`로 저장(2026-10-21 사용자 결정). 앱에 제공하는 API는 아직 없다(앱은 artifact 저장소를 직접 읽는다)
+- [x] 변환 PDF 보관: 원본 옆에 `converted.pdf`로 저장(2026-10-21 사용자 결정). 앱은 `GET /v1/documents/{doc_id}/pdf`로 받는다
 - [x] VLM 모델 수: 스캔 파싱·그림 설명·복잡 표를 모델 1개로 처리 (이미지 콘텐츠에 VLM 기본 적용도 결정됨)
 - [ ] VLM 모델 선정: 공개 샘플로 Qwen3.5-9B 잠정 선택([VLM 모델](#vlm-모델-1개)). 고객사 샘플 재확인, HTML 표 파서, FP8 속도 확인 필요
 - [ ] `adaptive` 청킹 기본값: 공개 샘플로 `max_tokens=512`·`min_tokens=64`가 잠정 최적([파라미터](#파라미터)). 현재 기본값 1024/128을 바꿀지 사용자 결정 필요
