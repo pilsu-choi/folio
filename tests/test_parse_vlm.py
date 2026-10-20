@@ -206,3 +206,21 @@ def test_ocr_first_low_confidence_goes_to_vlm_page(stub):
     assert srcs(off) == {"ocr"}
     with pytest.raises(ValueError):
         default(str(FIX / "image.png"), backend=FakeBackend(), vlm=cfg, vlm_scan="nope")
+
+
+class OcrFigureBackend(FakeBackend):
+    """OCR pages: preset words inside one figure region (e.g. a table the layout model called a figure)."""
+
+    def analyze(self, page_image, words):
+        s = super().analyze(page_image, words)
+        if words is None:
+            s.regions = [Region(type="figure", bbox=[90, 90, 600, 200])]
+        return s
+
+
+def test_figure_description_keeps_text_read_in_region(stub):
+    cfg, _ = stub
+    doc = default(str(FIX / "image.png"), backend=OcrFigureBackend(ocr_words_for(["매출 100억", "영업이익 5억"])),
+                  vlm=cfg, vlm_scan="ocr_first")
+    (fig,) = [b for _, b in doc.iter_blocks() if b.type == "figure"]
+    assert fig.text.startswith("매출 100억") and "Figure: " in fig.text and fig.text_source == "ocr"

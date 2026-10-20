@@ -382,8 +382,10 @@ class _Run:
 
         for f in (b for b in blocks if b["type"] == "figure"):
             desc = self.sess.ask("figure", crop(f["bbox"]), n)
-            if desc:
-                f["text"], f["text_source"] = desc.strip(), "vlm"
+            if desc:  # text already read inside the region (OCR / text layer) stays; the description follows it
+                own = (f.get("text") or "").strip()
+                f["text"] = f"{own}\n\n{desc.strip()}" if own else desc.strip()
+                f["text_source"] = f["text_source"] if own else "vlm"
         for b in blocks:
             if b["type"] == "table" and redo(b):
                 md = self.sess.ask("table", crop(b["bbox"]), n)

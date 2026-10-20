@@ -22,7 +22,7 @@ PROMPTS = {
     "page": ("Convert this document page to Markdown. Use # for headings, '-' for list items and GitHub "
              "pipe tables for tables. Output only the Markdown."),
     "figure": ("Describe this figure for search. Keep all numbers, labels, legends and axis titles. "
-               "Output a short plain-text description."),
+               "Write in the language of the text in the figure. Output a short plain-text description."),
     "table": ("Convert this table to a GitHub pipe table in Markdown. Keep every cell text exactly. "
               "Output only the table."),
 }
