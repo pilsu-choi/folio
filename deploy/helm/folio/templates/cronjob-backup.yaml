@@ -1,0 +1,96 @@
+{{- /* Optional pg_dump backup of the bundled PostgreSQL (folio DB + infra.postgres.extraDatabases). */}}
+{{- if .Values.backup.enabled }}
+{{- if not .Values.infra.postgres.enabled }}{{ fail "backup.enabled covers the bundled PostgreSQL only (infra.postgres.enabled); back up an external DB with its own tooling" }}{{ end }}
+{{- if not (has .Values.backup.target (list "pvc" "s3")) }}{{ fail "backup.target must be pvc or s3" }}{{ end }}
+{{- $fn := include "folio.fullname" . }}
+{{- $pg := .Values.infra.postgres }}
+{{- $b := .Values.backup }}
+{{- $pvc := and (eq $b.target "pvc") (not $b.pvc.existingClaim) }}
+{{- if $pvc }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fn }}-backup
+  labels: {{- include "folio.labels" . | nindent 4 }}
+  annotations: {"helm.sh/resource-policy": keep}   # backups outlive `helm uninstall`
+spec:
+  accessModes: {{- toYaml $b.pvc.accessModes | nindent 4 }}
+  {{- with $b.pvc.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests: {storage: {{ $b.pvc.size }}}
+---
+{{- end }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $fn }}-backup
+  labels: {{- include "folio.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ $b.schedule | quote }}
+  {{- with $b.timeZone }}
+  timeZone: {{ . | quote }}
+  {{- end }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels: {{- include "folio.selector" (dict "root" . "component" "backup") | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          {{- include "folio.imagePullSecrets" . | nindent 10 }}
+          {{- include "folio.podSecurity" . | nindent 10 }}
+          {{- $dump := dict "root" . "pg" $pg "out" (ternary "/backup" "/dump" (eq $b.target "pvc")) "retention" $b.retention "prune" (eq $b.target "pvc") }}
+          {{- if eq $b.target "pvc" }}
+          containers:
+            {{- include "folio.backupDump" $dump | nindent 12 }}
+          {{- else }}
+          initContainers:
+            {{- include "folio.backupDump" $dump | nindent 12 }}
+          containers:
+            # Upload the dump set to FOLIO_STORAGE_URI under <prefix>/<timestamp>/, keep the newest `retention` sets.
+            - name: upload
+              image: {{ include "folio.appImage" . }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["python", "-c"]
+              args:
+                - |
+                  import os, pathlib
+                  from folio.storage import S3Storage, open_storage
+                  st = open_storage(os.environ["FOLIO_STORAGE_URI"])
+                  if not isinstance(st, S3Storage):
+                      raise SystemExit("backup.target=s3 needs an s3:// FOLIO_STORAGE_URI")
+                  st.ensure()
+                  prefix, keep = {{ $b.s3.prefix | trimSuffix "/" | quote }}, {{ int $b.retention }}
+                  ts = next(pathlib.Path("/dump").iterdir())
+                  for f in sorted(ts.iterdir()):  # streamed: dumps can be large
+                      st.client.upload_file(str(f), st.bucket, st._k(f"{prefix}/{ts.name}/{f.name}"))
+                      print("uploaded", st.uri(f"{prefix}/{ts.name}/{f.name}"))
+                  sets = sorted({k.split("/")[-2] for k in st.list(prefix + "/")})
+                  for old in sets[:-keep]:
+                      st.delete(f"{prefix}/{old}/")
+                      print("pruned", old)
+              env: {{- include "folio.env" . | nindent 16 }}
+              envFrom:
+                - secretRef: {name: {{ include "folio.secretName" . }}}
+              {{- include "folio.containerSecurity" . | nindent 14 }}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+                - {name: out, mountPath: /dump, readOnly: true}
+              resources: {{- toYaml $b.resources | nindent 16 }}
+          {{- end }}
+          volumes:
+            - {name: tmp, emptyDir: {}}
+            {{- if eq $b.target "pvc" }}
+            - name: out
+              persistentVolumeClaim: {claimName: {{ $b.pvc.existingClaim | default (printf "%s-backup" $fn) }}}
+            {{- else }}
+            - {name: out, emptyDir: {}}
+            {{- end }}
+{{- end }}

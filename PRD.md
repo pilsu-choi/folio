@@ -385,7 +385,7 @@ Document JSON의 `heading`과 `section_path`로 트리를 만든다. 헤딩이 �
 | VLM | 이미지 콘텐츠 기본 경로, 모델 1개(M1에서 확정) | OpenAI 호환 HTTP 엔드포인트, `parse.vlm: false`로 끔 |
 | Office · 텍스트 | python-pptx, openpyxl, markdown-it-py, charset-normalizer | PPTX·XLSX·Markdown 파싱, TXT 인코딩 판별 |
 | API · 워커 | FastAPI, Celery, RabbitMQ | 기존 사내 스택 |
-| 메타 DB | PostgreSQL | `jobs` 테이블 하나. 내장 PostgreSQL에 Airflow 메타데이터 DB를 별도 DB·계정으로 함께 둘 수 있다(`infra.postgres.extraDatabases`, persistence 필수) |
+| 메타 DB | PostgreSQL | `jobs` 테이블 하나. 내장 PostgreSQL에 Airflow 메타데이터 DB를 별도 DB·계정으로 함께 둘 수 있다(`infra.postgres.extraDatabases`, persistence 필수). 선택형 백업 `backup.enabled`(pg_dump CronJob, PVC/NAS 기본·S3 선택) |
 | 저장소 | S3 호환 Object Storage | 로컬 파일시스템 폴백 |
 | 검색 인덱스 | OpenSearch (기본), Milvus, pgvector |  |
 | 배치 | Airflow (선택) | 예시 DAG + Compose `airflow` 프로필(개발용). 작업은 folio 컨테이너에서 실행. 운영 Airflow는 설치하지 않고, 공식 Apache Airflow Helm 차트용 설치 가이드·values 예시·RBAC(`deploy/airflow/`)만 제공 |

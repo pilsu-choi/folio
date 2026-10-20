@@ -44,7 +44,9 @@ folio_ingest`, then trigger it with `{"uri": "s3://bucket/key.pdf", "pipeline": 
 
 The folio chart's bundled PostgreSQL can host the Airflow metadata DB as a separate database and owner, created
 idempotently by the folio init Job. Requirements: `infra.postgres.persistence.enabled=true` (the default emptyDir loses
-data on restart) and a backup of the PVC or `pg_dump` (single replica: a postgres outage stops folio and Airflow).
+data on restart) and a backup: `backup.enabled=true` in the folio chart dumps the folio and airflow databases daily
+(PVC/NAS or S3, see [../helm/folio/README.md](../helm/folio/README.md#postgresql-backup-optional)). Single replica: a
+postgres outage stops folio and Airflow.
 
 ```yaml
 # folio release values (namespace folio)

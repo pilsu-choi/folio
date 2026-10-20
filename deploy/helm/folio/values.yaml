@@ -164,6 +164,26 @@ structure:
   affinity: {}
   podAnnotations: {}
 
+# Optional backup of the bundled PostgreSQL (infra.postgres): pg_dump -Fc of the folio DB and every
+# infra.postgres.extraDatabases entry (e.g. airflow) into <target>/<UTC timestamp>/<db>.dump, newest `retention` kept.
+#  target=pvc (default): a PVC - point existingClaim at a NAS/NFS-backed claim to keep backups off the cluster
+#  target=s3           : FOLIO_STORAGE_URI bucket under s3.prefix (bundled MinIO = same cluster as the DB)
+# Restore: deploy/helm/folio/README.md.
+backup:
+  enabled: false
+  schedule: "0 3 * * *"
+  timeZone: "Asia/Seoul"    # CronJob timeZone (IANA); "" = kube-controller-manager time zone (usually UTC)
+  retention: 7
+  target: pvc
+  pvc:
+    existingClaim: ""       # e.g. NAS-backed PVC; empty = chart creates <fullname>-backup (kept on uninstall)
+    storageClass: ""
+    size: 20Gi
+    accessModes: [ReadWriteOnce]
+  s3:
+    prefix: _backups/postgres
+  resources: {}
+
 # Project-init Job (`folio init` then `folio schema apply`).
 #  mode=job  (default): regular Job named per release revision; waits for bundled infra via initContainers.
 #                       Runs after ConfigMap/Secret exist and sees the NEW project config.

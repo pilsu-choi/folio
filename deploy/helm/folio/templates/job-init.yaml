@@ -38,5 +38,11 @@ spec:
           {{- include "folio.containerSecurity" . | nindent 10 }}
           volumeMounts: {{- include "folio.volumeMounts" . | nindent 12 }}
           resources: {{- toYaml .Values.init.resources | nindent 12 }}
-      volumes: {{- include "folio.volumes" . | nindent 8 }}
+      volumes:
+        {{- include "folio.volumes" . | nindent 8 }}
+        {{- if and .Values.backup.enabled (eq .Values.backup.target "pvc") (not $hook) }}
+        - name: backup
+          persistentVolumeClaim:
+            claimName: {{ .Values.backup.pvc.existingClaim | default (printf "%s-backup" (include "folio.fullname" .)) }}
+        {{- end }}
 {{- end }}

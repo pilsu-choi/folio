@@ -26,6 +26,34 @@ No default secret values exist. Either
 Disable them and fill `external.*` (OpenSearch URL, S3 endpoint, Milvus URI, structure/embed URLs) and the Secret
 (`FOLIO_DATABASE_URL`, `FOLIO_BROKER_URL`, ...) to use existing services. Only values change; image and code stay the same.
 
+## PostgreSQL backup (optional)
+
+`backup.enabled: true` adds a CronJob (default `0 3 * * *`, `timeZone: Asia/Seoul`, keep 7) that runs `pg_dump -Fc` of
+the bundled PostgreSQL's folio DB and every `infra.postgres.extraDatabases` entry into `<UTC timestamp>/<db>.dump`.
+Bundled PostgreSQL only; an external DB keeps its own backups.
+
+| `backup.target` | Where | Notes |
+| --- | --- | --- |
+| `pvc` (default) | `backup.pvc.existingClaim` (e.g. NAS/NFS-backed) or a chart PVC `<fullname>-backup` | chart PVC is kept on `helm uninstall`; prune touches only `<timestamp>` dirs, so a shared claim is safe |
+| `s3` | `FOLIO_STORAGE_URI` bucket under `backup.s3.prefix` (`_backups/postgres`) | bundled MinIO = same cluster as the DB: no protection against losing the cluster |
+
+The init Job writes a test file to the backup PVC at install/upgrade, so a WaitForFirstConsumer volume binds before
+`helm --wait` gives up and permission problems (NFS `root_squash`, the pods run as uid/gid 10001) show up immediately.
+
+Run one now: `kubectl -n folio create job --from=cronjob/folio-backup backup-manual`.
+
+Restore (pvc target; for s3 download the dump first, e.g. with the api pod's `folio.storage`):
+
+```bash
+# pod with the backup PVC + psql (PGHOST/PGUSER/PGPASSWORD of the bundled postgres), then:
+ls /backup                                                     # pick a <timestamp>
+pg_restore -d airflow --clean --if-exists --exit-on-error /backup/<timestamp>/airflow.dump   # into the existing DB
+createdb airflow_new && pg_restore -d airflow_new --exit-on-error /backup/<timestamp>/airflow.dump  # or a fresh one
+```
+
+Stop the consumers first (scale folio api/worker and Airflow to 0) so nothing writes during the restore. Airflow needs
+the same fernet key as before to read restored connections/variables.
+
 ## Init Job ordering
 
 `folio init` + `folio schema apply` run in one Job (`init.mode`):

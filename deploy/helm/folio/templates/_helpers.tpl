@@ -281,5 +281,49 @@ initContainers:
       {{- end }}
     {{- include "folio.containerSecurity" $ | nindent 4 }}
 {{- end }}{{- end }}
+{{- if and .Values.backup.enabled (eq .Values.backup.target "pvc") }}
+  # Write test on the backup volume at install: binds WaitForFirstConsumer PVCs (else `helm --wait` times out until
+  # the first scheduled run) and surfaces NAS permission problems now instead of at 03:00.
+  - name: check-backup-volume
+    image: {{ include "folio.appImage" . }}
+    imagePullPolicy: {{ .Values.image.pullPolicy }}
+    command: ["sh", "-c", "touch /backup/.folio-write-test && rm /backup/.folio-write-test && echo backup volume writable"]
+    {{- include "folio.containerSecurity" . | nindent 4 }}
+    volumeMounts:
+      - {name: backup, mountPath: /backup}
+{{- end }}
 {{- end }}
 {{- end -}}
+
+{{/* backup: pg_dump -Fc of the folio DB and every extra database into <out>/<UTC timestamp>/ (atomic rename) */}}
+{{- define "folio.backupDump" -}}
+- name: dump
+  image: {{ include "folio.image" (dict "root" .root "repository" .pg.image.repository "tag" .pg.image.tag) }}
+  imagePullPolicy: {{ .root.Values.image.pullPolicy }}
+  command: ["sh", "-c"]
+  args:
+    - |
+      set -e
+      ts=$(date -u +%Y%m%dT%H%M%SZ); dir={{ .out }}/$ts
+      mkdir -p "$dir.partial"
+      for db in {{ .pg.database }}{{ range .pg.extraDatabases }} {{ .name }}{{ end }}; do
+        pg_dump -Fc -d "$db" -f "$dir.partial/$db.dump"
+        echo "dumped $db ($(du -h "$dir.partial/$db.dump" | cut -f1))"
+      done
+      mv "$dir.partial" "$dir"
+      {{- if .prune }}
+      # prune only our <timestamp> sets: an existing (NAS) claim may hold other data
+      rm -rf {{ .out }}/[0-9]*Z.partial
+      ls -1d {{ .out }}/[0-9]*Z/ | sort | head -n -{{ int .retention }} | while read -r old; do rm -rf "$old"; echo "pruned $old"; done
+      {{- end }}
+  env:
+    - {name: PGHOST, value: {{ printf "%s-postgres" (include "folio.fullname" .root) | quote }}}
+    - {name: PGUSER, value: {{ .pg.user | quote }}}
+    - name: PGPASSWORD
+      valueFrom: {secretKeyRef: {name: {{ include "folio.secretName" .root }}, key: POSTGRES_PASSWORD}}
+  {{- include "folio.containerSecurity" .root | nindent 2 }}
+  volumeMounts:
+    - {name: out, mountPath: {{ .out }}}
+  resources: {{- toYaml .root.Values.backup.resources | nindent 4 }}
+{{- end -}}
+

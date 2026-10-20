@@ -70,5 +70,5 @@ sources:
 
 ## 미완료
 
-- 백업 CronJob은 차트에 넣지 않았다. 가이드에 요구사항으로만 적었다(선택형 백업은 설계 논의 중).
+- 백업은 선택형 CronJob으로 추가했다([PostgreSQL 백업 기록](2026-10-21-postgres-backup.md)).
 - 연결 수와 부하는 측정하지 않았다(DAG run 3회 규모).
