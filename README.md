@@ -9,8 +9,10 @@ parse (PDF 텍스트 레이어 + 구조 분석 백엔드, OCR·VLM 폴백) → c
 ## 현재 상태 (2026-10-20)
 
 - DOCX·HWPX(FR-20, FR-21)를 제외한 PRD FR을 구현했다. DOCX·HWPX는 보류 중이며, parse에 넣으면 `NotImplementedError`가 난다.
-- 구현은 형식·VLM·청킹 개정 이전의 PRD를 따른다. 개정 PRD의 FR-27~29(PPTX·XLSX·Markdown·TXT), VLM 기본 적용(FR-02·05·06), `adaptive` 청킹(FR-07)은 아직 반영하지 않았다. 차이는 [PRD 구현 현황](PRD.md#구현-현황-2026-10-20-featcore-pipeline)에 정리했다.
-- 검증한 것: 단위 테스트, Sink 통합 테스트(OpenSearch·Milvus·pgvector), Compose E2E, kind + Helm E2E(업그레이드·워커 강제 종료 포함), 오프라인 번들 설치. 상세는 [wiki/2026-10-20-implementation-core-pipeline.md](wiki/2026-10-20-implementation-core-pipeline.md)에 있다.
+- 입력 형식: PDF, 이미지(PNG·JPG·TIFF·BMP·WebP), PPTX, XLSX, Markdown, TXT(UTF-8·CP949 자동 판별).
+- VLM: `parse.vlm: auto`가 기본이다. `FOLIO_VLM_URL`이 있으면 스캔·품질 미달 페이지, 이미지, 그림 설명, 구조가 약한 표를 VLM으로 처리하고, 없으면 OCR로 처리한다. VLM 모델은 아직 정하지 않았다(개발용 `folio vlm-stub`만 있음).
+- 청킹: `adaptive`가 기본이다. `max_tokens` 안에 들어가는 가장 큰 구조 단위를 청크로 만든다. 대안은 `page`·`fixed`.
+- 검증한 것: 단위 테스트, Sink 통합 테스트(OpenSearch·Milvus·pgvector), Compose E2E(전 형식, VLM stub 포함), kind + Helm E2E(업그레이드·워커 강제 종료 포함), 오프라인 번들 설치. 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md), [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md) 작업 기록에 있다.
 - 미정: 기본 구조 분석 백엔드(Docling vs PP-StructureV3)는 고객사 샘플 벤치마크 후 정한다. `FOLIO_STRUCTURE_URL`이 없으면 모델 없는 `heuristic` 백엔드를 쓴다.
 
 ## 설치
@@ -46,8 +48,8 @@ result = run_pipeline("contract.pdf", load_config("pipelines/contracts.yaml"))
 ## 파이프라인 YAML
 
 ```yaml
-parse: {fn: folio.parse:default, backend: auto, ocr_fallback: true, dpi: 144}
-chunk: {fn: folio.chunk:auto, max_tokens: 512}
+parse: {fn: folio.parse:default, backend: auto, vlm: auto, ocr_fallback: true, dpi: 144}
+chunk: {fn: folio.chunk:adaptive, max_tokens: 1024, min_tokens: 128}   # 또는 folio.chunk:page|fixed
 map:   mappers:map_contract               # 생략하면 공통 필드만 채운다
 embed: {fn: folio.embed:http, batch_size: 64}
 sink:  {type: opensearch, index: contracts}
@@ -63,7 +65,7 @@ storage: ${FOLIO_STORAGE_URI:-.folio/artifacts}
 - `DELETE /v1/documents/{doc_id}?pipeline=`
 - `/healthz`, `/readyz`
 
-`folio` 이미지 실행 모드: `folio api` / `folio worker` / `folio init` / `folio structure-server` / `folio embed-stub`
+`folio` 이미지 실행 모드: `folio api` / `folio worker` / `folio init` / `folio structure-server` / `folio embed-stub` / `folio vlm-stub`
 
 ## 배포
 

@@ -143,11 +143,15 @@ annotations:
 - {name: FOLIO_EMBED_MODEL, value: {{ .Values.external.embed.model | quote }}}
 {{- end }}
 {{- end }}
+{{- if .Values.vlmStub.enabled }}
+- {name: FOLIO_VLM_URL, value: "http://{{ $fn }}-vlm:8002/v1"}
+{{- else }}
 {{- if .Values.external.vlm.url }}
 - {name: FOLIO_VLM_URL, value: {{ .Values.external.vlm.url | quote }}}
 {{- end }}
 {{- if .Values.external.vlm.model }}
 - {name: FOLIO_VLM_MODEL, value: {{ .Values.external.vlm.model | quote }}}
+{{- end }}
 {{- end }}
 {{- if .Values.external.rerank.url }}
 - {name: FOLIO_RERANK_URL, value: {{ .Values.external.rerank.url | quote }}}

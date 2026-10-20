@@ -193,6 +193,21 @@ services:
       timeout: 5s
       retries: 20
 
+  # Dev VLM stub (deterministic, not a model): profile `vlm-stub` + FOLIO_VLM_URL=http://vlm:8002/v1 in .env.
+  # Real VLM: run an OpenAI-compatible server (e.g. vLLM) and point FOLIO_VLM_URL/FOLIO_VLM_MODEL at it.
+  vlm:
+    <<: *app
+    profiles: [vlm-stub]
+    command: ["vlm-stub", "--port", "8002"]
+    volumes: []
+    environment:
+      FOLIO_LOG_LEVEL: ${FOLIO_LOG_LEVEL:-INFO}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8002/healthz', timeout=3).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
   # One-shot: creates the storage bucket / jobs tables, then applies index schemas.
   init:
     <<: *app

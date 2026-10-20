@@ -67,6 +67,8 @@ def create_app() -> FastAPI:
     app = FastAPI(title="folio vlm stub")
 
     @app.get("/health")
+    @app.get("/healthz")
+    @app.get("/readyz")
     def health():
         return {"status": "ok"}
 

@@ -146,6 +146,13 @@ def cmd_embed_stub(args) -> int:
     return 0
 
 
+def cmd_vlm_stub(args) -> int:
+    from folio.backends.vlm_stub import serve
+
+    serve(port=args.port)
+    return 0
+
+
 def cmd_eval(args) -> int:
     from folio import eval as ev
 
@@ -230,6 +237,10 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("embed-stub")
     s.add_argument("--port", type=int, default=8001)
     s.set_defaults(fn=cmd_embed_stub)
+
+    s = sub.add_parser("vlm-stub", help="deterministic OpenAI-compatible VLM server for dev/tests")
+    s.add_argument("--port", type=int, default=8002)
+    s.set_defaults(fn=cmd_vlm_stub)
 
     s = sub.add_parser("eval")
     es = s.add_subparsers(dest="eval_cmd", required=True)

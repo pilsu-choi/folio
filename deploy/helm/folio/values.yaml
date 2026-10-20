@@ -50,6 +50,7 @@ external:
   milvus: {uri: ""}
   structure: {url: ""}    # used when structure.enabled=false
   embed: {url: "", model: ""}   # used when embedStub.enabled=false
+  # VLM (OpenAI-compatible, e.g. vLLM) for scanned pages/images/figures/complex tables. Empty = OCR path (parse vlm: auto).
   vlm: {url: "", model: ""}
   rerank: {url: ""}
 
@@ -94,6 +95,11 @@ infra:
 embedStub:
   enabled: false
   model: stub
+  resources: {}
+
+# Dev VLM stub (`folio vlm-stub`, deterministic, not a model). Real VLM: keep disabled and set external.vlm.*
+vlmStub:
+  enabled: false
   resources: {}
 
 api:

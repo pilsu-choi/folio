@@ -12,6 +12,8 @@ infra:
   minio:      {enabled: true, password: dev-only-minio, resources: {requests: {cpu: 50m, memory: 128Mi}}}
 embedStub:
   enabled: true
+vlmStub:
+  enabled: true
 structure:
   backend: heuristic
   resources: {requests: {cpu: 100m, memory: 256Mi}}

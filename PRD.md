@@ -407,19 +407,19 @@ M1에서 디지털 PDF 하나로 처음부터 끝까지 도는 것을 먼저 만
 | M2 | FR-02·05 이미지 경로, FR-06 VLM 기본 적용 (M3 선택 항목에서 이동) | OCR 폴백과 같은 경로이고, M1 벤치마크로 고른 VLM을 띄운다 |
 | M2 | FR-27 PPTX, FR-28 XLSX, FR-29 Markdown·TXT | 그림·차트는 FR-06의 VLM을 재사용한다. Markdown·TXT는 모델 없이 구현돼 청킹 테스트 입력으로도 쓴다 |
 
-## 구현 현황 (2026-10-20, `feat/core-pipeline`)
+## 구현 현황 (2026-10-20)
 
-DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 구현 기준은 형식·VLM·청킹 개정 **이전**의 PRD다. 검증 상세는 [wiki/2026-10-20-implementation-core-pipeline.md](wiki/2026-10-20-implementation-core-pipeline.md)에 있다.
+DOCX·HWPX(FR-20, FR-21, 보류)를 제외한 FR을 구현했다. 검증 상세는 [코어 파이프라인](wiki/2026-10-20-implementation-core-pipeline.md)과 [형식·VLM·adaptive 청킹](wiki/2026-10-20-implementation-formats-vlm-adaptive.md) 작업 기록에 있다.
 
 | 상태 | FR |
 | --- | --- |
-| 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 03, 08~14, 16, 17, 19, 22~24, 26(Compose 오프라인 설치) |
-| 구현, 개정 PRD와 차이 있음 | FR-02·05(이미지·품질 미달 페이지가 OCR 경로가 기본, VLM 기본 적용 아님), FR-06(VLM은 옵션·기본 꺼짐, mock으로만 검증), FR-07(`auto` 전략: section·table·page·fixed 선택, `adaptive` 아님) |
-| 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인) |
-| 구현, 미검증 | FR-15(Airflow DAG 미실행), FR-26 Helm 사설 레지스트리 경로 |
-| 미구현 | FR-27 PPTX, FR-28 XLSX, FR-29 Markdown·TXT (개정으로 추가됨) |
+| 구현 + 수용 기준을 테스트·E2E로 확인 | FR-01, 02, 03, 05, 07~14, 16, 17, 19, 22~24, 26(Compose 오프라인 설치), 27~29 |
+| 구현, 부분 검증 | FR-04(합성 픽스처로 회전·CropBox·char 매칭 확인, 실제 HWP 변환 PDF 없음), FR-06(결정적 VLM stub으로 경로·호출 수만 확인, 실제 VLM 모델 미선정), FR-18(휴리스틱 testset, LLM 생성은 mock만), FR-25(values·env 전환 렌더링만 확인) |
+| 구현, 미검증 | FR-15(Airflow DAG 미실행), FR-26 Helm 사설 레지스트리 경로, PPTX `convert` 모드(LibreOffice 미포함) |
 | 보류 | FR-20, FR-21 (DOCX·HWPX) |
 
+- VLM 기본 적용은 `parse.vlm: auto`로 구현했다. `FOLIO_VLM_URL`이 있으면 VLM 경로(기본)를 쓰고, 없으면 구조 분석 OCR을 쓰며 `meta.vlm`에 사유를 남긴다. VLM 호출이 실패한 페이지만 OCR로 폴백하고 `meta.vlm_fallbacks`에 기록한다.
+- 청킹 기본 전략은 `adaptive`이고 대안은 `page`·`fixed`다. 이전의 `auto`·`section`·`table` 전략은 제거했다. `max_tokens`는 임베딩 입력인 `contextualized_content` 기준으로 지킨다.
 - 구조 분석 백엔드: 픽스처에서 heuristic·Docling·PP-StructureV3 모두 디지털 텍스트·표 결과가 같았다. OCR 유사도는 0.72 / 0.75 / 0.91, CPU 기준 초/페이지는 0.04 / 1.75 / 20.6이다. 기본 백엔드는 고객사 샘플(한글 포함)로 정한다.
 - `minio/minio`가 Docker Hub에서 더 이상 배포되지 않아, 내장 S3를 digest로 고정한 `cgr.dev/chainguard/minio`로 바꿨다.
 

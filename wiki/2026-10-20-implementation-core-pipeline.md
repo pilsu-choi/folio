@@ -95,6 +95,7 @@ sources:
   - FR-27~29(PPTX·XLSX·Markdown·TXT): 미구현.
   - FR-02·05·06: 지금은 이미지·품질 미달 페이지가 OCR 경로가 기본이고, VLM은 옵션이다. 개정 PRD는 VLM을 기본으로 둔다.
   - FR-07: 지금은 `auto` 전략이다. 개정 PRD는 `adaptive`를 기본으로 둔다.
+  - 위 세 가지는 후속 작업에서 반영했다: [형식·VLM·adaptive 청킹 구현](./2026-10-20-implementation-formats-vlm-adaptive.md).
 - 미검증:
   - FR-15 Airflow DAG(로컬 Airflow로 실행하지 않음).
   - docling·ppstructure·GPU 구조 분석 백엔드로 실제 이미지 빌드.
