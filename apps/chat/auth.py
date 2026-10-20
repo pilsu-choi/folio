@@ -6,13 +6,20 @@ filters fixed at login from token claims (``FOLIO_APP_ACL_CLAIMS``); the client 
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 
 from apps.chat import settings
+from folio.logging import log_event, redact_url
 
 router = APIRouter()
 _oauth = None
+
+
+def _log(event: str, level: int = logging.INFO, **fields) -> None:
+    log_event(event, level, "apps.chat.auth", **fields)
 
 
 def _idp():
@@ -55,6 +62,7 @@ def current_user(request: Request) -> dict:
         user = request.session.get("user")
         if not user:
             raise HTTPException(401, "login required")
+    request.state.user_id = user["sub"]
     return user
 
 
@@ -67,6 +75,7 @@ def _callback_url(request: Request) -> str:
 async def login(request: Request):
     if settings.auth_mode() == "dev":
         return RedirectResponse("../")
+    _log("login_start", issuer=redact_url(settings.oidc()["server_metadata_url"]).split("/.well-known")[0])
     return await _idp().authorize_redirect(request, _callback_url(request))
 
 
@@ -77,16 +86,19 @@ async def callback(request: Request):
     try:
         token = await _idp().authorize_access_token(request)
     except OAuthError as exc:
+        _log("login_failed", logging.WARNING, error=exc.error)
         raise HTTPException(401, f"login failed: {exc.error}") from exc
     claims = dict(token.get("userinfo") or await _idp().userinfo(token=token))
     user = session_user(claims)
     request.app.state.store.upsert_user(user["sub"], user["email"], user["name"])
     request.session.clear()
     request.session["user"] = user
+    _log("login_success", user=user["sub"], acl_keys=sorted(user["acl"] or []))
     return RedirectResponse("../")
 
 
 @router.post("/auth/logout", status_code=204)
 def logout(request: Request):
+    _log("logout", user=(request.session.get("user") or {}).get("sub"))
     request.session.clear()
     return Response(status_code=204)

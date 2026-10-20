@@ -6,12 +6,15 @@ A follow-up is first rewritten into a standalone search query, then answered fro
 
 from __future__ import annotations
 
+import logging
 import re
+import time
 from dataclasses import dataclass, field
 
 from folio.chunk.tokens import count_tokens
 from folio.contracts import PipelineConfig
 from folio.errors import ConfigError, GenerationError
+from folio.logging import clip, log_event, ms_since
 from folio.retrieval.base import Hit
 
 SYSTEM = ("Answer the user's question using only the numbered passages below. Cite the passages you use as [n] "
@@ -90,9 +93,14 @@ def _context(hits: list[Hit]) -> str:
 
 
 def _call(chat, messages: list[dict]) -> str:
+    t0 = time.perf_counter()
     try:
-        return chat(messages).strip()
+        out = chat(messages).strip()
+        log_event("chat_call", logging.DEBUG, "folio.generation", turns=len(messages), ms=ms_since(t0), reply_chars=len(out))
+        return out
     except Exception as exc:
+        log_event("chat_call_failed", logging.ERROR, "folio.generation", turns=len(messages), ms=ms_since(t0),
+                  error=f"{type(exc).__name__}: {clip(exc, 300)}")
         raise GenerationError(f"generation: chat step failed: {type(exc).__name__}: {exc}") from exc
 
 
@@ -117,7 +125,12 @@ def answer(cfg: PipelineConfig, messages: list[dict], k: int | None = None, filt
         transcript = "\n".join(f"{m['role']}: {m['content']}" for m in context)
         prompt = f"{REWRITE}\n\nConversation:\n{transcript}\n\nLast question: {question}"
         query = _call(chat, [{"role": "user", "content": prompt}]).strip('"') or question
-    hits = _passages(search(cfg, query, k=k, filters=filters, mode=mode), gen.max_context_tokens)
+    found = search(cfg, query, k=k, filters=filters, mode=mode)
+    hits = _passages(found, gen.max_context_tokens)
+    log_event("answer_context", logging.DEBUG, "folio.generation", question=clip(question, 200), query=clip(query, 200),
+              rewritten=query != question, history_turns=len(history), hits_found=len(found), passages_used=len(hits),
+              passage_tokens=sum(count_tokens(h.content) for h in hits), max_context_tokens=gen.max_context_tokens,
+              max_history_tokens=gen.max_history_tokens)
     system = f"{gen.system or SYSTEM}\n\nPassages:\n{_context(hits)}"
     text = _call(chat, [{"role": "system", "content": system}, *history, {"role": "user", "content": question}])
     cited = sorted({n for n in map(int, _CITE.findall(text)) if 1 <= n <= len(hits)})

@@ -11,6 +11,7 @@ The returned info goes to Document `meta.convert`; bbox values are only valid fo
 from __future__ import annotations
 
 import glob
+import logging
 import os
 import shutil
 import signal
@@ -27,6 +28,7 @@ import httpx
 from folio._loader import load_callable
 from folio.contracts import content_hash
 from folio.errors import FolioError
+from folio.logging import clip, log_event, ms_since, redact_url
 
 MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 MIME_PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
@@ -128,6 +130,7 @@ def convert_local(data: bytes, mime: str, timeout: float = 300) -> tuple[bytes, 
             return pdf, {"converter": name, "version": _version(name), **({"errors": errors} if errors else {})}
         except ConvertError as exc:
             errors.append(f"{name}: {exc}")
+            log_event("convert_fallback", logging.WARNING, "folio.parse", converter=name, mime=EXT[mime], error=clip(exc, 300))
     raise ConvertError(f"cannot convert {EXT[mime]} to PDF: " + "; ".join(errors))
 
 
@@ -135,6 +138,7 @@ def _http(url: str, timeout: float, client: httpx.Client | None = None) -> Calla
     url = url.rstrip("/")
 
     def call(data: bytes, mime: str) -> tuple[bytes, dict]:
+        t0 = time.perf_counter()
         post = client.post if client is not None else httpx.post
         files = {"file": (f"in.{EXT.get(mime, 'bin')}", data, mime)}
         try:
@@ -143,6 +147,8 @@ def _http(url: str, timeout: float, client: httpx.Client | None = None) -> Calla
             raise ConvertError(f"convert server {url}: {type(exc).__name__}: {exc}") from exc
         if r.status_code != 200:
             raise ConvertError(f"convert server {url}: {r.status_code} {r.text[:500]}")
+        log_event("convert_http", logging.DEBUG, "folio.parse", url=redact_url(url), mime=EXT.get(mime), in_bytes=len(data),
+                  out_bytes=len(r.content), status=r.status_code, ms=ms_since(t0))
         info = {"converter": r.headers.get("x-folio-converter"), "version": r.headers.get("x-folio-converter-version"),
                 "server": url}
         return r.content, info
@@ -182,4 +188,6 @@ def to_pdf(data: bytes, mime: str, spec: Any = "auto", timeout: float | None = N
     pdf, info = resolve(spec, timeout)(data, mime)
     if not pdf.startswith(b"%PDF-"):
         raise ConvertError(f"converter {info.get('converter')} did not return a PDF")
+    log_event("convert", logging.DEBUG, "folio.parse", mime=EXT.get(mime), converter=info.get("converter"),
+              in_bytes=len(data), pdf_bytes=len(pdf), ms=ms_since(t0))
     return pdf, {**info, "ms": round((time.perf_counter() - t0) * 1000, 1), "pdf_hash": content_hash(pdf)}

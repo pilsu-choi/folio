@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 import sqlalchemy as sa
 
+from folio.logging import log_event, redact_url
 from service import settings
 
 metadata = sa.MetaData()
@@ -42,6 +44,7 @@ class JobStore:
 
                 pathlib.Path(self.url[len("sqlite:///") :]).parent.mkdir(parents=True, exist_ok=True)
             _ENGINES[self.url] = sa.create_engine(self.url, pool_pre_ping=True)
+            log_event("db_engine", logging.DEBUG, "service", url=redact_url(self.url))
         self.engine = _ENGINES[self.url]
 
     def create_all(self) -> None:

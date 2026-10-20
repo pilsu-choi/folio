@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -124,6 +125,7 @@ def _execute(
         if progress:
             progress(name, "running", 0)
         t0 = time.perf_counter()
+        log_event("stage_start", logging.DEBUG, stage=name, doc_id=result.doc_id)
         try:
             out = fn()
         except Exception as exc:
@@ -131,7 +133,7 @@ def _execute(
             timings[name] = ms
             if progress:
                 progress(name, "failed", ms)
-            log_event("stage_failed", stage=name, ms=ms, error=str(exc), doc_id=result.doc_id)
+            log_event("stage_failed", logging.ERROR, stage=name, ms=ms, error=str(exc), doc_id=result.doc_id, exc_info=True)
             raise
         ms = int((time.perf_counter() - t0) * 1000)
         timings[name] = ms

@@ -51,6 +51,14 @@ x-folio-env: &folio-env
   FOLIO_LLM_MODEL: ${FOLIO_LLM_MODEL:-}
   FOLIO_LLM_API_KEY: ${FOLIO_LLM_API_KEY:-}
 
+# Container logs: folio services write JSON lines to stderr; Docker keeps them per container with rotation
+# (`docker compose logs -f api`, files under /var/lib/docker/containers). Size/count via FOLIO_LOG_MAX_SIZE/FILES.
+x-logging: &logging
+  driver: local
+  options:
+    max-size: ${FOLIO_LOG_MAX_SIZE:-20m}
+    max-file: "${FOLIO_LOG_MAX_FILES:-5}"
+
 x-app: &app
   image: *image-folio
   build: *build-folio
@@ -64,9 +72,11 @@ x-app: &app
     - no-new-privileges:true
   cap_drop: [ALL]
   restart: unless-stopped
+  logging: *logging
 
 services:
   postgres:
+    logging: *logging
     profiles: [infra]
     image: ${FOLIO_REGISTRY:-}postgres:16
     environment:
@@ -83,6 +93,7 @@ services:
     restart: unless-stopped
 
   rabbitmq:
+    logging: *logging
     profiles: [infra]
     image: ${FOLIO_REGISTRY:-}rabbitmq:3-management-alpine
     environment:
@@ -99,6 +110,7 @@ services:
     restart: unless-stopped
 
   opensearch:
+    logging: *logging
     profiles: [infra]
     image: ${FOLIO_REGISTRY:-}folio-opensearch:${FOLIO_TAG:-0.1.0}
     build:
@@ -124,6 +136,7 @@ services:
     restart: unless-stopped
 
   minio:
+    logging: *logging
     profiles: [infra]
     image: ${FOLIO_REGISTRY:-}cgr.dev/chainguard/minio:latest@sha256:cff197fef764642223ef9f4444c903d51aee9b544a7be8bc007fef6b7b00d136  # minio/minio is no longer published on Docker Hub
     command: ["server", "/data", "--console-address", ":9001"]
@@ -147,6 +160,7 @@ services:
   # Model weights live in the `models` volume (not baked into the image); the offline bundle can pre-populate it.
   # /readyz turns healthy only after the weights are loaded (first start downloads them unless pre-populated).
   structure-gpu: &structure
+    logging: *logging
     profiles: [gpu]
     image: ${FOLIO_REGISTRY:-}folio-structure:${FOLIO_TAG:-0.1.0}-gpu
     build:
@@ -178,6 +192,7 @@ services:
     restart: unless-stopped
 
   structure-cpu:
+    logging: *logging
     <<: *structure
     profiles: [cpu]
     image: ${FOLIO_REGISTRY:-}folio-structure:${FOLIO_TAG:-0.1.0}-cpu
@@ -196,6 +211,7 @@ services:
     deploy: {}
 
   structure-dev:
+    logging: *logging
     <<: *structure
     profiles: [dev]
     image: ${FOLIO_REGISTRY:-}folio-structure:${FOLIO_TAG:-0.1.0}-heuristic
@@ -211,6 +227,7 @@ services:
   # DOCX/HWPX (and PPTX convert mode) -> PDF server: LibreOffice + rhwp + open fonts (FR-20), all profiles.
   # Customer-licensed fonts: add a read-only volume `- /path/to/fonts:/usr/share/fonts/custom:ro`.
   convert:
+    logging: *logging
     image: ${FOLIO_REGISTRY:-}folio-convert:${FOLIO_TAG:-0.1.0}
     build:
       context: ../..
@@ -239,6 +256,7 @@ services:
   # Deterministic dev embedding server. To use a real endpoint instead, set FOLIO_EMBED_URL / FOLIO_EMBED_MODEL /
   # FOLIO_EMBED_API_KEY in .env (e.g. http://tei:80/v1) and stop this service: `docker compose stop embed`.
   embed:
+    logging: *logging
     <<: *app
     command: ["embed-stub", "--port", "8001"]
     volumes: []
@@ -253,6 +271,7 @@ services:
   # Dev VLM stub (deterministic, not a model): profile `vlm-stub` + FOLIO_VLM_URL=http://vlm:8002/v1 in .env.
   # Real VLM: run an OpenAI-compatible server (e.g. vLLM) and point FOLIO_VLM_URL/FOLIO_VLM_MODEL at it.
   vlm:
+    logging: *logging
     <<: *app
     profiles: [vlm-stub]
     command: ["vlm-stub", "--port", "8002"]
@@ -267,6 +286,7 @@ services:
 
   # One-shot: creates the storage bucket / jobs tables, then applies index schemas.
   init:
+    logging: *logging
     <<: *app
     command: ["init"]
     restart: "no"
@@ -279,6 +299,7 @@ services:
       minio: {condition: service_healthy, required: false}
 
   api:
+    logging: *logging
     <<: *app
     command: ["api"]
     ports:
@@ -293,6 +314,7 @@ services:
       init: {condition: service_completed_successfully}
 
   worker:
+    logging: *logging
     <<: *app
     command: ["worker"]
     environment:
@@ -313,6 +335,7 @@ services:
   # Same statements as the Helm init Job's create-databases step (deploy/helm/folio/templates/_helpers.tpl): keep in sync.
   # External DB: set AIRFLOW_DATABASE_URL and this service does nothing.
   airflow-db:
+    logging: *logging
     image: ${FOLIO_REGISTRY:-}postgres:16
     profiles: [airflow]
     restart: "no"
@@ -345,6 +368,7 @@ services:
   # DOCKER_GID: gid of /var/run/docker.sock as seen in containers (`stat -c %g`). FOLIO_DOCKER_NETWORK must be this
   # project's network (`<project>_default`) so the folio container reaches opensearch/minio/structure/embed.
   airflow:
+    logging: *logging
     image: ${AIRFLOW_IMAGE:-apache/airflow:3.1.0-python3.12}
     profiles: [airflow]
     command: ["standalone"]

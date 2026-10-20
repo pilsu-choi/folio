@@ -175,7 +175,9 @@ Stages: `parse → chunk → map → embed → index`. `PipelineResult` has `doc
 | `FOLIO_EMBED_URL`, `FOLIO_EMBED_MODEL`, `FOLIO_EMBED_API_KEY` | embedding endpoint |
 | `FOLIO_RERANK_URL` | optional rerank endpoint |
 | `FOLIO_LLM_URL`, `FOLIO_LLM_MODEL`, `FOLIO_LLM_API_KEY` | chat LLM for `generation:` / `POST /v1/chat` and `eval testset --method llm` (OpenAI-compatible; testset falls back to `FOLIO_VLM_URL`/`FOLIO_VLM_MODEL`) |
-| `FOLIO_LOG_LEVEL` | logging level |
+| `FOLIO_LOG_LEVEL` | `DEBUG`/`INFO` (default)/`WARNING`/`ERROR`. JSON lines on stderr from the `folio`, `service`, `apps` loggers; DEBUG adds per-call details and clipped user content (queries, LLM replies) - troubleshooting only. CLI: `folio --log-level DEBUG ...` |
+| `FOLIO_LOG_FILE`, `FOLIO_LOG_FILE_MAX_MB`, `FOLIO_LOG_FILE_BACKUPS` | optional rotating log file (default 50 MB x 5) for runs outside containers; containers log to stdout only |
+| `FOLIO_LOG_MAX_SIZE`, `FOLIO_LOG_MAX_FILES` | Compose only: docker `local` log driver rotation per container (default `20m` x 5) |
 
 Chat app (`apps/chat`):
 

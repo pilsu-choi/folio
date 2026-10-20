@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -121,14 +122,18 @@ def cmd_reprocess(args) -> int:
 def cmd_api(args) -> int:
     import uvicorn
 
-    uvicorn.run("service.api:app", host=args.host, port=args.port)
+    from folio.logging import adopt
+
+    adopt("uvicorn", "uvicorn.error")  # JSON lines; the API middleware logs requests, so no uvicorn access log
+    uvicorn.run("service.api:app", host=args.host, port=args.port, log_config=None, access_log=False)
     return 0
 
 
 def cmd_worker(args) -> int:
+    from folio.logging import configure
     from service.worker import celery_app
 
-    argv = ["worker", "--loglevel", os.environ.get("FOLIO_LOG_LEVEL", "INFO").lower(), "-O", "fair"]
+    argv = ["worker", "--loglevel", logging.getLevelName(configure()).lower(), "-O", "fair"]
     concurrency = args.concurrency or int(os.environ.get("FOLIO_WORKER_CONCURRENCY", "2"))
     argv += ["--concurrency", str(concurrency)]
     celery_app.worker_main(argv)
@@ -205,6 +210,7 @@ def cmd_eval(args) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="folio")
     p.add_argument("--config-dir", default=None)
+    p.add_argument("--log-level", default=None, help="DEBUG|INFO|WARNING|ERROR (default: FOLIO_LOG_LEVEL or INFO)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("init")
@@ -292,13 +298,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    for i, tok in enumerate(argv):  # `folio [--config-dir D] cli ARGS` == `folio [--config-dir D] ARGS`
-        if tok == "cli" and (i == 0 or argv[i - 1] != "--config-dir"):
+    for i, tok in enumerate(argv):  # `folio [--config-dir D] [--log-level L] cli ARGS` == `folio [...] ARGS`
+        after_opt = i > 0 and argv[i - 1] in ("--config-dir", "--log-level")
+        if tok == "cli" and not after_opt:
             argv = argv[:i] + argv[i + 1 :]
             break
-        if not tok.startswith("-") and (i == 0 or argv[i - 1] != "--config-dir"):
+        if not tok.startswith("-") and not after_opt:
             break
     args = build_parser().parse_args(argv)
+    from folio.logging import configure
+
+    level = logging.getLevelName(configure(args.log_level))
+    if args.log_level:
+        os.environ["FOLIO_LOG_LEVEL"] = level  # child processes (workers, servers) inherit the effective level
     rc = args.fn(args)
     return rc or 0
 

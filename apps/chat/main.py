@@ -7,21 +7,25 @@ folio server to server, and stores the turn only when the answer succeeded.
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
+import time
+import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
 from apps.chat import auth, settings
 from apps.chat.auth import current_user
 from apps.chat.store import ChatStore
+from folio.logging import clip, configure, log_event, ms_since, redact_url, request_id
 
 MAX_MESSAGES = 50  # folio /v1/chat limits
 MAX_CONTENT = 20000
@@ -29,6 +33,8 @@ PAGE_ZOOM = 2  # page preview: 2 px per pt (an A4 page is 1190 px wide)
 PAGE_MARGIN = 36  # pt of context around the cited area
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 router = APIRouter()
+RID = "X-Request-ID"
+QUIET = ("/static", "/healthz")  # logged at DEBUG
 User = Annotated[dict, Depends(current_user)]
 
 
@@ -44,15 +50,39 @@ def create_app(transport: httpx.BaseTransport | None = None) -> FastAPI:
         yield
         app.state.folio.close()
 
+    configure()
     secret = settings.secret_key()
     if not secret:
         if settings.auth_mode() == "oidc":
             raise RuntimeError("FOLIO_APP_AUTH=oidc needs FOLIO_APP_SECRET_KEY (session cookie signing key)")
         secret = secrets.token_urlsafe(32)
     app = FastAPI(title="folio chat", lifespan=lifespan)
+
+    @app.middleware("http")
+    async def access_log(request: Request, call_next):
+        rid = (request.headers.get(RID) or "").strip()[:64] or uuid.uuid4().hex[:16]
+        token, t0 = request_id.set(rid), time.perf_counter()
+        status, level = 500, logging.INFO
+        try:
+            response = await call_next(request)
+            status = response.status_code
+        except Exception:  # noqa: BLE001 - log and answer 500 like the default handler
+            log_event("unhandled_exception", logging.ERROR, "apps.chat", exc_info=True, method=request.method,
+                      path=request.url.path)
+            response = JSONResponse({"detail": "internal server error"}, status_code=500)
+        if request.url.path == "/" or request.url.path.startswith(QUIET):
+            level = logging.DEBUG
+        log_event("http_request", level, "apps.chat", method=request.method, path=request.url.path, status=status,
+                  ms=ms_since(t0), user=getattr(request.state, "user_id", None))
+        response.headers[RID] = rid
+        request_id.reset(token)
+        return response
+
     app.add_middleware(SessionMiddleware, secret_key=secret, session_cookie="folio_chat", same_site="lax",
                        https_only=settings.cookie_secure(), max_age=12 * 3600)
     app.state.store = ChatStore(settings.database_url())
+    log_event("app_start", logging.INFO, "apps.chat", auth=settings.auth_mode(), database=redact_url(settings.database_url()),
+              folio_api=redact_url(settings.folio_api_url()))
     app.state.folio = httpx.Client(base_url=settings.folio_api_url(), timeout=180, transport=transport)
     app.include_router(auth.router)
     app.include_router(router)
@@ -175,6 +205,8 @@ def send_message(cid: str, body: MessageIn, request: Request, user: User):
     for key, value in (("pipeline", conv["pipeline"]), ("k", body.k), ("mode", body.mode)):
         if value is not None:
             req[key] = value
+    log_event("chat_request", logging.DEBUG, "apps.chat", conversation=cid, messages=len(history),
+              question=clip(body.content), payload_chars=sum(len(m["content"]) for m in history))
     answer = _ask_folio(request.app.state.folio, req)
     answer["hits"] = [{**h, "record": {k: v for k, v in (h.get("record") or {}).items() if k != "embedding"}}
                       for h in answer.get("hits") or []]  # vectors are useless to the UI and bloat every row
@@ -182,11 +214,24 @@ def send_message(cid: str, body: MessageIn, request: Request, user: User):
     return {"messages": [_msg(m) for m in turn], "conversation": _conv(store.get_conversation(user["sub"], cid))}
 
 
-def _ask_folio(client: httpx.Client, req: dict) -> dict:
+def _call_folio(client: httpx.Client, method: str, path: str, **kw) -> httpx.Response:
+    """One folio API call: forwards the request id, logs status and ms (4xx WARNING, 5xx/transport ERROR)."""
+    headers = {RID: rid} if (rid := request_id.get()) else {}
+    t0 = time.perf_counter()
     try:
-        r = client.post("/v1/chat", json=req)
+        r = client.request(method, path, headers=headers, **kw)
     except httpx.HTTPError as exc:
+        log_event("folio_call", logging.ERROR, "apps.chat", exc_info=True, endpoint=path, error=type(exc).__name__,
+                  ms=ms_since(t0))
         raise HTTPException(503, f"search service unavailable: {type(exc).__name__}") from exc
+    level = logging.ERROR if r.status_code >= 500 else logging.WARNING if r.status_code >= 400 else logging.INFO
+    extra = {"body": clip(r.text, 300)} if r.status_code >= 400 else {}
+    log_event("folio_call", level, "apps.chat", endpoint=path, status=r.status_code, ms=ms_since(t0), **extra)
+    return r
+
+
+def _ask_folio(client: httpx.Client, req: dict) -> dict:
+    r = _call_folio(client, "POST", "/v1/chat", json=req)
     if r.status_code == 200:
         return r.json()
     try:
@@ -212,10 +257,7 @@ def _hit_record(request: Request, user: dict, cid: str, mid: int, n: int) -> tup
 
 def _source_pdf(request: Request, conv: dict, record: dict) -> bytes:
     params = {"pipeline": conv["pipeline"]} if conv["pipeline"] else {}
-    try:
-        r = request.app.state.folio.get(f"/v1/documents/{record['doc_id']}/pdf", params=params)
-    except httpx.HTTPError as exc:
-        raise HTTPException(503, f"search service unavailable: {type(exc).__name__}") from exc
+    r = _call_folio(request.app.state.folio, "GET", f"/v1/documents/{record['doc_id']}/pdf", params=params)
     if r.status_code in (400, 404):
         raise HTTPException(404, "the original PDF is not available for this source")
     if r.status_code != 200:

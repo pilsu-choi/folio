@@ -7,9 +7,12 @@ OpenAI-compatible ``http`` step: ``fn(messages, **opts) -> str``.
 
 from __future__ import annotations
 
+import logging
 import os
+import time
 
 from folio.errors import FolioError
+from folio.logging import clip, log_event, ms_since
 
 DEFAULT_MODEL = "claude-opus-5-5"
 
@@ -46,9 +49,18 @@ def chat(
         params["output_config"] = {"effort": effort}
     if fallbacks:
         params.update(betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+    t0 = time.perf_counter()
     with client.beta.messages.stream(**params) as stream:
         message = stream.get_final_message()
     if message.stop_reason == "refusal":
         category = getattr(message.stop_details, "category", None)
         raise FolioError(f"generation.anthropic: request declined (category={category})")
-    return "".join(b.text for b in message.content if b.type == "text")
+    reply = "".join(b.text for b in message.content if b.type == "text")
+    if message.stop_reason == "max_tokens":
+        log_event("llm_truncated", logging.WARNING, "folio.generation", model=params["model"], max_tokens=max_tokens,
+                  reply_chars=len(reply))
+    usage = getattr(message, "usage", None)
+    log_event("llm_reply", logging.DEBUG, "folio.generation", model=params["model"], stop_reason=message.stop_reason,
+              usage={"in": getattr(usage, "input_tokens", None), "out": getattr(usage, "output_tokens", None)},
+              ms=ms_since(t0), reply_chars=len(reply), reply=clip(reply))
+    return reply

@@ -413,7 +413,7 @@ M1 벤치마크(2026-10-21, 공개 한글 디지털 문서 16개, 질의 249개,
 | 보안 | 폐쇄망 설치 가능(외부 API 의존 없음). 모델·DB 접속 정보는 환경변수로만 주입 | 오프라인 compose·Helm 설치로 E2E 통과 |
 | 배포 | Docker Compose와 Kubernetes를 같은 이미지·같은 환경변수 계약으로 지원. 컨테이너는 non-root, 비밀값은 이미지·차트 기본값에 넣지 않음 | CI에서 Compose E2E와 kind 클러스터 Helm E2E를 모두 실행, `helm lint`·이미지 취약점 스캔 통과 |
 | 권한 | `tenant_id`·`acl` 필드를 Chunk Record에 실을 수 있고, Retrieval이 필터로 적용. `retrieval.required_filters`로 필터 누락 요청을 거부 | 다른 테넌트 문서가 검색되지 않음, 필수 필터 없는 검색 요청은 400 |
-| 관측 | job 상태, 단계별 소요 시간, 실패 사유를 `jobs` 테이블과 구조화 로그로 남긴다 | `GET /v1/jobs/{id}`에서 단계별 상태 조회 |
+| 관측 | job 상태, 단계별 소요 시간, 실패 사유를 `jobs` 테이블과 구조화 로그로 남긴다. 라이브러리·API·worker·chat app 모두 JSON 한 줄 로그(`request_id`·`job_id` 포함)를 stderr로 내고(CLI 결과 JSON은 stdout) `FOLIO_LOG_LEVEL`(기본 INFO, DEBUG는 장애 분석용)로 상세도를 조절한다. 저장은 컨테이너 런타임(Compose `local` 드라이버 로테이션, k8s kubelet + 클러스터 수집기)이 맡고, 컨테이너 밖 실행은 `FOLIO_LOG_FILE` 로테이션 파일 | `GET /v1/jobs/{id}`에서 단계별 상태 조회, `X-Request-ID`로 app→API 요청 추적, 로그에 비밀값 미노출 테스트 |
 | 이식성 | 라이브러리는 서비스 없이 `pip install`만으로 동작 | 노트북에서 `run_pipeline` 단독 실행 |
 
 ## 레포 구조와 기술 스택

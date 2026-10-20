@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import random
 import subprocess
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
 from folio.eval import metrics as M
 from folio.eval.testset import norm_map
+from folio.logging import log_event, ms_since
 
 WINDOW, EDGE = 20, 6  # a chunk covers a span: it holds a 20-char window of it, or the span straddles its edge by >= 6
 
@@ -69,6 +72,7 @@ def run(testset: list[dict], retriever, ks=(1, 5, 10), config_dir: str | None = 
     qids with a span no chunk covers, which would score 0 for reasons other than retrieval."""
     kmax = max(ks)
     per = {}
+    t0 = time.perf_counter()
     for item in testset:
         spans = _prepare(item)
         hits = retriever.search(item["query"], k=kmax, **search_kwargs)
@@ -83,6 +87,8 @@ def run(testset: list[dict], retriever, ks=(1, 5, 10), config_dir: str | None = 
                        if (rows := [r for r in per.values() if r["type"] == t])},
            "per_query": per, "testset_hash": testset_hash(testset), "config_commit": config_commit(config_dir),
            "timestamp": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")}
+    log_event("eval_run", logging.INFO, "folio.eval", queries=len(per), ks=list(ks), ms=ms_since(t0),
+              metrics={k: round(v, 4) for k, v in out["metrics"].items() if k.endswith(f"@{kmax}") or k == "mrr"})
     if chunks is not None:
         by_doc: dict[str, list] = {}
         for c in chunks:
