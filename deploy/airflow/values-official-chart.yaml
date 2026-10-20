@@ -1,0 +1,43 @@
+# Example values for the official Apache Airflow chart (apache-airflow/airflow 1.22.0, Airflow 3.2.2) to run
+# folio's `folio_ingest` DAG with KubernetesPodOperator. Airflow and folio live in separate namespaces:
+#   helm repo add apache-airflow https://airflow.apache.org
+#   helm install airflow apache-airflow/airflow --version 1.22.0 -n airflow --create-namespace \
+#     -f deploy/airflow/values-official-chart.yaml
+#   kubectl apply -n folio -f deploy/airflow/rbac-folio-namespace.yaml   # lets the worker SA start folio pods
+# Replace every CHANGE_ME. Secrets are referenced by name only (create them first, see README.md).
+
+executor: KubernetesExecutor          # one pod per task; no Celery workers / Redis needed
+
+# Env for the scheduler, dag processor and task pods; read by dags/folio_ingest.py.
+env:
+  - {name: FOLIO_AIRFLOW_RUNNER, value: kubernetes}
+  - {name: FOLIO_IMAGE, value: "CHANGE_ME.registry/acme/folio:1"}   # customer image (Dockerfile.project)
+  - {name: FOLIO_K8S_NAMESPACE, value: folio}                     # namespace of the folio Helm release
+  - {name: FOLIO_K8S_FULLNAME, value: folio}                      # folio.fullname -> <fullname>-env ConfigMap
+  # - {name: FOLIO_K8S_SECRET, value: folio-secrets}              # when the folio release uses secrets.existingSecret
+
+# DAG delivery: git-sync from the customer project repo (folder that holds folio_ingest.py).
+dags:
+  gitSync:
+    enabled: true
+    repo: "https://CHANGE_ME.git.example/acme/folio-project.git"
+    branch: main
+    subPath: dags
+    # credentialsSecret: git-credentials   # GITSYNC_USERNAME / GITSYNC_PASSWORD
+
+# Metadata DB: use an external PostgreSQL (the bundled subchart is for evaluation only).
+postgresql:
+  enabled: false
+data:
+  metadataSecretName: airflow-metadata   # key `connection`: postgresql+psycopg2://user:pass@host:5432/airflow
+
+redis:
+  enabled: false
+
+# Stable secrets across upgrades (otherwise the chart generates them per install).
+apiSecretKeySecretName: airflow-api-secret-key     # key `api-secret-key`
+jwtSecretName: airflow-jwt-secret                  # key `jwt-secret`
+
+config:
+  core:
+    load_examples: "False"

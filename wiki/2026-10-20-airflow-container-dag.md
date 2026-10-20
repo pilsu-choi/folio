@@ -1,7 +1,7 @@
 ---
 type: concept
 title: Airflow 예시 DAG를 folio 컨테이너 실행 방식으로 전환
-description: FR-15 예시 DAG를 PythonOperator에서 DockerOperator·KubernetesPodOperator로 바꾸고 Compose airflow 프로필과 E2E를 추가한 작업 기록
+description: FR-15 예시 DAG를 DockerOperator·KubernetesPodOperator로 바꾸고 Compose airflow 프로필, k3s KPO 검증, 운영 Airflow(공식 차트) 가이드를 추가한 작업 기록
 tags: [airflow, fr-15, compose, helm, deploy]
 status: draft
 generated: 2026-10-20
@@ -11,6 +11,8 @@ sources:
   - ../deploy/compose/docker-compose.yml
   - ../deploy/compose/e2e.sh
   - ./2026-10-20-implementation-core-pipeline.md
+  - ../deploy/airflow/README.md
+  - https://airflow.apache.org/docs/helm-chart/
 ---
 
 # Airflow 예시 DAG를 folio 컨테이너 실행 방식으로 전환
@@ -54,8 +56,29 @@ sources:
 - KubernetesPodOperator: Airflow 이미지 안에서 `FOLIO_AIRFLOW_RUNNER=kubernetes`로 DagBag을 import했을 때 오류가 없었다(`env_from`이 `folio-env`·`folio`로 설정됨). `helm template`(values·dev·gpu·offline)과 `helm lint`도 통과했다. 실제 클러스터에서 Pod로 실행해 보지는 않았다.
 - 문제와 수정: 처음 E2E에서는 `--profile airflow`가 env 파일의 `COMPOSE_PROFILES=infra,cpu`를 덮어써서 MinIO가 뜨지 않았고 `init`이 실패했다. 지금은 `COMPOSE_PROFILES`에 `airflow`를 덧붙이는 방식이다.
 
+## KubernetesPodOperator 실행 (2026-10-20, pgx spark k3s)
+
+- 환경: pgx spark(aarch64, GB10), 단일 노드 k3s v1.36.5+k3s1. sudo 없이 진행하려고 pgx docker에 임시 레지스트리 `registry:2`(`127.0.0.1:5000`)를 띄웠다. k3s containerd는 `registries.yaml` 없이도 `localhost:5000`에서 이미지를 받았다(smoke pod로 먼저 확인).
+- 이미지(arm64, pgx에서 빌드): `folio:0.1.0` 696MB, `folio-opensearch:0.1.0` 1.18GB. 추가 다운로드: `apache/airflow:3.1.0-python3.12` 2.11GB, `registry:2`. postgres·rabbitmq·minio는 k3s가 인터넷에서 직접 받았다.
+- folio 차트: 로컬 helm에서 SSH 터널(16443→6443)로 `helm install folio -n folio-kpo -f values-dev.yaml --set structure.enabled=false --set vlmStub.enabled=false`를 실행했다. 이미지는 `image.repository`·`infra.opensearch.image.repository` override로 지정했다. FR-26 `image.registry` 경로는 검증하지 않았다.
+- Airflow: pgx에서 `docker run --network host apache/airflow:3.1.0-python3.12`로 `airflow db migrate && airflow dags test folio_ingest`를 실행했다(`FOLIO_AIRFLOW_RUNNER=kubernetes`, kubeconfig는 env로 전달). 스케줄러 경로는 Compose에서 이미 검증했으므로 여기서는 `dags test`만 했다.
+- 결과:
+  - 성공 케이스: exit 0, `state=success`. 결과 JSON `status: succeeded`, OpenSearch에 `source_uri=kpo://pgx/ok` 청크 1개. 성공한 Pod는 삭제됐다.
+  - 실패 케이스(없는 키): exit 1, `state=failed`, `NoSuchKey`. 실패한 Pod(`run-pipeline-*`, Error)는 디버깅용으로 남았다(`delete_succeeded_pod`).
+  - 로그에 dev MinIO 비밀번호가 나오지 않았다. `kubernetes_default` connection 없음 오류 로그는 kubeconfig로 폴백하면서 나는 것이라 무해하다.
+- 정리: namespace `folio-kpo` 삭제, 레지스트리 컨테이너·push한 이미지·Airflow 이미지·`~/folio-kpo-test` 삭제, 터널과 로컬 kubeconfig 복사본 삭제. pgx의 다른 세션 컨테이너(m1-vlm, rerank, embed)와 crash 중인 nvidia device plugin은 건드리지 않았다.
+- 실행 전에 확인한 것: KPO `do_xcom_push` 기본값은 False라 xcom sidecar가 필요 없다. kubernetes runner의 결과는 task 로그에만 남는다.
+
+## 운영 Airflow 범위 결정 (2026-10-20)
+
+- 결정(사용자 요청): 운영 Airflow 자체는 설치하지 않는다. 대신 공식 Apache Airflow Helm 차트 기준의 설치 가이드와 values 예시, folio namespace용 RBAC를 제공한다. 위치는 [deploy/airflow/README.md](../deploy/airflow/README.md)이고 PRD 기술 스택 표에 반영했다.
+- `values-official-chart.yaml`: 차트 1.22.0(Airflow 3.2.2), KubernetesExecutor, FOLIO env, git-sync DAG, 외부 PostgreSQL(`data.metadataSecretName`), Redis 끔, API·JWT secret 이름 고정.
+- `rbac-folio-namespace.yaml`: Role(pods create/get/list/watch/delete/patch, pods/log get, events list/watch)과 RoleBinding(subject `airflow/airflow-worker`).
+- 검증: `helm template airflow apache-airflow/airflow --version 1.22.0 -f values-official-chart.yaml` 렌더링이 성공했다. worker SA 이름이 `airflow-worker`이고, task pod template에 `FOLIO_*` env가 들어가는 것을 확인했다. 실제 설치·실행은 하지 않았다(미검증).
+
 ## 미완료와 한계
 
-- KubernetesPodOperator 경로는 미검증이다(kind + Airflow 미실행). Pod에 프로젝트 ConfigMap을 마운트하지 않으므로 프로젝트가 들어 있는 이미지가 필요하다.
-- Compose Airflow는 개발용이다. SQLite를 쓰는 standalone이고, docker.sock 마운트는 호스트 root 권한과 같다. 운영 환경은 기존 Airflow 클러스터에 DAG만 배포하는 것을 전제로 한다.
+- 운영 Airflow 가이드는 렌더링만 확인했다. 공식 차트를 실제로 설치하고, git-sync·RBAC로 folio Pod를 띄우는 것은 미검증이다.
+- KPO는 단일 노드 k3s에서 `dags test`로만 검증했다. 스케줄러·KubernetesExecutor 경로는 미검증이다. Pod에 프로젝트 ConfigMap을 마운트하지 않으므로 프로젝트가 들어 있는 이미지가 필요하다.
+- Compose Airflow는 개발용이다. SQLite를 쓰는 standalone이고, docker.sock 마운트는 호스트 root 권한과 같다.
 - 오프라인 번들(`make_bundle.sh`)에는 Airflow 이미지가 들어 있지 않다.
