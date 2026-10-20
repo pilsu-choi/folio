@@ -18,7 +18,8 @@ Oct 20, 2026 · @pilsu
 ### 목표
 
 1. 고객사 구축을 **스키마 파일 + 파이프라인 YAML + 매퍼 함수** 세 가지 작성만으로 끝낸다.
-2. 디지털 PDF는 OCR 없이 텍스트 레이어 + DLA로 파싱하고, 스캔 페이지만 OCR로 폴백한다.
+2. 디지털 텍스트(PDF 텍스트 레이어, DOCX·HWPX·PPTX·XLSX·Markdown·TXT 원본)는 OCR·VLM 없이 파싱한다. 이미지 콘텐츠(이미지 파일, 스캔 페이지, 문서 안 그림·차트)는 VLM으로 처리하는 것을 기본값으로 한다.
+7. 청킹은 고정 길이가 아니라 문서 구조를 따르고, `max_tokens` 안에서 가능한 한 큰 의미 단위(섹션·표·목록)를 쪼개지 않는다.
 3. 같은 `run_pipeline` 함수를 API 워커, Airflow, 노트북에서 똑같이 실행한다.
 4. 매핑이나 스키마가 바뀌어도 저장된 Document JSON부터 재처리해서 OCR을 다시 하지 않는다.
 5. 어떤 단계든 `module:function` 하나로 교체할 수 있다. 상속·등록·플러그인 시스템은 요구하지 않는다.
@@ -71,15 +72,18 @@ P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 �
 | ID | 영역 | 요구사항 | 우선순위 | 수용 기준 |
 | --- | --- | --- | --- | --- |
 | FR-01 | Parse | 디지털 PDF를 텍스트 레이어 + 구조 분석 백엔드 결과의 좌표 매칭으로 Document JSON으로 변환 | P0 | 디지털 PDF 샘플에서 OCR 호출 0회, 블록 텍스트가 PyMuPDF 추출 원문과 일치 |
-| FR-02 | Parse | 페이지별 텍스트 레이어 품질 판정, 기준 미달 페이지만 OCR 폴백 | P0 | 스캔·깨진 폰트 페이지만 `text_source=ocr`, 나머지는 `pdf_text` |
+| FR-02 | Parse | 페이지별 텍스트 레이어 품질 판정, 기준 미달 페이지만 이미지 경로(VLM 기본, VLM을 끄면 구조 분석 OCR)로 폴백 | P0 | 스캔·깨진 폰트 페이지만 `text_source=vlm`(VLM을 끄면 `ocr`), 나머지는 `pdf_text` |
 | FR-03 | Parse | 구조 분석 백엔드의 표 구조로 셀 단위 `cells` 구성 | P0 | 샘플 표의 행·열 수와 셀 텍스트가 정답 파일과 일치 |
 | FR-04 | Parse | 회전·CropBox 보정, char 단위 매칭 옵션(한글 변환 PDF) | P1 | 회전 페이지·HWP 변환 PDF 샘플에서 블록 텍스트 누락 없음 |
-| FR-05 | Parse | 이미지 입력(PNG, JPG, TIFF)을 OCR 경로로 처리 | P1 | 이미지 샘플이 같은 Document JSON 형식으로 출력 |
-| FR-06 | Parse | E2E VLM 백엔드 폴백(복잡 표·스캔), 그림 캡션 옵션 | P2 | 설정에서 켠 경우에만 VLM 호출, 기본값은 꺼짐 |
+| FR-05 | Parse | 이미지 입력(PNG, JPG, TIFF, BMP, WebP)을 VLM 경로로 처리(기본). VLM을 끄면 구조 분석 OCR로 처리. 다중 페이지 TIFF는 프레임마다 페이지 1개 | P1 | 이미지 샘플이 같은 Document JSON 형식으로 출력되고 `text_source=vlm`, VLM을 끈 설정에서는 `ocr` |
+| FR-06 | Parse | VLM 백엔드를 이미지 콘텐츠에 기본 적용: 스캔·품질 미달 페이지, 문서 안 그림·차트 설명(`figure.text`), 구조 분석 결과가 기준 미달인 복잡 표. `parse.vlm: false`로 끌 수 있음 | P1 | 디지털 텍스트만 있는 샘플에서 VLM 호출 0회, 그림 포함 샘플에서 `figure` 블록마다 `text_source=vlm` 설명 생성, 호출 수를 `meta`에 기록 |
 | FR-19 | Parse | `StructureBackend` 인터페이스 + 후보 백엔드 2종 어댑터, 벤치마크 스크립트 | P0 | 백엔드를 바꿔도 같은 샘플의 Document JSON 스키마 검증 통과, 백엔드별 정확도·속도 리포트 |
 | FR-20 | Parse | DOCX·HWPX `convert` 모드(PDF 변환 후 Parse 경로), 기본값 | P1 | DOCX·HWPX 샘플이 페이지·bbox 포함 Document JSON으로 출력 |
 | FR-21 | Parse | DOCX·HWPX `native` 모드(XML 직접 파싱) | P0 | 헤딩·표 구조가 원본과 일치, 모델 호출 0회 |
-| FR-07 | Chunk | `auto` 전략(섹션·표·페이지·고정 길이) + 파라미터 덮어쓰기 | P0 | 문서 유형별 샘플에서 기대 전략이 선택되고, `max_tokens` 초과 청크 없음 |
+| FR-27 | Parse | PPTX `native` 파싱: 슬라이드 = 페이지, 제목 → `heading`, 텍스트 상자 → `paragraph`·`list`(읽기 순서), 표 → `cells`, 그림 → `figure`(VLM 설명), 발표자 노트는 옵션. 도형 위치로 bbox 계산 | P1 | 슬라이드 수·제목·표 셀이 원본과 일치, 텍스트 블록에 구조 분석 호출 0회 |
+| FR-28 | Parse | XLSX `native` 파싱: 시트 = 페이지, 시트 이름 → `section_path`, 데이터 영역 → `table`(병합 셀은 `spans`, 수식은 저장된 값), 차트·이미지 → `figure`. 숨김 시트 제외는 옵션 | P1 | 샘플의 시트별 행·열 수와 셀 값이 원본과 일치, 모델 호출 0회 |
+| FR-29 | Parse | Markdown·TXT `native` 파싱: Markdown은 헤딩·목록·GFM 표·코드 블록을 블록으로, TXT는 빈 줄 단위 `paragraph`로 변환. 인코딩 자동 판별(UTF-8, CP949·EUC-KR) | P1 | 헤딩 계층이 `section_path`와 일치, CP949 TXT 샘플이 글자 깨짐 없이 출력, 모델 호출 0회 |
+| FR-07 | Chunk | 기본 전략 `adaptive`: 문서 구조 트리에서 `max_tokens` 안에 들어가는 가장 큰 의미 단위를 청크로 만든다([청킹](#청킹)). 대안 전략 `page`·`fixed`, 파라미터 덮어쓰기. 청크 출력은 Chunk Record 계약으로 검증 | P0 | `max_tokens` 이하인 섹션은 청크 1개로 유지, `max_tokens` 이하인 표·목록은 분할되지 않음, 초과 청크·헤딩만 있는 청크 0개, 필수 필드가 빠지면 chunk 단계에서 실패 |
 | FR-08 | Map | 매퍼 함수 `(doc, chunk) -> dict` 호출, 미지정 시 공통 필드만 채움 | P0 | 매퍼가 필수 필드를 지우면 명확한 에러로 실패 |
 | FR-09 | Embed | OpenAI 호환 HTTP 엔드포인트로 배치 임베딩 | P0 | 차원이 스키마와 다르면 적재 전에 실패 |
 | FR-10 | Index | OpenSearch Sink `upsert`·`delete`, 같은 `doc_id` 재적재 시 이전 청크 교체 | P0 | 같은 문서를 두 번 적재해도 청크 수가 늘지 않음 |
@@ -107,10 +111,11 @@ P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 �
 | --- | --- | --- | --- |
 | `doc_id` | str | O | `source_uri + content_hash`에서 결정적으로 생성 |
 | `source_uri`, `content_hash`, `mime_type` | str | O | 원본 식별 |
-| `pages[].page`, `width`, `height` | int, float | O | 1부터 시작, 크기 단위 pt |
-| `pages[].blocks[].type` | enum | O | `heading`, `paragraph`, `list`, `table`, `kv`, `figure`, `caption`, `header`, `footer` |
-| `blocks[].text` | str | 표·그림 제외 O | 정렬·병합된 텍스트 |
-| `blocks[].bbox` | \[x0, y0, x1, y1\] | O | pt, 좌상단 원점 |
+| `pages[].page` | int | O | 1부터 시작. PDF·이미지는 페이지, PPTX는 슬라이드, XLSX는 시트 순서, Markdown·TXT는 1 |
+| `pages[].width`, `height` | float | 페이지형 입력 O | pt. XLSX·Markdown·TXT와 `native` DOCX·HWPX는 없음 |
+| `pages[].blocks[].type` | enum | O | `heading`, `paragraph`, `list`, `table`, `kv`, `figure`, `caption`, `code`, `header`, `footer` |
+| `blocks[].text` | str | 표 제외 O | 정렬·병합된 텍스트. `figure`는 VLM 설명(VLM을 끄면 빈 값 허용) |
+| `blocks[].bbox` | \[x0, y0, x1, y1\] | 페이지형 입력 O | pt, 좌상단 원점 |
 | `blocks[].text_source` | enum | O | `pdf_text`, `ocr`, `native`, `vlm` |
 | `blocks[].section_path` | list\[str\] | - | 상위 헤딩 경로 |
 | `blocks[].cells` | list\[list\[str\]\] | table일 때 O | 병합 셀 정보는 `spans`로 별도 |
@@ -124,8 +129,8 @@ P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 �
 | `doc_id`, `chunk_id` | str | O |
 | `content` | str | O |
 | `embedding` | list\[float\] | index 시점 O |
-| `page`, `section_path`, `source_uri` | int, list\[str\], str | O |
-| `chunk_type`, `bbox`, `contextualized_content` | - | - |
+| `page`, `section_path`, `source_uri` | int, list\[str\], str | O (`page`는 시작 페이지) |
+| `pages`, `chunk_type`, `bbox`, `contextualized_content` | - | - (`pages`는 여러 페이지에 걸친 청크의 전체 범위) |
 | 그 외 모든 키 | 자유 | - |
 
 ### Sink
@@ -148,7 +153,7 @@ class Sink(Protocol):
 
 ```yaml
 parse: folio.parse:default            # 또는 {fn: ..., ocr_fallback: true, dpi: 144}
-chunk: {fn: folio.chunk:auto, max_tokens: 512}
+chunk: {fn: folio.chunk:adaptive, max_tokens: 1024, min_tokens: 128}
 map:   mappers:map_contract           # 생략 시 공통 필드만
 embed: {fn: folio.embed:http, url: http://embed:8000/v1, batch_size: 64}
 sink:  {type: opensearch, index: contracts}
@@ -174,11 +179,11 @@ storage: s3://folio-artifacts/       # 중간 산출물 위치
 
 ### 기본 구성 (M1 벤치마크 전 가정)
 
-1. 디지털 페이지: 텍스트 레이어 + 구조 분석 백엔드의 레이아웃·표 결과 → 좌표 매칭.
-2. 스캔·품질 미달 페이지: 구조 분석 백엔드의 OCR 결과 사용.
-3. 위 결과가 기준 미달인 페이지(복잡 표, 손글씨 등): 설정에서 켠 경우에만 E2E VLM 백엔드로 재처리.
+1. 디지털 페이지: 텍스트 레이어 + 구조 분석 백엔드의 레이아웃·표 결과 → 좌표 매칭. VLM 호출 없음.
+2. 이미지 콘텐츠(이미지 파일, 스캔·품질 미달 페이지): VLM 백엔드로 처리(기본). `parse.vlm: false`이면 구조 분석 백엔드의 OCR 결과 사용.
+3. 디지털 페이지 안의 `figure` 영역과 구조 분석 결과가 기준 미달인 복잡 표: 해당 영역 이미지만 VLM에 보내 설명·표 구조를 받는다(기본).
 
-모델 서빙은 많아야 2개(구조 분석 + 선택 VLM)다.
+모델 서빙은 많아야 2개(구조 분석 + VLM)다. GPU가 없는 환경은 `parse.vlm: false`로 VLM 없이 운영한다.
 
 ### 백엔드 인터페이스
 
@@ -224,6 +229,65 @@ HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. EWL에
 
 모든 후보에서 한글 글꼴(문서가 쓰는 글꼴 또는 대체 글꼴)을 이미지에 넣어야 하며, 비교는 변환 PDF를 같은 Parse 경로에 넣어 블록 텍스트·표 구조 정답 일치율과 페이지당 시간으로 한다.
 
+### 입력 형식별 경로
+
+`folio.parse:default`가 MIME 타입으로 경로를 고른다. 모든 경로의 출력은 같은 Document JSON이다.
+
+| 형식 | 기본 경로 | VLM 사용 (기본값) | 페이지·bbox |
+| --- | --- | --- | --- |
+| PDF | 텍스트 레이어 + 구조 분석 | 스캔 페이지, 그림, 복잡 표 | 있음 |
+| DOCX·HWPX | `convert`(PDF 변환 → PDF 경로), `native` 옵션 | `convert`는 PDF와 같음, `native`는 포함 이미지 | `convert`만 있음 |
+| PPTX | `native`(python-pptx) | 슬라이드 안 그림·차트 이미지 | 슬라이드 = 페이지, 도형 위치로 bbox |
+| XLSX | `native`(openpyxl) | 시트 안 차트·이미지 | 시트 = 페이지, bbox 없음 |
+| Markdown·TXT | `native` | 사용 안 함 | 페이지 1개, bbox 없음 |
+| 이미지 | VLM | 전체 | 이미지 = 페이지 |
+
+- PPTX는 텍스트가 원본에 구조화돼 있으므로 PDF 변환을 기본으로 하지 않는다. 슬라이드 레이아웃이 복잡해 읽기 순서가 틀리는 고객사는 `convert` 옵션(LibreOffice로 PDF 변환)을 쓴다.
+- XLSX는 시트마다 비어 있지 않은 연속 영역을 `table` 블록 하나로 만든다. 첫 행을 헤더로 보고, 청킹에서 행 단위로 나눌 때 헤더를 반복한다.
+- Markdown 안의 이미지 링크는 따라가지 않는다(대체 텍스트만 `figure.text`로 남긴다).
+
+## 청킹
+
+결론: **기본 전략 `adaptive`는 문서 구조 트리를 위에서부터 내려가며, `max_tokens` 안에 들어가는 가장 큰 의미 단위를 청크 하나로 만든다.** 고정 토큰 분할은 구조가 없는 텍스트에서만, 그리고 원자 단위 하나가 `max_tokens`를 넘을 때만 쓴다.
+
+### 구조 트리
+
+Document JSON의 `heading`과 `section_path`로 트리를 만든다. 헤딩이 없는 형식은 슬라이드(PPTX)·시트(XLSX)·페이지를 상위 노드로 쓴다. 리프는 원자 단위인 `paragraph`, `list`, `table`, `kv`, `figure`, `code` 블록이다. `header`·`footer`는 청크에 넣지 않는다.
+
+### 알고리즘
+
+1. **위에서부터 담기**: 노드(섹션) 전체의 토큰 수가 `max_tokens` 이하면 그 노드를 청크 1개로 만들고 내려가지 않는다. 넘으면 자식 노드로 내려가 같은 판단을 반복한다.
+2. **원자 단위 보존**: 리프 블록은 쪼개지 않는다. 하나가 `max_tokens`를 넘을 때만 블록 안의 경계로 나눈다.
+
+   | 블록 | 분할 경계 | 보존 규칙 |
+   | --- | --- | --- |
+   | `paragraph` | 문장 | 문장 중간에서 자르지 않음 |
+   | `list` | 항목 | 하위 항목은 상위 항목과 함께 |
+   | `table` | 행 묶음 | 각 청크에 헤더 행 반복, 병합 셀(`spans`)이 걸친 행은 함께 |
+   | `code` | 줄 | 빈 줄 경계를 우선 |
+   | `figure` | 나누지 않음 | 캡션(`caption`)과 함께 |
+
+3. **작은 형제 합치기**: 같은 부모 아래 이웃한 청크가 `min_tokens`보다 작으면 `max_tokens`를 넘지 않는 범위에서 합친다. 부모 섹션 경계는 넘지 않는다.
+4. **헤딩 보존**: 헤딩만 있는 청크는 만들지 않는다. 헤딩은 뒤따르는 본문 청크에 붙인다.
+5. **맥락 부착**: `content`는 원문 그대로 두고, `contextualized_content`에 `section_path`(예: `계약서 > 제5조 손해배상`)를 앞에 붙인 텍스트를 넣는다. 임베딩 입력은 `contextualized_content`를 쓴다.
+
+### 파라미터
+
+| 파라미터 | 기본값 (가정) | 설명 |
+| --- | --- | --- |
+| `max_tokens` | 1024 | 청크 최대 크기. 임베딩 모델 최대 입력 이하로 둔다 |
+| `min_tokens` | 128 | 이보다 작은 이웃 청크를 합친다 |
+| `tokenizer` | 임베딩 모델 토크나이저 | 토큰 수 계산 기준. 지정이 없으면 문자 수 근사 |
+| `overlap` | 0 | 구조 경계로 자르므로 기본은 겹침 없음. `fixed` 분할 구간에만 적용 |
+
+기본값은 M1에서 Eval(FR-18) 기준으로 조정한다. `max_tokens`를 없앨 수는 없다. 임베딩 모델 입력 길이에 한계가 있고, 너무 큰 청크는 검색 정밀도를 떨어뜨리기 때문이다.
+
+### 대안 전략과 결정성
+
+- `page`: 페이지(슬라이드·시트) 1개 = 청크 1개, 넘치면 `adaptive` 규칙으로 분할. 인용을 페이지 단위로 보여 줘야 할 때 쓴다.
+- `fixed`: 구조를 무시한 고정 토큰 분할(`overlap` 적용). 기준선 비교용이다.
+- `chunk_id`는 `doc_id` + 청크에 포함된 블록 범위 + 전략·파라미터 해시로 만든다. 같은 입력과 설정은 같은 `chunk_id`를 만든다.
+
 ## 배포
 
 라이브러리·서비스 코드는 배포 방식을 모른다. Docker와 k8s의 차이는 `deploy/` 아래 설정에만 두고, 이미지와 환경변수 계약은 하나로 유지한다.
@@ -234,7 +298,7 @@ HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. EWL에
 | --- | --- | --- |
 | `folio` | `folio/` 라이브러리 + `service/` | `api`(FastAPI), `worker`(Celery), `cli`(`folio init` 등 일회성 작업) |
 | `folio-structure` | 구조 분석 백엔드 모델 서버 (CPU·GPU 태그 분리) | HTTP 추론 엔드포인트 |
-| `folio-vlm` (선택) | E2E VLM 폴백 서버 | HTTP 추론 엔드포인트 |
+| `folio-vlm` | VLM 서버 (이미지 콘텐츠 기본 경로, `parse.vlm: false`이면 띄우지 않음) | HTTP 추론 엔드포인트 |
 | 고객사 이미지 | `FROM folio` + `project-template` 산출물(schemas, pipelines, `mappers.py`) | `folio`와 동일 |
 
 - 모델 가중치는 이미지에 굽지 않고 볼륨(Compose) 또는 PVC(k8s)로 마운트한다. 폐쇄망 번들에서만 함께 묶는다.
@@ -248,7 +312,7 @@ HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. EWL에
 | 대상 | 단일 서버, PoC, 소규모 고객사, 로컬 개발 | 고객사 k8s 클러스터, 다중 노드 |
 | 설정 주입 | `.env` + 마운트한 설정 디렉터리 | ConfigMap(파이프라인 YAML·스키마), Secret(접속 정보) |
 | 초기화 | `folio cli init` 일회성 서비스 | Helm `pre-install`·`pre-upgrade` hook Job |
-| GPU | `deploy.resources.reservations.devices`, GPU 없는 profile 제공 | `nvidia.com/gpu` 리소스 요청, nodeSelector·toleration |
+| GPU | `deploy.resources.reservations.devices`, GPU 없는 profile 제공 (VLM 끔, 이미지 콘텐츠는 구조 분석 OCR) | `nvidia.com/gpu` 리소스 요청, nodeSelector·toleration |
 | 의존 인프라 | compose에 포함 (외부 지정 가능) | 외부 엔드포인트 기본, 개발용 내장 옵션 |
 | 확장 | 워커 `--scale` 수동 | replica 수동 지정 (오토스케일링은 비목표) |
 | 폐쇄망 | `docker load` + 같은 compose 파일 | 사설 레지스트리 push + `helm install` (values에 레지스트리 지정) |
@@ -259,7 +323,7 @@ HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. EWL에
 
 | 영역 | 요구사항 | 측정 |
 | --- | --- | --- |
-| 성능 | 디지털 PDF는 OCR 경로보다 페이지당 처리 시간이 짧아야 한다. Parse 워커는 GPU 서버와 같은 네트워크에 배치한다 | 단계별 처리 시간을 `meta`와 로그에 기록, 페이지당 p50·p95 |
+| 성능 | 디지털 PDF는 OCR·VLM 경로보다 페이지당 처리 시간이 짧아야 한다. VLM은 이미지 콘텐츠에만 호출한다. Parse 워커는 GPU 서버와 같은 네트워크에 배치한다 | 단계별 처리 시간과 VLM 호출 수를 `meta`와 로그에 기록, 페이지당 p50·p95 |
 | 재처리 | `--from map` 재처리는 모델 호출 없이 끝난다 | 재처리 job의 DLA·OCR 호출 수 = 0 |
 | 멱등성 | 같은 파일·설정의 재실행은 같은 `doc_id`·`chunk_id`를 만든다 | 재실행 후 인덱스 문서 수 불변 |
 | 장애 처리 | 페이지 단위 실패가 문서 전체를 막지 않는다. 실패 페이지는 `meta.errors`에 남기고 job은 `partial` 상태 | 손상 PDF 샘플로 테스트 |
@@ -277,9 +341,9 @@ HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. EWL에
 <repo>/
 ├─ folio/                    # pip 패키지 (서비스 의존성 없음)
 │  ├─ contracts/             # Document JSON, Chunk Record, Sink 타입 + JSON Schema
-│  ├─ parse/                 # default: 텍스트 레이어 + 구조 분석 백엔드 매칭, OCR·VLM 폴백, docx·hwpx(convert/native)
+│  ├─ parse/                 # default(MIME별 분기): pdf, docx·hwpx(convert/native), pptx, xlsx, markdown·txt, image
 │  ├─ backends/              # StructureBackend 어댑터 (docling, ppstructure, vlm)
-│  ├─ chunk/                 # auto, section, table, page, fixed
+│  ├─ chunk/                 # adaptive(기본), page, fixed
 │  ├─ embed/                 # http (OpenAI 호환)
 │  ├─ sinks/                 # opensearch, milvus, pgvector
 │  ├─ storage.py             # 중간 산출물 저장 (S3 호환 / 로컬)
@@ -293,14 +357,16 @@ HWPX → PDF 변환기는 후보를 같은 샘플로 비교해 정한다. EWL에
 │  ├─ compose/               # docker compose (GPU·CPU profile, 폐쇄망 override)
 │  ├─ helm/folio/            # Helm 차트 (api, worker, model server, init Job)
 │  └─ bundle/                # 폐쇄망 번들 생성 스크립트
-└─ tests/fixtures/           # 디지털·스캔·혼합·표·회전·HWP 변환 PDF
+└─ tests/fixtures/           # 디지털·스캔·혼합·표·회전·HWP 변환 PDF, DOCX·HWPX·PPTX·XLSX·MD·TXT(CP949 포함)·이미지
 ```
 
 | 영역 | 선택 | 비고 |
 | --- | --- | --- |
 | 언어 | Python 3.11+ | 타입 힌트 필수 |
 | PDF | PyMuPDF | 텍스트 레이어·렌더링 |
-| 구조 분석 · OCR | Docling 또는 PP-StructureV3 (M1에서 확정), E2E VLM 폴백 선택 | 모델 교체는 `parse` 옵션의 엔드포인트로 |
+| 구조 분석 · OCR | Docling 또는 PP-StructureV3 (M1에서 확정) | 모델 교체는 `parse` 옵션의 엔드포인트로 |
+| VLM | 이미지 콘텐츠 기본 경로, 모델은 M1에서 확정 | OpenAI 호환 HTTP 엔드포인트, `parse.vlm: false`로 끔 |
+| Office · 텍스트 | python-pptx, openpyxl, markdown-it-py, charset-normalizer | PPTX·XLSX·Markdown 파싱, TXT 인코딩 판별 |
 | API · 워커 | FastAPI, Celery, RabbitMQ | 기존 사내 스택 |
 | 메타 DB | PostgreSQL | `jobs` 테이블 하나 |
 | 저장소 | S3 호환 Object Storage | 로컬 파일시스템 폴백 |
@@ -319,6 +385,8 @@ M1에서 디지털 PDF 하나로 처음부터 끝까지 도는 것을 먼저 만
 - [x] 레포·패키지 이름: `folio`로 확정 (knowledge-forge와 구분). CLI도 `folio`
 - [ ] 기본 구조 분석 백엔드 확정: Docling vs PP-StructureV3를 M1에서 고객사 샘플(한글 포함)로 비교. MinerU 라이선스 확인
 - [ ] HWPX → PDF 변환기: 후보(EWL 방식 포함)를 샘플로 비교해 선택. EWL 방식을 반드시 따르지 않는다 (DOCX·HWPX는 `convert` 기본 + `native` 옵션으로 결정됨)
+- [ ] VLM 모델: 스캔 페이지 파싱(E2E 문서 VLM)과 그림·차트 설명(범용 VLM)을 모델 하나로 할지 둘로 나눌지. 서빙 모델 2개 상한(구조 분석 + VLM)을 지키려면 하나가 유리하다 (이미지 콘텐츠에 VLM 기본 적용은 결정됨)
+- [ ] `adaptive` 청킹 기본값: `max_tokens`·`min_tokens`를 임베딩 모델과 Eval 결과로 확정
 - [ ] 첫 적용 고객사와 샘플 문서 세트: 수용 기준과 성능 기준선의 근거가 된다
 - [ ] 마일스톤별 일정과 담당자
 - [ ] 라이선스·배포 형태: 사내 패키지 저장소 배포인지, 고객사에 소스로 전달하는지
