@@ -132,7 +132,8 @@ class PPStructureBackend:
                 table_boxes.append((bbox, score))
 
         for i, t in enumerate(res.get("table_res_list") or []):
-            cells_px = t.get("cell_box_list") or []
+            cells_px = t.get("cell_box_list")
+            cells_px = [] if cells_px is None else list(cells_px)  # paddle returns a numpy array
             html = t.get("pred_html") or ""
             grid = _grid(html)
             if i < len(table_boxes):
@@ -153,7 +154,8 @@ class PPStructureBackend:
         if words is None:
             o = res.get("overall_ocr_res") or {}
             texts = o.get("rec_texts") or []
-            scores = o.get("rec_scores") or []
+            scores = o.get("rec_scores")
+            scores = [] if scores is None else list(scores)
             boxes = o.get("rec_boxes")
             polys = o.get("rec_polys") if o.get("rec_polys") is not None else o.get("dt_polys")
             ocr_words = []
