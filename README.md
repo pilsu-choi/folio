@@ -339,13 +339,13 @@ flowchart LR
 ```
 
 ```bash
-folio eval testset --pipeline contracts --pages 50 --pairs 20 \
+folio eval testset --pipeline contracts --pages 50 --pairs 20 --min-per-type 5 \
   --llm-extra '{"chat_template_kwargs": {"enable_thinking": false}}'   # FOLIO_LLM_URL/MODEL, vLLM이면 사고 모드 끔
 folio eval run --pipeline contracts --testset testset.json            # 결과: eval-out/<설정 커밋>.json
 folio eval compare eval-out/<a>.json eval-out/<b>.json
 ```
 
-질문 유형: 한 쪽 `fact`·`table`·`section`, 같은 문서의 두 쪽 `multi_hop`·`comparison`·`temporal`·`multi_intent`, 서로 다른 문서 `multi_document`·`comparison`. `--types`로 고른다. `--method heuristic`은 LLM 없이 `fact`만 만든다(개발·CI용). 답변 품질(근거 없음 응답, 집계·요약형 질문)은 아직 평가하지 않는다.
+질문 유형: 한 쪽 `fact`·`table`·`section`, 같은 문서의 두 쪽 `multi_hop`·`comparison`·`temporal`·`multi_intent`, 서로 다른 문서 `multi_document`. `--types`로 고른다. 쪽 쌍 하나에는 유형 하나만 요청한다. `--min-per-type N`을 주면 N개가 안 찬 유형만 아직 쓰지 않은 쪽으로 추가 생성한다(최대 `--max-rounds` 회). `--method heuristic`은 LLM 없이 `fact`만 만든다(개발·CI용). 답변 품질(근거 없음 응답, 집계·요약형 질문)은 아직 평가하지 않는다.
 
 </details>
 
@@ -357,7 +357,7 @@ folio eval compare eval-out/<a>.json eval-out/<b>.json
 | DOCX·HWPX·HWP | ✅ `convert` 모드(PDF 변환 후 파싱, FR-20) ([작업 기록](wiki/2026-10-21-docx-hwpx-convert-mode.md)). ⏸️ `native` 모드(FR-21) 보류. PPTX도 `pptx_mode="convert"`로 같은 변환 서버를 쓸 수 있다(픽스처로 확인, 기본은 `native`). 한국어 어절은 공백 글리프가 없어도 글자 간격으로 나눈다 |
 | VLM | 🟡 연동 완료, 운영 모델 미정(개발용 stub만 있음) |
 | 검색 API | ✅ `POST /v1/search` + YAML `retrieval:` ([작업 기록](wiki/2026-10-20-implementation-search-api.md)) |
-| 평가 | 🟡 구간 기반 testset·유형별 지표·부트스트랩 CI. M1 한국어 질의 249개로 채점 경로 확인, 실제 LLM 생성(다중 쪽 유형 포함) 미확인 ([작업 기록](wiki/2026-10-21-eval-span-testset.md)) |
+| 평가 | 🟡 구간 기반 testset·유형별 지표·부트스트랩 CI. M1 한국어 질의 249개로 채점 경로 확인, OpenRouter qwen3.8-27b로 8개 유형 생성 확인(공개 샘플, 유형 적합성은 사람 검토 필요) ([작업 기록](wiki/2026-10-21-eval-span-testset.md)) |
 | 생성(Chat API) | 🟡 `POST /v1/chat` 무상태 멀티턴 + YAML `generation:`. stub LLM으로만 검증, 운영 LLM 미정, 스트리밍 미지원 ([작업 기록](wiki/2026-10-21-generation-multiturn.md)) |
 | 채팅 App | 🟡 `apps/chat`: SSO(OIDC)·대화 저장·UI. 실제 `/v1/chat`(stub LLM)·로컬 테스트용 OIDC 서버로 검증, 실제 IdP·LLM·배포 미확인 ([작업 기록](wiki/2026-10-21-chat-app-sso.md)) |
 | 구조 분석 | ✅ 기본 PP-StructureV3 GPU ([작업 기록](wiki/2026-10-21-ppstructure-gpu-default.md)) |

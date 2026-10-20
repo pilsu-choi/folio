@@ -85,19 +85,51 @@ def test_testset_llm_single_page_filters(monkeypatch):
     assert [it["qid"] for it in items] == ["q0000", "q0001"]
 
 
-def test_testset_llm_page_pairs(monkeypatch):
-    same = [
+def _obedient(replies, prompts):
+    """Fake LLM: returns the replies whose type the prompt asked for and whose quotes are in the prompt."""
+    def chat(messages, **_):
+        prompt = messages[0]["content"]
+        prompts.append(prompt)
+        out = [it for it in replies if f"- {it['type']}: " in prompt and all(e["quote"] in prompt for e in it["evidence"])]
+        return json.dumps(out, ensure_ascii=False)
+    return chat
+
+
+def test_testset_llm_page_pairs_one_type_each(monkeypatch):
+    replies = [
         q("temporal", "개정 전후 청구 기한 변화는?", ("A", "보험금은 사고일로부터 3년 이내에 청구"), ("B", "청구 기한이 5년으로 늘어났다")),
         q("multi_hop", "한쪽만 인용", ("A", "보험금은 사고일로부터 3년 이내에 청구")),  # one side only
     ]
-    items, stats = _gen(monkeypatch, same, [D1, D2], pages=0, pairs=3, types=("temporal", "multi_hop"))
-    assert stats["units"] == 2 and stats["one_side_only"] == {"multi_hop": 2}  # d2 has no same-doc partner
-    assert [it["type"] for it in items] == ["temporal"] and stats["dup"] == {"temporal": 1}
-    assert {(e["doc_id"], e["page"]) for e in items[0]["evidence"]} == {("d1", 1), ("d1", 2)}  # labels swapped: still found
+    prompts = []
+    monkeypatch.setattr(testset, "chat", _obedient(replies, prompts))
+    items, stats = testset.generate([D1, D2], pages=0, pairs=2, types=("temporal", "multi_hop"), llm_url="http://x",
+                                    min_chars=0)
+    asked = sorted(t for p in prompts for t in testset.TYPES if f"- {t}: " in p)
+    assert stats["units"] == 2 and asked == ["multi_hop", "temporal"]  # one pair per type, one type per pair
+    assert [it["type"] for it in items] == ["temporal"] and stats["one_side_only"] == {"multi_hop": 1}
+    assert {(e["doc_id"], e["page"]) for e in items[0]["evidence"]} == {("d1", 1), ("d1", 2)}  # d2 has one page
 
     cross = [q("multi_document", "두 회사 2025년 매출 비교", ("A", "| 매출 | 120억 | 150억 |"), ("B", "2025년 매출은 90억 원으로"))]
-    items, stats = _gen(monkeypatch, cross, [_doc("d1", [D1_P1]), D2], pages=0, pairs=1, types=("multi_document",))
+    monkeypatch.setattr(testset, "chat", _obedient(cross, prompts))
+    items, stats = testset.generate([_doc("d1", [D1_P1]), D2], pages=0, pairs=1, types=("multi_document",),
+                                    llm_url="http://x", min_chars=0)
     assert stats["units"] == 1 and len(items) == 1 and {e["doc_id"] for e in items[0]["evidence"]} == {"d1", "d2"}
+
+
+def test_testset_min_per_type_tops_up(monkeypatch):
+    replies = [q("fact", "청구 기한은?", ("A", "보험금은 사고일로부터 3년 이내에 청구")),
+               q("fact", "개정 후 기한은?", ("A", "청구 기한이 5년으로 늘어났다")),
+               q("fact", "상대 회사 매출은?", ("A", "2025년 매출은 90억 원으로 집계"))]
+    prompts = []
+    monkeypatch.setattr(testset, "chat", _obedient(replies, prompts))
+    items, stats = testset.generate([D1, D2], pages=1, pairs=0, types=("fact",), llm_url="http://x", min_chars=0,
+                                    min_per_type=3)
+    assert len(items) == 3 and stats["rounds"] == 2 and stats["units"] == 3 and stats["short"] == {}
+    assert len(prompts) == 3  # round 2 asked only the two unused pages
+    prompts.clear()
+    items, stats = testset.generate([D1, D2], pages=1, pairs=0, types=("fact",), llm_url="http://x", min_chars=0,
+                                    min_per_type=5)
+    assert len(items) == 3 and stats["short"] == {"fact": 2} and len(prompts) == 3  # pages ran out, no repeats
 
 
 def test_testset_llm_failures(monkeypatch):
