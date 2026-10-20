@@ -83,10 +83,35 @@ sources:
   - `compare`(1024/128 → 512/64): recall@5 +0.012, 95% CI [−0.019, 0.043]. 차이가 노이즈 범위라는 것을 신뢰구간이 보여 준다.
 - CLI 확인: `folio eval testset --docs <dir> --method heuristic`으로 24개 생성, 연결할 수 없는 LLM URL에서는 모든 단위가 실패해 오류, 모르는 유형은 오류.
 
+## 실제 LLM 생성 (2026-10-21, OpenRouter)
+
+- 환경: `FOLIO_LLM_URL=https://openrouter.ai/api/v1`, `FOLIO_LLM_MODEL=qwen/qwen3.8-27b`, `--llm-extra '{"reasoning": {"enabled": false}}'`. 공개 문서만 외부로 보낼 수 있어서 M1 공개 샘플 16개(`parse_final`)를 썼다. 사용자가 직접 실행했다(자동 승인 정책이 외부 전송을 막아서).
+- 명령: `folio eval testset --docs <m1docs> --pages 10 --pairs 10`. 호출 20회, 실패 0회. 예상 비용은 $0.03 안팎이다(실제 청구액은 확인하지 않음).
+
+| 유형 | 생성 | 남음 | 버린 사유 |
+| --- | --- | --- | --- |
+| fact | 10 | 9 | unlocated 1 |
+| section | 8 | 7 | unlocated 1 |
+| table | 2 | 1 | header_only 1 |
+| comparison | 8 | 3 | unlocated 3, one_side_only 2 |
+| multi_intent | 1 | 1 | |
+| temporal | 1 | 1 | |
+| multi_hop, multi_document | 0 | 0 | 생성 안 됨 |
+
+- 남은 질문 22개를 같은 문서의 청크(adaptive 1024/128, 512/64)로 채점하면 두 설정 모두 `unreachable` 0개다. 실제 LLM이 만든 여러 쪽·여러 문서 근거(다른 문서 비교 2개 포함)도 채점 경로가 동작한다. 어휘 검색기 기준이라 점수는 품질 비교가 아니다.
+- 표본 검토(사람이 읽을 질문 22개, 작업자 검토)
+  - 좋은 예: "개소식 날짜와 그날 개시된 캠코 전산연계 시작 시점"(temporal, 같은 문서 2쪽·6쪽), "할부 철회 기간과 환불 기준 동의"(multi_intent, 1쪽·5쪽).
+  - 억지 질문: 다른 문서 비교 "2026년 2/4분기 경제활동인구 증감과 2025년 1/4분기 취업자 증감 비교"는 실제 사용자가 할 질문이 아니다. 비슷한 쪽끼리 묶어도 비교할 이유가 없는 쌍이 생긴다.
+  - 근거 부족: "예금거래기본약관 제10012호의 개정 날짜"는 근거가 "(2024. 9. 27. 개정)"뿐이라 문서 번호가 근거로 확인되지 않는다. 표 행만 인용한 질문은 열 이름이 근거에 없다.
+- 발견한 한계와 다음 작업
+  - `multi_hop`, `multi_document`가 하나도 생성되지 않았다. 다른 문서 쌍에 `multi_document`와 `comparison`을 함께 요청하면 LLM이 `comparison`만 고른다. 다른 문서 쌍은 `multi_document`만 요청하고, 같은 문서 쌍은 유형을 하나씩 지정해 요청하는 방식으로 바꿀 필요가 있다.
+  - `comparison`의 버림 비율(5/8)이 높다. 두 쪽에서 인용을 정확히 복사하는 데 실패하는 경우가 많다.
+  - 생성 수가 유형별로 1~9개라 유형별 지표는 아직 신뢰구간이 넓다. 유형별 최소 개수를 정하고 그만큼 반복 생성하는 옵션이 필요하다.
+
 ## 미완료와 다음 작업
 
 - **호환성**: 이전 형식(`relevant_chunk_ids`) testset은 더 이상 읽지 않는다. CLI 옵션 `--chunks`·`--n`은 `--docs`·`--pages`·`--pairs`로 바뀌었다.
-- **미검증**: 실제 LLM으로 여러 쪽·여러 문서 유형을 생성하는 것. 작업 시점에 pgx GPU를 다른 세션(vlm-scan 측정, PP 메모리 조사)이 쓰고 있어서 27B LLM을 띄우지 않았다. 유형별 생성 수와 걸러진 비율, 질문 품질(사람이 표본 검토)을 확인해야 한다.
+- 실제 LLM 생성은 위 OpenRouter 실행으로 소규모 확인했다. `multi_hop`·`multi_document` 생성과 유형별 최소 개수 보장은 미해결이다. 고객사 문서는 외부로 보낼 수 없으므로 pgx vLLM으로 다시 확인해야 한다.
 - 답변 평가가 필요한 유형은 다루지 않는다: Negative/Unanswerable(근거 없음 응답), Aggregation·Global/Summarization(근거가 top-k보다 많음). 운영 LLM이 정해진 뒤 `/v1/chat` 답변 평가로 추가한다.
 - Conditional(질문에서 필터 추출)은 PRD 비목표라서 다루지 않는다.
 - `bench/m1/chunking/`의 벤치마크 스크립트는 그대로 뒀다(토큰 예산 지표 등 벤치마크 전용 기능이 있음).
