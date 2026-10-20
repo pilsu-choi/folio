@@ -174,6 +174,8 @@ def send_message(cid: str, body: MessageIn, request: Request, user: User):
         if value is not None:
             req[key] = value
     answer = _ask_folio(request.app.state.folio, req)
+    answer["hits"] = [{**h, "record": {k: v for k, v in (h.get("record") or {}).items() if k != "embedding"}}
+                      for h in answer.get("hits") or []]  # vectors are useless to the UI and bloat every row
     turn = store.add_turn(user["sub"], cid, body.content, answer)
     return {"messages": [_msg(m) for m in turn], "conversation": _conv(store.get_conversation(user["sub"], cid))}
 

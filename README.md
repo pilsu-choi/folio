@@ -182,7 +182,7 @@ sequenceDiagram
     A-->>U: 201 {messages, conversation}
 ```
 
-- **로그인**: `FOLIO_APP_AUTH=oidc`면 OIDC 코드 플로(PKCE, ID 토큰 서명·nonce 검증)로 로그인한다. 세션은 서명된 쿠키(HttpOnly, SameSite=Lax)다. 개발용 `dev` 모드는 고정 사용자로 동작한다
+- **로그인**: `FOLIO_APP_AUTH=oidc`면 OIDC 코드 플로(PKCE, ID 토큰 서명·nonce 검증)로 로그인한다. 세션은 서명된 쿠키(HttpOnly, SameSite=Lax)다. 기본값은 `oidc`이고, 로그인 없는 개발용 `dev` 모드(고정 사용자)는 명시해야 켜진다
 - **권한**: `FOLIO_APP_ACL_CLAIMS='{"tenant_id": "tenant"}'`이면 토큰의 `tenant` 클레임이 검색 필터 `tenant_id`가 된다. 클라이언트가 같은 키를 보내도 덮어쓰고, 클레임이 없는 사용자는 검색할 수 없다(403)
 - **대화 API**: 대화 목록·생성·조회·이름 변경·삭제, 메시지 전송, 답변 피드백(`up`·`down`), "이 질문부터 삭제". 다른 사용자의 대화는 404
 - **UI**: 대화 목록, `[n]` 인용을 누르면 근거 청크(문서·섹션·페이지·점수)를 보여 주는 패널, 재작성된 검색어 표시, 라이트·다크, 모바일. 외부 리소스를 쓰지 않아 폐쇄망에서 그대로 쓴다
@@ -190,7 +190,7 @@ sequenceDiagram
 ```bash
 pip install -e ".[app]"
 folio api &                                                  # :8080, generation: 이 켜진 파이프라인
-FOLIO_API_URL=http://localhost:8080 uvicorn --factory apps.chat.main:create_app --port 8000   # dev 모드
+FOLIO_APP_AUTH=dev FOLIO_API_URL=http://localhost:8080 uvicorn --factory apps.chat.main:create_app --port 8000
 # SSO: FOLIO_APP_AUTH=oidc OIDC_ISSUER=https://idp/realms/x OIDC_CLIENT_ID=folio-chat OIDC_CLIENT_SECRET=...
 #      FOLIO_APP_SECRET_KEY=... (redirect URI: <app>/auth/callback)
 ```

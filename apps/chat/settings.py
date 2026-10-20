@@ -7,7 +7,7 @@ import os
 
 
 def auth_mode() -> str:
-    mode = os.environ.get("FOLIO_APP_AUTH") or "dev"
+    mode = os.environ.get("FOLIO_APP_AUTH") or "oidc"  # fail closed: dev (no login) must be asked for
     if mode not in ("dev", "oidc"):
         raise ValueError(f"FOLIO_APP_AUTH must be dev or oidc, got {mode!r}")
     return mode

@@ -172,7 +172,7 @@ Chat app (`apps/chat`):
 
 | Variable | Meaning |
 | --- | --- |
-| `FOLIO_APP_AUTH` | `dev` (default, fixed user `FOLIO_APP_DEV_USER`, claims `FOLIO_APP_DEV_CLAIMS` JSON) or `oidc` |
+| `FOLIO_APP_AUTH` | `oidc` (default; startup fails without the secret and client) or `dev` (no login: fixed user `FOLIO_APP_DEV_USER`, claims `FOLIO_APP_DEV_CLAIMS` JSON) |
 | `OIDC_ISSUER` (or `OIDC_METADATA_URL`), `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_SCOPES` | IdP (Keycloak, Entra ID, Google, ...); redirect URI `<app>/auth/callback` |
 | `FOLIO_APP_SECRET_KEY` | session cookie signing key (required for `oidc`) |
 | `FOLIO_APP_COOKIE_SECURE` | `Secure` cookie flag (default true for `oidc`) |

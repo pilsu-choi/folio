@@ -35,9 +35,9 @@ class Folio:
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     monkeypatch.setenv("FOLIO_APP_DATABASE_URL", f"sqlite:///{tmp_path}/app.db")
-    for k in ("FOLIO_APP_AUTH", "FOLIO_APP_ACL_CLAIMS", "FOLIO_APP_PIPELINES", "FOLIO_APP_DEV_CLAIMS",
-              "FOLIO_APP_SECRET_KEY"):
+    for k in ("FOLIO_APP_ACL_CLAIMS", "FOLIO_APP_PIPELINES", "FOLIO_APP_DEV_CLAIMS", "FOLIO_APP_SECRET_KEY"):
         monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("FOLIO_APP_AUTH", "dev")
     return monkeypatch
 
 
@@ -183,8 +183,8 @@ def test_missing_acl_claim_cannot_search(oidc):
         assert folio.requests == []
 
 
-def test_oidc_requires_secret(env):
-    env.setenv("FOLIO_APP_AUTH", "oidc")
+def test_oidc_is_default_and_requires_secret(env):
+    env.delenv("FOLIO_APP_AUTH")  # unset must not mean "no login"
     with pytest.raises(RuntimeError, match="FOLIO_APP_SECRET_KEY"):
         create_app()
 
@@ -193,3 +193,54 @@ def test_index_served(env):
     with client(Folio()) as c:
         r = c.get("/")
         assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
+        assert "https://" not in r.text and "http://" not in r.text  # no external assets (closed networks)
+
+
+def test_against_real_folio_chat(env, tmp_path):
+    """The app against folio's own POST /v1/chat (memory sink, stub chat step), not a hand-written fake."""
+    pytest.importorskip("celery")
+    pytest.importorskip("multipart")
+    cfg_dir = tmp_path / "folio"
+    (cfg_dir / "pipelines").mkdir(parents=True)
+    base = ("parse: tests.conftest:fake_parse\nchunk: tests.conftest:fake_chunk\n"
+            "map: tests.conftest:identity_map\nembed: tests.conftest:fake_embed\n"
+            "sink: {fn: 'tests.conftest:memory_sink', index: idx}\n"
+            f"storage: {tmp_path}/store\n")
+    (cfg_dir / "pipelines" / "contracts.yaml").write_text(base + "retrieval: {fn: 'tests.conftest:memory_retriever'}\n")
+    (cfg_dir / "pipelines" / "chat.yaml").write_text(
+        base + "retrieval: {fn: 'tests.conftest:memory_retriever', required_filters: [tenant_id]}\n"
+        "generation: {chat: 'tests.test_generation:fake_chat', rewrite: false}\n")
+    env.setenv("FOLIO_CONFIG_DIR", str(cfg_dir))
+    env.setenv("FOLIO_DATABASE_URL", f"sqlite:///{tmp_path}/jobs.db")
+    env.setenv("FOLIO_STORAGE_URI", str(tmp_path / "store"))
+    env.setenv("FOLIO_APP_PIPELINES", "chat,contracts")
+    env.setenv("FOLIO_APP_DEV_CLAIMS", json.dumps({"tenant": "t1"}))
+    env.setenv("FOLIO_APP_ACL_CLAIMS", json.dumps({"tenant_id": "tenant"}))
+    from service.api import app as folio_app
+    from service.worker import celery_app
+    from tests.conftest import SINKS
+
+    celery_app.conf.update(task_always_eager=True, task_eager_propagates=False)
+    try:
+        with TestClient(folio_app) as folio, client(Folio()) as c:
+            r = folio.post("/v1/ingest", files={"file": ("c.pdf", "제1조\n제2조\n".encode())},
+                           data={"pipeline": "chat"})
+            assert folio.get(f"/v1/jobs/{r.json()['job_id']}").json()["status"] == "succeeded"
+            for row in next(iter(SINKS.values())).values():
+                row["tenant_id"] = "t1"  # the memory retriever filters on record fields
+            c.app.state.folio = folio  # TestClient is an httpx.Client
+
+            cid = c.post("/api/conversations", json={"pipeline": "chat"}).json()["id"]
+            r = c.post(f"/api/conversations/{cid}/messages", json={"content": "제1조",
+                                                                    "filters": {"tenant_id": "other"}})
+            assert r.status_code == 201, r.text
+            bot = r.json()["messages"][1]
+            assert bot["hits"] and bot["citations"][0]["chunk_id"] == bot["hits"][0]["chunk_id"]
+            assert all("embedding" not in h["record"] for h in bot["hits"])  # login ACL t1 searched, not "other"
+            assert c.post(f"/api/conversations/{cid}/messages", json={"content": "제2조"}).status_code == 201
+
+            cid2 = c.post("/api/conversations", json={"pipeline": "contracts"}).json()["id"]  # no generation:
+            r = c.post(f"/api/conversations/{cid2}/messages", json={"content": "제1조"})
+            assert r.status_code == 400 and "generation" in r.json()["detail"]
+    finally:
+        celery_app.conf.update(task_always_eager=False)
