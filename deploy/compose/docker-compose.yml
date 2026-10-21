@@ -269,7 +269,7 @@ services:
       retries: 20
 
   # Dev VLM stub (deterministic, not a model): profile `vlm-stub` + FOLIO_VLM_URL=http://vlm:8002/v1 in .env.
-  # Real VLM: run an OpenAI-compatible server (e.g. vLLM) and point FOLIO_VLM_URL/FOLIO_VLM_MODEL at it.
+  # Real VLM: Qwen3.5-9B on an OpenAI-compatible server (vLLM, thinking off) via FOLIO_VLM_URL/FOLIO_VLM_MODEL.
   vlm:
     logging: *logging
     <<: *app

@@ -102,7 +102,7 @@ flowchart TD
 
 - **구조 분석 모델**: 페이지에서 제목·문단·표 영역을 찾는 모델. 기본은 PP-StructureV3 GPU 서버다. GPU가 없으면 CPU 버전(약 40배 느림, 메모리 약 12 GB), 개발·CI는 모델 없는 `heuristic`을 쓴다. 라이브러리 단독 사용 시 `FOLIO_STRUCTURE_URL`이 없으면 `heuristic`이다.
 - **DOCX·HWPX·HWP**: 기본은 PDF로 변환한 뒤 PDF 경로를 탄다(`docx_mode`·`hwpx_mode: convert`). 페이지 번호와 bbox가 생기지만, 그 좌표는 변환된 PDF 기준이며, 인용 하이라이트용으로 그 PDF를 원본 옆에 `converted.pdf`로 저장한다(`meta.convert.pdf_key`·`pdf_hash`). 변환은 `folio-convert` 서버(`FOLIO_CONVERT_URL`)가 맡고, URL이 없으면 로컬 LibreOffice·rhwp를 쓴다. DOCX는 LibreOffice, HWPX·HWP는 rhwp(실패 시 LibreOffice + H2Orestart)다. 선택 근거는 [DOCX](wiki/2026-10-21-docx-converter-benchmark.md)·[HWPX](wiki/2026-10-20-hwpx-converter-benchmark.md) 벤치마크에 있다. XML을 직접 읽는 `native` 모드(FR-21)는 아직 없다.
-- **VLM**: `parse.vlm: auto`가 기본이다. `FOLIO_VLM_URL`이 없으면 VLM 대신 OCR을 쓴다. 스캔 페이지는 OCR을 먼저 돌리고 표·그림만 VLM에 보낸다(`vlm_scan: ocr_first`, 페이지 전체를 VLM에 보내려면 `page`). 운영용 VLM 모델은 아직 정하지 않았다(개발용 `folio vlm-stub`만 있음).
+- **VLM**: `parse.vlm: auto`가 기본이다. `FOLIO_VLM_URL`이 없으면 VLM 대신 OCR을 쓴다. 스캔 페이지는 OCR을 먼저 돌리고 표·그림만 VLM에 보낸다(`vlm_scan: ocr_first`, 페이지 전체를 VLM에 보내려면 `page`). 운영용 VLM은 **Qwen3.5-9B**다(사용자 결정 2026-10-21, 사고 모드 끔). OpenAI 호환 서버로 띄우고 `FOLIO_VLM_URL`·`FOLIO_VLM_MODEL`로 연결한다. 예: `vllm serve Qwen/Qwen3.5-9B --default-chat-template-kwargs '{"enable_thinking": false}' --limit-mm-per-prompt '{"video":0}'`. 개발·CI는 `folio vlm-stub`.
 - **청킹**: 기본 `adaptive`. 대안은 `page`, `fixed`.
 
 ## 검색 흐름
@@ -376,7 +376,7 @@ folio eval compare eval-out/<a>.json eval-out/<b>.json
 | --- | --- |
 | 입력 형식 | ✅ PDF, 이미지(PNG·JPG·TIFF·BMP·WebP), PPTX, XLSX, Markdown, TXT(UTF-8·CP949 자동 판별) |
 | DOCX·HWPX·HWP | ✅ `convert` 모드(PDF 변환 후 파싱, FR-20) ([작업 기록](wiki/2026-10-21-docx-hwpx-convert-mode.md)). ⏸️ `native` 모드(FR-21) 보류. PPTX도 `pptx_mode="convert"`로 같은 변환 서버를 쓸 수 있다(픽스처로 확인, 기본은 `native`). 한국어 어절은 공백 글리프가 없어도 글자 간격으로 나눈다 |
-| VLM | 🟡 연동 완료, 운영 모델 미정(개발용 stub만 있음) |
+| VLM | 🟢 연동 완료, 운영 모델 Qwen3.5-9B 선정(공개 샘플 기준, 고객사 샘플 재확인 전) |
 | 검색 API | ✅ `POST /v1/search` + YAML `retrieval:` ([작업 기록](wiki/2026-10-20-implementation-search-api.md)) |
 | 평가 | 🟡 구간 기반 testset·유형별 지표·부트스트랩 CI. M1 한국어 질의 249개로 채점 경로 확인, OpenRouter qwen3.8-27b로 8개 유형 생성 확인(공개 샘플, 유형 적합성은 사람 검토 필요) ([작업 기록](wiki/2026-10-21-eval-span-testset.md)) |
 | 생성(Chat API) | 🟡 `POST /v1/chat` 무상태 멀티턴 + YAML `generation:`. stub LLM으로만 검증, 운영 LLM 미정, 스트리밍 미지원 ([작업 기록](wiki/2026-10-21-generation-multiturn.md)) |
