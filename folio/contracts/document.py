@@ -52,6 +52,10 @@ class Block(BaseModel):
     section_path: list[str] = Field(default_factory=list)
     cells: list[list[str]] | None = None
     spans: list[CellSpan] | None = None
+    header_rows: int | None = Field(
+        default=None, ge=0,
+        description="table: number of top `cells` rows that are header (0 = none); None = unknown (first row assumed)",
+    )
     key: str | None = None
     value: str | None = None
     level: int | None = Field(default=None, ge=1, description="heading level, 1 = top")

@@ -60,8 +60,9 @@ def _cell(c: Any) -> str:
     return str(c).replace("\n", " ").replace("|", "\\|").strip()
 
 
-def _table(cells: list[list[str]], spans) -> tuple[str, list[tuple[str, int, int]]]:
-    """GFM header + row units. Rows tied by a rowspan (`spans`) form one unit; a spanning header row extends the header."""
+def _table(cells: list[list[str]], spans, header_rows: int | None = None) -> tuple[str, list[tuple[str, int, int]]]:
+    """GFM header + row units. Rows tied by a rowspan (`spans`) form one unit; a spanning header row extends the header.
+    `header_rows`: known header depth (None = first row); 0 = no header, the first row only shapes the GFM table."""
     n = len(cells)
     width = max((len(r) for r in cells), default=0)
     rows = ["| " + " | ".join([_cell(c) for c in r] + [""] * (width - len(r))) + " |" for r in cells]
@@ -79,10 +80,14 @@ def _table(cells: list[list[str]], spans) -> tuple[str, list[tuple[str, int, int
         a = b + 1
     if not units:
         return "", []
-    h_end = units[0][1]
     sep = "| " + " | ".join(["---"] * width) + " |"
+    if header_rows == 0:
+        return "", [("\n".join([rows[0], sep, *rows[1 : b + 1]]) if a == 0 else "\n".join(rows[a : b + 1]), a, b)
+                    for a, b in units]
+    last = 0 if header_rows is None else min(header_rows, n) - 1
+    h_end = next(b for a, b in units if b >= last)
     header = "\n".join([rows[0], sep, *rows[1 : h_end + 1]])
-    return header, [("\n".join(rows[a : b + 1]), a, b) for a, b in units[1:]]
+    return header, [("\n".join(rows[a : b + 1]), a, b) for a, b in units if a > h_end]
 
 
 def build_leaves(doc: Document, include_header_footer: bool) -> list[Leaf]:
@@ -108,8 +113,8 @@ def build_leaves(doc: Document, include_header_footer: bool) -> list[Leaf]:
                 kind = "paragraph"
             header, atoms = "", []
             if kind == "table":
-                header, atoms = _table(b.cells or [], b.spans)
-                text = "\n".join([header, *[a[0] for a in atoms]]) if header else ""
+                header, atoms = _table(b.cells or [], b.spans, b.header_rows)
+                text = "\n".join([header, *[a[0] for a in atoms]]) if header or atoms else ""
             elif kind == "kv":
                 text = f"{b.key}: {b.value}"
             else:

@@ -1,11 +1,17 @@
-"""XLSX native parsing (FR-28): sheet = page, data region = table. Formulas give the cached (stored) value."""
+"""XLSX native parsing (FR-28): sheet = page, data region = table. Formulas give the cached (stored) value.
+
+Header rows per table: Excel table (ListObject) `headerRowCount` > sheet print titles > VLM text task
+`table_header` (when enabled); otherwise `header_rows` is left unset.
+"""
 
 from __future__ import annotations
 
 import datetime as dt
 import io
+import re
 
 from openpyxl import load_workbook
+from openpyxl.utils import range_boundaries
 
 from folio.parse import vlm as vlm_mod
 from folio.parse.assemble import table_text
@@ -89,6 +95,41 @@ def _table(ws, rect) -> dict:
     return b
 
 
+HEADER_ASK_ROWS = 15  # rows sent to the model; a header deeper than this is not detected
+_HEADER_RE = re.compile(r'"?header_rows"?\s*[:=]\s*(\d+)')
+
+
+def _native_header(ws, rect) -> int | None:
+    """Header rows declared in the file: top-most Excel table inside the region, else print title rows."""
+    r0, c0, r1, c1 = rect
+    tops = []
+    for t in ws.tables.values():
+        tc0, tr0, tc1, tr1 = range_boundaries(t.ref)
+        if r0 <= tr0 and tr1 <= r1 and c0 <= tc0 and tc1 <= c1:
+            tops.append((tr0, 1 if t.headerRowCount is None else t.headerRowCount))
+    if tops:
+        tr0, n = min(tops)
+        return tr0 - r0 + n
+    m = re.fullmatch(r"\$?(\d+):\$?(\d+)", ws.print_title_rows or "")
+    if m and int(m[1]) <= r0 <= int(m[2]):
+        return min(int(m[2]), r1) - r0 + 1
+    return None
+
+
+def _ask_header(grid: list[list[str]], sess, page: int) -> int | None:
+    rows = grid[:HEADER_ASK_ROWS]
+    text = "\n".join(f"{i}: " + " | ".join(c[:40] for c in r) for i, r in enumerate(rows))
+    out = sess.ask("table_header", None, page, text=text)
+    if out is None:  # failure already recorded by the session
+        return None
+    found = _HEADER_RE.findall(out)  # last match: reasoning text may precede the answer
+    if not found:
+        sess.note(page, "table_header", "no header_rows in response")
+        return None
+    k = int(found[-1])
+    return k if k < len(rows) else None
+
+
 def _chart_title(ch) -> str:
     try:
         return "".join(r.t for p in ch.title.tx.rich.p for r in (p.r or [])).strip()
@@ -96,7 +137,14 @@ def _chart_title(ch) -> str:
         return ""
 
 
-def parse_xlsx(data: bytes, include_hidden: bool, sess) -> list[dict]:
+def _header_rows(ws, rect, grid, sess, ask: bool, page: int) -> int | None:
+    k = _native_header(ws, rect)
+    if k is None and ask and sess.text_enabled and len(grid) >= 2 and len(grid[0]) >= 2:
+        k = _ask_header(grid, sess, page)
+    return k
+
+
+def parse_xlsx(data: bytes, include_hidden: bool, sess, header_llm: bool = True) -> list[dict]:
     wb = load_workbook(io.BytesIO(data), data_only=True)
     pages = []
     for ws in wb.worksheets:
@@ -105,7 +153,12 @@ def parse_xlsx(data: bytes, include_hidden: bool, sess) -> list[dict]:
         n = len(pages) + 1
         sec = [ws.title]
         blocks = [{"type": "heading", "level": 1, "text": ws.title, "text_source": "native", "section_path": []}]
-        blocks += [{**_table(ws, rect), "section_path": sec} for rect in _regions(ws)]
+        for rect in _regions(ws):
+            b = {**_table(ws, rect), "section_path": sec}
+            k = _header_rows(ws, rect, b["cells"], sess, header_llm, n)
+            if k is not None:
+                b["header_rows"] = k
+            blocks.append(b)
         figs = []
         for img in getattr(ws, "_images", []):
             try:

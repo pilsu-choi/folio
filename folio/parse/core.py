@@ -72,6 +72,7 @@ class Options:
     pptx_mode: str = "native"
     pptx_notes: bool = False
     xlsx_include_hidden: bool = False
+    xlsx_header_llm: bool = True  # VLM text task for table header rows when the file declares none
 
 
 def read_bytes(uri: str) -> bytes:
@@ -121,7 +122,7 @@ def default(uri: str, **opts: Any) -> Document:
     `char_match=False`, text-layer thresholds (`min_chars`, `max_bad_char_ratio`, `image_ratio_min`,
     `image_ratio_full`, `min_text_area_ratio`).
     `vlm="auto"`: enabled iff FOLIO_VLM_URL is set (model FOLIO_VLM_MODEL); or {url, model, api_key, timeout}
-    | "module:function" | callable(png[, task]) -> markdown/text; `False`/None/"off" disables. When enabled:
+    | "module:function" | callable(png[, task[, text]]) -> markdown/text; `False`/None/"off" disables. When enabled:
     image files and low-quality PDF pages -> VLM markdown (`text_source=vlm`); figures (PDF embedded images
     >= `figure_min_area` of the page, PPTX pictures, XLSX images) -> description; structure tables with
     `< table_min_coverage` word coverage, `> table_max_empty` empty cells or < 2 columns -> VLM table.
@@ -135,6 +136,8 @@ def default(uri: str, **opts: Any) -> Document:
     `convert_timeout` (s, default FOLIO_CONVERT_TIMEOUT or 300). `meta.convert` records converter, version, ms and
     `pdf_hash`: pages, bbox and coordinates refer to that converted PDF. `mime_type`/`content_hash` stay the original's.
     Native: `pptx_mode="native"|"convert"`, `pptx_notes=False`, `xlsx_include_hidden=False`.
+    XLSX table `header_rows`: Excel table header / print title rows; else, with `xlsx_header_llm=True` and a VLM
+    caller accepting `text=`, one text request per table region of >= 2x2 cells (first 15 rows).
     """
     o = Options(**opts)
     if o.vlm_scan not in ("page", "ocr_first"):
@@ -223,7 +226,7 @@ class _Run:
             elif mime == MIME_XLSX:
                 from folio.parse.xlsx import parse_xlsx
 
-                pages = parse_xlsx(data, self.o.xlsx_include_hidden, self.sess)
+                pages = parse_xlsx(data, self.o.xlsx_include_hidden, self.sess, self.o.xlsx_header_llm)
             else:
                 pages, more = parse_text(data, mime)
                 extra.update(more)

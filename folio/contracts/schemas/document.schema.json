@@ -78,6 +78,20 @@
           "default": null,
           "title": "Spans"
         },
+        "header_rows": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "table: number of top `cells` rows that are header (0 = none); None = unknown (first row assumed)",
+          "title": "Header Rows"
+        },
         "key": {
           "anyOf": [
             {

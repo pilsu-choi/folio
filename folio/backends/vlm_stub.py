@@ -3,7 +3,8 @@
   python -m folio.backends.vlm_stub  (or `folio.backends.vlm_stub:serve`)  ->  POST /v1/chat/completions
 
 The task is read from the prompt (same prompts as `folio.parse.vlm.PROMPTS`): pages -> OCR text as Markdown
-(rapidocr when installed, else fixed text), figures -> "Figure: WxH image", tables -> a fixed GFM table.
+(rapidocr when installed, else fixed text), figures -> "Figure: WxH image", tables -> a fixed GFM table,
+table header rows -> 1.
 """
 
 from __future__ import annotations
@@ -58,6 +59,8 @@ def answer(prompt: str, im: Image.Image | None) -> str:
     p = prompt.lower()
     if "describe this figure" in p:
         return f"Figure: {im.width}x{im.height} image" if im else "Figure: image"
+    if "header rows" in p:
+        return '{"header_rows": 1}'
     if "convert this table" in p:
         return "| col1 | col2 |\n| --- | --- |\n| a | 1 |\n| b | 2 |"
     return _ocr_markdown(im) if im else FIXED_PAGE

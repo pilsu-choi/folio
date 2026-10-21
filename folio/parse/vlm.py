@@ -1,4 +1,4 @@
-"""VLM client (FR-02/05/06): one OpenAI-compatible model, the task is chosen by prompt.
+"""VLM client (FR-02/05/06/28): one OpenAI-compatible model, the task is chosen by prompt.
 
 `Session` wraps the configured caller, counts requests and records per-task fallbacks. It never raises:
 `ask()` returns None when the VLM is disabled or the request failed (the failure is recorded in `fallbacks`).
@@ -28,12 +28,16 @@ PROMPTS = {
                "Write in the language of the text in the figure. Output a short plain-text description."),
     "table": ("Convert this table to HTML. Use <table>, <tr>, <th>/<td> and rowspan/colspan for merged cells. "
               "Keep every cell text exactly. Output only the HTML."),
+    "table_header": ("Below are the first rows of a spreadsheet table, one row per line, cells separated by ' | ', "
+                     "row numbers start at 0. How many top rows are header rows (column titles, including multi-level "
+                     "and title rows above them) rather than data? Answer only JSON: {\"header_rows\": <int>}."),
 }
 OFF = (False, None, "off", "none", "")
 
 
 def make_caller(spec: Any) -> Callable[..., str]:
-    """`spec`: callable | "module:function" | {"url", "model", ...} | True (env). Returns call(png, task="page")."""
+    """`spec`: callable | "module:function" | {"url", "model", ...} | True (env).
+    Returns call(png, task="page", text=None); text-only tasks pass png=None and the input as `text`."""
     if callable(spec):
         return spec
     if isinstance(spec, str) and ":" in spec:
@@ -49,12 +53,13 @@ def make_caller(spec: Any) -> Callable[..., str]:
     prompts = {**PROMPTS, **cfg.get("prompts", {})}
     client = cfg.get("client")  # injectable httpx.Client (tests)
 
-    def call(png: bytes, task: str = "page") -> str:
-        b64 = base64.b64encode(png).decode()
+    def call(png: bytes | None, task: str = "page", text: str | None = None) -> str:
+        content = [{"type": "text", "text": prompts[task] + (f"\n\n{text}" if text else "")}]
+        if png:
+            b64 = base64.b64encode(png).decode()
+            content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
         body = {"model": model, "max_tokens": cfg.get("max_tokens", 4096), "temperature": 0,
-                "messages": [{"role": "user", "content": [
-                    {"type": "text", "text": prompts[task]},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}}]}]}
+                "messages": [{"role": "user", "content": content}]}
         post = client.post if client is not None else httpx.post
         kw = {} if client is not None else {"timeout": cfg.get("timeout", 120)}
         r = post(endpoint, json=body, headers=headers, **kw)
@@ -99,24 +104,35 @@ class Session:
         self.fallbacks: list[dict] = []
         try:
             ps = inspect.signature(caller).parameters if caller else {}
-            self._task_kw = "task" in ps or any(p.kind == p.VAR_KEYWORD for p in ps.values())
+            var_kw = any(p.kind == p.VAR_KEYWORD for p in ps.values())
+            self._task_kw = "task" in ps or var_kw
+            self._text_kw = "text" in ps or var_kw
         except (TypeError, ValueError):
-            self._task_kw = False
+            self._task_kw = self._text_kw = False
 
     @property
     def enabled(self) -> bool:
         return self.caller is not None
 
-    def ask(self, task: str, png: bytes | None, page: int) -> str | None:
-        if self.caller is None or not png:
+    @property
+    def text_enabled(self) -> bool:
+        """Text-only tasks need a caller that accepts `text=` (custom callers may be image-only)."""
+        return self.caller is not None and self._text_kw
+
+    def ask(self, task: str, png: bytes | None, page: int, text: str | None = None) -> str | None:
+        """Image task (`png`) or text-only task (`text`, skipped silently when `text_enabled` is False)."""
+        if self.caller is None or not (png or (text and self._text_kw)):
             return None
         self.calls += 1
         t0 = time.perf_counter()
         try:
-            out = self.caller(png, task=task) if self._task_kw else self.caller(png)
+            if text:
+                out = self.caller(png, task=task, text=text)
+            else:
+                out = self.caller(png, task=task) if self._task_kw else self.caller(png)
             if not isinstance(out, str) or not out.strip():
                 raise ValueError("empty response")
-            log_event("vlm_call", logging.DEBUG, "folio.parse", page=page, task=task, png_bytes=len(png),
+            log_event("vlm_call", logging.DEBUG, "folio.parse", page=page, task=task, png_bytes=len(png or b""),
                       ms=ms_since(t0), reply_chars=len(out), reply=clip(out, 200))
             return out
         except Exception as exc:

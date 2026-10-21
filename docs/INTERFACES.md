@@ -17,7 +17,7 @@ folio.embed.http(texts: list[str], **opts) -> list[list[float]]
   `dpi=144`, `char_match=False`, text-layer quality thresholds. `auto` = `folio.backends.http:HttpBackend`
   when `FOLIO_STRUCTURE_URL` is set, otherwise `folio.backends.heuristic:HeuristicBackend`.
   `vlm="auto"` (default): VLM enabled iff `FOLIO_VLM_URL` is set; or `{url, model, api_key, timeout}` | `"module:function"` |
-  callable(png[, task]) -> str; `False`/`None`/`"off"` disables (`meta.vlm = {"enabled": false, "reason": ...}`).
+  callable(png[, task[, text]]) -> str (text-only tasks pass `png=None`); `False`/`None`/`"off"` disables (`meta.vlm = {"enabled": false, "reason": ...}`).
   `vlm_scan="ocr_first"` (default): image pages are OCRed first and keep OCR word bboxes; tables are redone and
   figures described by the VLM; the whole page goes to the VLM only when OCR confidence `< ocr_min_conf=0.85`.
   `vlm_scan="page"`: the whole image page goes to the VLM (every block gets the page bbox).
@@ -25,7 +25,8 @@ folio.embed.http(texts: list[str], **opts) -> list[list[float]]
   structure tables -> VLM (`figure_min_area=0.01`, `table_min_coverage=0.8`, `table_max_empty=0.6`). Disabled/failed ->
   structure-backend OCR; failures are listed in `meta.vlm_fallbacks = [{page, task, error}]`.
   Formats by MIME/extension: PDF, PNG/JPG/TIFF/BMP/WebP, PPTX (`pptx_mode="native"|"convert"`, `pptx_notes=False`),
-  XLSX (`xlsx_include_hidden=False`), Markdown, TXT (encoding auto-detect, `meta.encoding`), DOCX/HWPX/HWP (FR-20).
+  XLSX (`xlsx_include_hidden=False`; table `header_rows` from Excel table header / print title rows, else one VLM text
+  request per >= 2x2 region when `xlsx_header_llm=True` and the caller accepts `text=`), Markdown, TXT (encoding auto-detect, `meta.encoding`), DOCX/HWPX/HWP (FR-20).
   DOCX/HWPX/HWP: `docx_mode`/`hwpx_mode="convert"` (default; `hwpx_mode` covers HWP; `"native"` = FR-21, NotImplementedError)
   converts to PDF and takes the PDF path; `pptx_mode="convert"` uses the same converter. `converter="auto"`:
   `FOLIO_CONVERT_URL` server, else local (`soffice`, `rhwp`); `"local"` | `{url, timeout}` | `"module:function"` |

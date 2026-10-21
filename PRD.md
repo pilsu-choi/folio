@@ -100,7 +100,7 @@ P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 �
 | FR-20 | Parse | DOCX·HWPX `convert` 모드(PDF 변환 후 Parse 경로), 기본값 | P1 | DOCX·HWPX 샘플이 페이지·bbox 포함 Document JSON으로 출력 |
 | FR-21 | Parse | DOCX·HWPX `native` 모드(XML 직접 파싱) | P0 | 헤딩·표 구조가 원본과 일치, 모델 호출 0회 |
 | FR-27 | Parse | PPTX `native` 파싱: 슬라이드 = 페이지, 제목 → `heading`, 텍스트 상자 → `paragraph`·`list`(읽기 순서), 표 → `cells`, 그림 → `figure`(VLM 설명), 발표자 노트는 옵션. 도형 위치로 bbox 계산 | P1 | 슬라이드 수·제목·표 셀이 원본과 일치, 텍스트 블록에 구조 분석 호출 0회 |
-| FR-28 | Parse | XLSX `native` 파싱: 시트 = 페이지, 시트 이름 → `section_path`, 데이터 영역 → `table`(병합 셀은 `spans`, 수식은 저장된 값), 차트·이미지 → `figure`. 숨김 시트 제외는 옵션 | P1 | 샘플의 시트별 행·열 수와 셀 값이 원본과 일치, 모델 호출 0회 |
+| FR-28 | Parse | XLSX `native` 파싱: 시트 = 페이지, 시트 이름 → `section_path`, 데이터 영역 → `table`(병합 셀은 `spans`, 수식은 저장된 값, 헤더 행 수는 `header_rows`), 차트·이미지 → `figure`. 숨김 시트 제외는 옵션 | P1 | 샘플의 시트별 행·열 수와 셀 값이 원본과 일치, 모델 호출 0회 |
 | FR-29 | Parse | Markdown·TXT `native` 파싱: Markdown은 헤딩·목록·GFM 표·코드 블록을 블록으로, TXT는 빈 줄 단위 `paragraph`로 변환. 인코딩 자동 판별(UTF-8, CP949·EUC-KR) | P1 | 헤딩 계층이 `section_path`와 일치, CP949 TXT 샘플이 글자 깨짐 없이 출력, 모델 호출 0회 |
 | FR-07 | Chunk | 기본 전략 `adaptive`: 문서 구조 트리에서 `max_tokens` 안에 들어가는 가장 큰 의미 단위를 청크로 만든다([청킹](#청킹)). 대안 전략 `page`·`fixed`, 파라미터 덮어쓰기. 청크 출력은 Chunk Record 계약으로 검증 | P0 | `max_tokens` 이하인 섹션은 청크 1개로 유지, `max_tokens` 이하인 표·목록은 분할되지 않음, 초과 청크·헤딩만 있는 청크 0개, 필수 필드가 빠지면 chunk 단계에서 실패 |
 | FR-08 | Map | 매퍼 함수 `(doc, chunk) -> dict` 호출, 미지정 시 공통 필드만 채움 | P0 | 매퍼가 필수 필드를 지우면 명확한 에러로 실패 |
@@ -141,6 +141,7 @@ P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 �
 | `blocks[].text_source` | enum | O | `pdf_text`, `ocr`, `native`, `vlm` |
 | `blocks[].section_path` | list\[str\] | - | 상위 헤딩 경로 |
 | `blocks[].cells` | list\[list\[str\]\] | table일 때 O | 병합 셀 정보는 `spans`로 별도 |
+| `blocks[].header_rows` | int | - | table의 위쪽 헤더 행 수(`cells` 기준, 0 = 헤더 없음). 없으면 첫 행을 헤더로 본다. 현재 XLSX만 채움 |
 | `blocks[].key`, `value` | str | kv일 때 O | DLA가 검출한 key-value |
 | `meta` | dict | - | 파서 버전, 모델 버전, 처리 시간 |
 
@@ -325,7 +326,7 @@ Word(Microsoft 365)가 저장한 PDF를 정답으로 두고, 공공기관이 공
 | 이미지 | VLM | 전체 | 이미지 = 페이지 |
 
 - PPTX는 텍스트가 원본에 구조화돼 있으므로 PDF 변환을 기본으로 하지 않는다. 슬라이드 레이아웃이 복잡해 읽기 순서가 틀리는 고객사는 `convert` 옵션(LibreOffice로 PDF 변환)을 쓴다.
-- XLSX는 시트마다 비어 있지 않은 연속 영역을 `table` 블록 하나로 만든다. 첫 행을 헤더로 보고, 청킹에서 행 단위로 나눌 때 헤더를 반복한다.
+- XLSX는 시트마다 비어 있지 않은 연속 영역을 `table` 블록 하나로 만든다. 헤더 행 수(`header_rows`)는 파일에 적힌 정보를 먼저 쓴다: 영역 안 엑셀 표(ListObject)의 머리글 행(표 위 제목 행 포함), 없으면 인쇄 제목 행. 둘 다 없고 VLM이 켜져 있으면 2×2 이상 영역마다 앞 15행을 텍스트로 보내 헤더 행 수를 묻는다(`xlsx_header_llm=True`, 텍스트 요청 1회/영역). 판별하지 못하면 첫 행을 헤더로 본다. 청킹에서 행 단위로 나눌 때 헤더를 반복한다.
 - Markdown 안의 이미지 링크는 따라가지 않는다(대체 텍스트만 `figure.text`로 남긴다).
 
 ## 청킹
@@ -348,7 +349,7 @@ Document JSON의 `heading`과 `section_path`로 트리를 만든다. 헤딩이 �
 | --- | --- | --- |
 | `paragraph` | 문장 | 문장 중간에서 자르지 않음 |
 | `list` | 항목 | 하위 항목은 상위 항목과 함께 |
-| `table` | 행 묶음 | 각 청크에 헤더 행 반복(헤더가 `max_tokens`의 절반을 넘으면 반복하지 않고 본문 행처럼 나눔), 병합 셀(`spans`)이 걸친 행은 함께 |
+| `table` | 행 묶음 | 각 청크에 헤더 행 반복(`header_rows`가 있으면 그 깊이, 0이면 반복 없음, 없으면 첫 행. 헤더가 `max_tokens`의 절반을 넘으면 반복하지 않고 본문 행처럼 나눔), 병합 셀(`spans`)이 걸친 행은 함께 |
 | `code` | 줄 | 빈 줄 경계를 우선 |
 | `figure` | 나누지 않음 | 캡션(`caption`)과 함께 |
 

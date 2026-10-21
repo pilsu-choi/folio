@@ -165,7 +165,8 @@ def test_stub_server_prompts():
     assert call(png, task="figure").startswith("Figure: ")
     assert call(png, task="table").startswith("| col1")
     assert "Scanned" in call(png, task="page") or "스캔" in call(png, task="page") or call(png).strip()
-    assert set(PROMPTS) == {"page", "figure", "table"}
+    assert call(None, task="table_header", text="0: a | b\n1: 1 | 2") == '{"header_rows": 1}'
+    assert set(PROMPTS) == {"page", "figure", "table", "table_header"}
 
 
 def _low_conf(words, conf):
@@ -236,3 +237,72 @@ def test_vlm_html_table_keeps_merged_cells():
     assert tb and all(b.text_source == "vlm" and b.cells == [["합계", ""], ["a", "1"]] for b in tb)
     assert all([(s.row, s.col, s.rowspan, s.colspan) for s in b.spans] == [(0, 0, 1, 2)] for b in tb)
     validate_doc(doc)
+
+
+def _xlsx(build) -> bytes:
+    import io
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    build(wb)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def _sheet_tables(tmp_path, data, **kw):
+    p = tmp_path / "t.xlsx"
+    p.write_bytes(data)
+    doc = default(str(p), **kw)
+    validate_doc(doc)
+    return doc, [b for _, b in doc.iter_blocks() if b.type == "table"]
+
+
+def test_xlsx_header_rows_native_sources_skip_vlm(stub, tmp_path):
+    from openpyxl.worksheet.table import Table as XTable
+
+    def build(wb):
+        ws = wb.active
+        for r in [["분기 실적", ""], ["지역", "매출"], ["서울", 10], ["부산", 7]]:
+            ws.append(r)
+        ws.add_table(XTable(displayName="T1", ref="A2:B4"))  # title row above the Excel table counts as header
+        ws2 = wb.create_sheet("p")
+        for r in [["구분", "값"], ["단위", "원"], ["a", 1], ["b", 2]]:
+            ws2.append(r)
+        ws2.print_title_rows = "1:2"
+
+    cfg, seen = stub
+    doc, (t1, t2) = _sheet_tables(tmp_path, _xlsx(build), vlm=cfg)
+    assert (t1.header_rows, t2.header_rows) == (2, 2)
+    assert doc.meta["calls"]["vlm"] == 0 and seen == []
+
+
+def test_xlsx_header_rows_asked_per_region(stub, tmp_path):
+    def build(wb):
+        ws = wb.active
+        for r in [["제품", "수량"], ["사과", 1], ["배", 2], [], ["합계 메모"]]:
+            ws.append(r)
+
+    cfg, seen = stub
+    doc, (t, note) = _sheet_tables(tmp_path, _xlsx(build), vlm=cfg)
+    assert t.header_rows == 1 and note.header_rows is None  # 1x1 region is not asked
+    assert doc.meta["calls"]["vlm"] == 1 and seen == ["/v1/chat/completions"]
+    _, (t, _) = _sheet_tables(tmp_path, _xlsx(build), vlm=cfg, xlsx_header_llm=False)
+    assert t.header_rows is None
+
+
+def test_xlsx_header_reply_parsing_and_image_only_caller(tmp_path):
+    def build(wb):
+        for r in [["a", "b"], ["c", "d"], ["1", "2"]]:
+            wb.active.append(r)
+
+    data = _xlsx(build)
+    replies = {"<think>header_rows: 1?</think>```json\n{\"header_rows\": 2}\n```": 2, '{"header_rows": 3}': None,
+               "모르겠음": None}
+    for reply, want in replies.items():
+        doc, (t,) = _sheet_tables(tmp_path, data, vlm=lambda png, task="page", text=None, r=reply: r)
+        assert t.header_rows == want
+        assert len(doc.meta["vlm_fallbacks"]) == (reply == "모르겠음")
+    doc, (t,) = _sheet_tables(tmp_path, data, vlm=lambda png: "x")  # image-only caller: skipped silently
+    assert t.header_rows is None and doc.meta["calls"]["vlm"] == 0 and doc.meta["vlm_fallbacks"] == []

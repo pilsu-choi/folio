@@ -93,6 +93,19 @@ def test_big_table_row_groups_header_repeated_rowspan_together():
     assert len({c["chunk_id"] for c in cs}) == len(cs)
 
 
+def test_table_header_rows_known_depth_and_none():
+    rows = [["group", "group"], ["name", "value"]] + [[f"row{i}", f"val{i}"] for i in range(60)]
+    cs = chunk.adaptive(doc([B("table", cells=rows, header_rows=2)]), max_tokens=80)
+    check(cs, 80)
+    assert len(cs) > 2 and all(c["content"].startswith("| group | group |\n| --- | --- |\n| name | value |") for c in cs)
+    cs = chunk.adaptive(doc([B("table", cells=rows[2:], header_rows=0)]), max_tokens=60)
+    check(cs, 60)
+    assert cs[0]["content"].startswith("| row0 | val0 |\n| --- | --- |\n| row1 |")
+    assert all("| --- |" not in c["content"] and "row0" not in c["content"] for c in cs[1:])
+    body = "\n".join(c["content"] for c in cs)
+    assert all(f"| row{i} |" in body for i in range(60))
+
+
 def test_list_subitems_stay_with_parent():
     lines = []
     for i in range(12):
