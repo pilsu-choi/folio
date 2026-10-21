@@ -1,4 +1,4 @@
-"""Stage -> samples/pdf + text truth. Run on pgx from ~/folio-m1-bench with the venv.
+"""Stage -> samples/pdf + text truth. Run on DGX Spark from ~/folio-m1-bench with the venv.
 Writes samples/pdf/<id>.pdf, samples/truth/<id>.page<N>.txt and returns manifest entries (merged by make_manifest.py)."""
 import json, shutil, pymupdf, os
 ROOT = os.path.expanduser("~/folio-m1-bench"); S = f"{ROOT}/samples"

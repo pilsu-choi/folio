@@ -33,11 +33,11 @@ sources:
 ## 검증 결과
 
 - `helm lint`를 통과했고, `helm template`(values·dev·gpu·offline)도 문제없었다. 잘못된 이름(`air-flow`)과 비밀번호 누락은 명확한 메시지로 실패했다. `existingSecret`이면 Secret 키를 참조만 하는 것도 확인했다.
-- 스크립트 단독 테스트(pgx docker, `postgres:16`, uid 10001, read-only rootfs):
+- 스크립트 단독 테스트(DGX Spark docker, `postgres:16`, uid 10001, read-only rootfs):
   - 첫 실행에서 role과 DB를 만들었다. 두 번째 실행은 `ALTER ROLE`만 했다(멱등).
   - 따옴표가 들어간 비밀번호도 동작했다. 이전 비밀번호는 거부됐다.
   - `airflow`는 자기 DB에서 테이블을 만들 수 있었고, `folio` DB에서는 실패했다.
-- pgx k3s 설치(2026-10-21):
+- DGX Spark k3s 설치(2026-10-21):
   - 구성: namespace `folio-aftest`에 folio 차트(dev values + postgres persistence 1Gi + `extraDatabases: airflow`), namespace `airflow-aftest`에 공식 Airflow 차트 1.22.0. 메타데이터 Secret은 `folio-postgres.folio-aftest.svc.cluster.local:5432/airflow`를 가리킨다.
   - init Job 로그: `CREATE ROLE / ALTER ROLE / CREATE DATABASE / database airflow ready`.
   - Airflow는 `helm install --wait` 한 번에 배포됐다(이전 기록의 hook 교착 수정도 함께 확인).

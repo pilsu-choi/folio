@@ -4,7 +4,7 @@
   1. 구조 분석 백엔드: Docling vs PP-StructureV3 (MinerU는 라이선스만 확인)
   2. VLM 모델 1개: 문서 전용 VLM vs 범용 VLM — 스캔 OCR·그림 설명·복잡 표 세 작업
   3. `adaptive` 청킹 `max_tokens`·`min_tokens` 기본값 (임베딩 모델 + Eval)
-- 실행 위치: DGX Spark `ssh pgx` (aarch64, GB10, 통합 메모리 128GB, 디스크 여유 ~800GB). 작업 디렉터리 `~/folio-m1-bench/`.
+- 실행 위치: DGX Spark (aarch64, GB10, 통합 메모리 128GB, 디스크 여유 ~800GB). 작업 디렉터리 `~/folio-m1-bench/`.
 - 공유 자원 규칙
   - 다른 세션의 컨테이너(`embed`, `rerank` 등 vLLM)와 프로세스를 중단·재시작·호출하지 않는다. 우리 컨테이너 이름은 `m1-` 접두사.
   - GPU를 쓰는 측정은 `flock ~/folio-m1-bench/gpu.lock <command>`로 직렬화한다. 시작 전 `nvidia-smi`로 점유를 확인한다.

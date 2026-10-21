@@ -491,10 +491,10 @@ FR-21(DOCX·HWPX `native`, 보류)을 제외한 FR을 구현했다. FR-20(DOCX·
 - VLM 기본 적용은 `parse.vlm: auto`로 구현했다. `FOLIO_VLM_URL`이 있으면 VLM 경로(기본)를 쓰고, 없으면 구조 분석 OCR을 쓰며 `meta.vlm`에 사유를 남긴다. VLM 호출이 실패한 페이지만 OCR로 폴백하고 `meta.vlm_fallbacks`에 기록한다.
 - 청킹 기본 전략은 `adaptive`이고 대안은 `page`·`fixed`다. 이전의 `auto`·`section`·`table` 전략은 제거했다. `max_tokens`는 임베딩 입력인 `contextualized_content` 기준으로 지킨다.
 - 구조 분석 백엔드: 픽스처에서 heuristic·Docling·PP-StructureV3 모두 디지털 텍스트·표 결과가 같았다. OCR 유사도는 0.72 / 0.75 / 0.91, CPU 기준 초/페이지는 0.04 / 1.75 / 20.6이다(PP-StructureV3는 모델 로드 포함).
-- 기본 구조 분석 백엔드는 PP-StructureV3 GPU다(2026-10-20 사용자 결정). Compose `gpu` 프로필과 Helm 기본값이 GPU 서버를 띄우고, GPU가 없으면 `cpu`(Compose 프로필, `values-cpu.yaml`), 개발·CI는 `heuristic`을 쓴다. 폐쇄망 번들 기본 변형은 `STRUCTURE_VARIANTS=gpu`다. 모델을 미리 로드한 상태의 픽스처 11페이지 측정은 GPU(RTX 4070) 0.33~0.42 s/page, CPU 4스레드(pgx aarch64) 17.6 s/page, 최대 메모리 11.6 GiB다. 상세는 [PP-StructureV3 기본 백엔드](wiki/2026-10-21-ppstructure-gpu-default.md)에 있다.
+- 기본 구조 분석 백엔드는 PP-StructureV3 GPU다(2026-10-20 사용자 결정). Compose `gpu` 프로필과 Helm 기본값이 GPU 서버를 띄우고, GPU가 없으면 `cpu`(Compose 프로필, `values-cpu.yaml`), 개발·CI는 `heuristic`을 쓴다. 폐쇄망 번들 기본 변형은 `STRUCTURE_VARIANTS=gpu`다. 모델을 미리 로드한 상태의 픽스처 11페이지 측정은 GPU(RTX 4070) 0.33~0.42 s/page, CPU 4스레드(DGX Spark aarch64) 17.6 s/page, 최대 메모리 11.6 GiB다. 상세는 [PP-StructureV3 기본 백엔드](wiki/2026-10-21-ppstructure-gpu-default.md)에 있다.
 - 검색: `POST /v1/search`와 파이프라인 YAML `retrieval:`을 구현했다. 서비스·`folio eval run`·라이브러리 모두 `folio.pipeline.retriever(cfg)` 한 경로로 retriever를 만든다. 상세는 [검색 API 작업 기록](wiki/2026-10-20-implementation-search-api.md)에 있다.
 - 생성: `POST /v1/chat`과 YAML `generation:`을 구현했다(무상태 멀티턴, 기본 꺼짐). `folio eval testset --method llm`도 같은 chat 클라이언트(`folio.generation:http`)를 쓴다. 상세는 [멀티턴 생성 작업 기록](wiki/2026-10-21-generation-multiturn.md)에 있다.
-- 채팅 App: `apps/chat`(FR-32)을 추가했다. Claude API용 chat 단계 `folio.generation.anthropic:chat`도 추가했다(pgx vLLM 준비 전 테스트용). 상세는 [채팅 App 작업 기록](wiki/2026-10-21-chat-app-sso.md)에 있다.
+- 채팅 App: `apps/chat`(FR-32)을 추가했다. Claude API용 chat 단계 `folio.generation.anthropic:chat`도 추가했다(DGX Spark vLLM 준비 전 테스트용). 상세는 [채팅 App 작업 기록](wiki/2026-10-21-chat-app-sso.md)에 있다.
 - `minio/minio`가 Docker Hub에서 더 이상 배포되지 않아, 내장 S3를 digest로 고정한 `cgr.dev/chainguard/minio`로 바꿨다.
 
 ## 열린 질문

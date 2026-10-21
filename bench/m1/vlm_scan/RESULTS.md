@@ -8,7 +8,7 @@
 
 ## 설정
 
-- pgx(DGX Spark, GB10, aarch64). OCR은 PP-StructureV3 CPU(이 장비에서 paddle GPU 불가), VLM은 Qwen3.5-9B bf16(vLLM 0.31, `gpu-memory-utilization 0.3`, 사고 모드 끔). 다른 세션의 `embed`·`rerank` 컨테이너는 그대로 떠 있었다.
+- DGX Spark(GB10, aarch64). OCR은 PP-StructureV3 CPU(이 장비에서 paddle GPU 불가), VLM은 Qwen3.5-9B bf16(vLLM 0.31, `gpu-memory-utilization 0.3`, 사고 모드 끔). 다른 세션의 `embed`·`rerank` 컨테이너는 그대로 떠 있었다.
 - 샘플: 합성 스캔 s01~s10(텍스트 정답), 표 이미지 t01~t10(200dpi 렌더, 셀 정답; t01~t06 합성, t07~t10 실제 공정위 약관 표). 열화 없는 표 이미지라 실제 스캔 표보다 쉽다.
 - 지표: 스캔은 정답 줄과 출력 전체 텍스트의 difflib 유사도(`run_manifest.py`와 같은 식), 표는 `scripts/bench_backends.py`의 `table_scores` 셀 정확도.
 - 그림 설명은 정답 원문에 없는 문장을 더하므로 유사도를 깎는다. 그래서 그림 블록을 뺀 유사도도 함께 낸다.

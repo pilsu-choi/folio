@@ -27,7 +27,7 @@ sources:
 - 입력: 공공데이터포털(data.go.kr)·공공기관·대학이 공개한 Word 작성 한국어 DOCX 11개, 영어 테스트 문서 2개(Apache POI, Open-XML-SDK, 커밋 고정). 합계 319쪽(Word 기준). 서식 표(병합 셀), 머리말·꼬리말, 다단·가로 구역, 목차 필드, 이미지가 많은 85쪽 보고서를 포함한다. 목록과 URL은 [samples.txt](../bench/docx-converters/samples.txt). 개인 연락처가 본문에 있는 문서, 메모가 달린 문서는 뺐다.
 - 정답: 데스크탑 Windows의 Microsoft 365 Word 16.0.20430으로 COM 자동화 내보내기(`ExportAsFixedFormat`, 매크로 비활성, 읽기 전용). 정답 PDF는 맑은 고딕·굴림·바탕·돋움·Times New Roman·Arial 등 Windows 글꼴을 쓴다.
 - 후보: LibreOffice 24.2(Ubuntu 24.04 apt, HWPX 벤치마크와 같은 Dockerfile. PDF producer 기준이며 패치 버전은 기록하지 않았다), OnlyOffice DocumentBuilder 9.4.0(`docbuilder` 스크립트로 PDF 저장), kordoc 4.22.15(native, Markdown).
-- 실행 1(본 측정): DGX Spark(`pgx`, aarch64)에서 도구를 하나씩 순차 실행, 컨테이너당 CPU 4개·메모리 6GB 제한, 파일마다 2회 중 짧은 시간. 글꼴은 HWPX와 같은 공개 글꼴(Noto CJK, 나눔, 은)만 마운트했다.
+- 실행 1(본 측정): DGX Spark(aarch64)에서 도구를 하나씩 순차 실행, 컨테이너당 CPU 4개·메모리 6GB 제한, 파일마다 2회 중 짧은 시간. 글꼴은 HWPX와 같은 공개 글꼴(Noto CJK, 나눔, 은)만 마운트했다.
 - 실행 2(글꼴 통제): 데스크탑(x86_64)에서 Windows 글꼴 폴더를 읽기 전용으로 마운트해 LibreOffice·OnlyOffice만 다시 변환했다. Windows 글꼴은 다른 서버로 복사하지 않았다. 시간은 9p 마운트 영향이 있어 쓰지 않는다.
 - 지표([evaluate.py](../bench/hwpx-converters/evaluate.py), HWPX와 공용): 쪽수 일치, 텍스트 재현율(공백 제거 LCS·순서 무관 2-gram), **어절 재현율**(이번에 추가, 공백 단위 토큰의 순서 무관 재현율), 쪽별 텍스트 유사도, 단어 위치 일치(6pt 이내 비율, 중앙값).
 - 재현: `bench/docx-converters/`의 `fetch.sh` → `run.sh` → `evaluate.py --ext docx`. 상세는 [README](../bench/docx-converters/README.md).

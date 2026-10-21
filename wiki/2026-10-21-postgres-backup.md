@@ -30,7 +30,7 @@ sources:
 - init Job initContainer `check-backup-volume`: 설치·업그레이드 때 백업 PVC에 쓰기 테스트를 한다.
 - `values.yaml`의 `backup.*`와 차트 README에 백업·복원 절차를 추가했다. Airflow 가이드와 PRD에서 링크한다.
 
-## 검증 (2026-10-21, pgx spark k3s, local-path)
+## 검증 (2026-10-21, DGX Spark k3s, local-path)
 
 - `helm lint`, `helm template`(values·dev·gpu·offline 모두 CronJob 0개, 즉 기본 꺼짐)를 확인했다. pvc, s3, existingClaim 세 변형을 렌더링했고, 외부 DB에 켜거나 target이 잘못되면 실패 메시지가 나왔다.
 - 처음 설치는 실패했다. 차트 PVC가 WaitForFirstConsumer라 첫 CronJob 실행 전까지 Pending이었고, `helm install --wait`가 `context deadline exceeded`로 끝났다. 그래서 `check-backup-volume`를 추가했다. 재설치하니 PVC가 Bound됐고, `backup volume writable` 로그와 함께 정상 배포됐다.

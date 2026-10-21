@@ -33,7 +33,7 @@ sources:
 
 ## 실행 결과
 
-pgx에서 측정. 상세 표와 명령은 [RESULTS.md](../bench/m1/vlm_scan/RESULTS.md)에 있다.
+DGX Spark에서 측정. 상세 표와 명령은 [RESULTS.md](../bench/m1/vlm_scan/RESULTS.md)에 있다.
 
 | 정책 | 스캔 유사도 | 그림 블록 제외 | 표 셀 정확도 | 평균 s/page | 실제 bbox |
 | --- | --- | --- | --- | --- | --- |
@@ -55,7 +55,7 @@ pgx에서 측정. 상세 표와 명령은 [RESULTS.md](../bench/m1/vlm_scan/RESU
 
 HTML 표(후속, 같은 날): VLM 표·페이지 지시문을 HTML 표(rowspan/colspan)로 바꾸고, PP 어댑터에 있던 HTML 표 파서를 `folio/parse/html_table.py`로 옮겨 VLM 결과와 함께 쓰게 했다. `md_blocks`는 Markdown 안의 HTML 표(```html 울타리, 표 안 빈 줄 포함)를 `spans`가 있는 표 블록으로 읽는다. 파이프 표는 그대로 읽는다. `ocr_first` 표 평균 0.846→0.882, 병합 셀 표 t03·t04는 1.0, VLM 표 요청 시간은 늘었다(전체 45→59초/장). 상세는 [RESULTS.md](../bench/m1/vlm_scan/RESULTS.md)의 "HTML 표 적용 후"에 있다.
 
-검증: 단위 테스트 140개 통과(`ocr_first` 경로 테스트 3개 추가). pgx 측정은 위 표.
+검증: 단위 테스트 140개 통과(`ocr_first` 경로 테스트 3개 추가). DGX Spark 측정은 위 표.
 
 ## 미완료
 

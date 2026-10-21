@@ -9,7 +9,7 @@ from folio.contracts import Document
 from folio.eval.testset import norm_map, page_texts
 from folio.retrieval.base import Hit
 
-S = Path(sys.argv[1]); TS = sys.argv[2]  # S/m1docs = M1 parse_final Document JSONs (pgx ~/folio-m1-bench/out/chunking/parse_final)
+S = Path(sys.argv[1]); TS = sys.argv[2]  # S/m1docs = M1 parse_final Document JSONs (DGX Spark ~/folio-m1-bench/out/chunking/parse_final)
 docs = []
 for f in sorted((S / "m1docs").glob("*.json")):
     j = json.loads(f.read_text())

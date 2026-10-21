@@ -71,7 +71,7 @@ sources:
 - CLI 테스트(`tests/test_cli.py`): memory sink 파이프라인으로 `run` → `eval testset --method heuristic` → `eval run` 2회 → `eval compare`까지 한 번에 확인.
 - 단위 테스트(`tests/test_eval.py`, 10개): 지표 계산, 가짜 LLM으로 각 걸러내기 사유, 두 쪽·다른 문서 유형, 응답 형식 오류 재시도와 전체 실패 오류, adaptive·fixed 청킹 모두 같은 testset으로 채점되고 `unreachable`이 0인지, 쪽이 다르면 0점이 되고 `unreachable`에 잡히는지, 쪽 정보가 없는 스토어, 비교 신뢰구간, 다른 testset 비교 거부.
 - 전체 테스트: `176 passed, 3 skipped`(통합 테스트 제외).
-- 실데이터 확인(로컬, 2026-10-21): M1에서 Qwen3.8-27B로 만들고 인용 검증을 거친 한국어 질의 249개(`bench/m1/chunking/testset.jsonl`, fact 116·section 95·table 38)를 새 형식으로 바꾸고, pgx의 파싱 결과 16개 문서로 확인했다.
+- 실데이터 확인(로컬, 2026-10-21): M1에서 Qwen3.8-27B로 만들고 인용 검증을 거친 한국어 질의 249개(`bench/m1/chunking/testset.jsonl`, fact 116·section 95·table 38)를 새 형식으로 바꾸고, DGX Spark의 파싱 결과 16개 문서로 확인했다.
   - 근거 249개 모두 새 `page_texts`에서 찾아졌다. 벤치마크와 같은 쪽 텍스트를 만든다는 뜻이다.
   - 청킹 설정 4종 모두 `unreachable` 0개였다.
   - 스크립트: `bench/eval/m1_span_check.py`. 검색기는 글자 2-gram 어휘 검색기(스크립트 안에서 만든 것)를 썼다. 아래 수치는 채점 경로 확인용이며 **청킹 설정의 품질 비교가 아니다**. 품질 비교는 [M1 벤치마크](2026-10-21-m1-benchmarks.md)(bge-m3, 토큰 예산 기준)를 따른다.
@@ -136,7 +136,7 @@ sources:
 ## 미완료와 다음 작업
 
 - **호환성**: 이전 형식(`relevant_chunk_ids`) testset은 더 이상 읽지 않는다. CLI 옵션 `--chunks`·`--n`은 `--docs`·`--pages`·`--pairs`로 바뀌었다.
-- 실제 LLM 생성은 위 OpenRouter 실행으로 소규모 확인했다. 유형별 최소 개수는 `--min-per-type`으로 해결했고, 유형 적합성(질문이 정말 그 유형인지) 판정은 남았다. 고객사 문서는 외부로 보낼 수 없으므로 pgx vLLM으로 다시 확인해야 한다.
+- 실제 LLM 생성은 위 OpenRouter 실행으로 소규모 확인했다. 유형별 최소 개수는 `--min-per-type`으로 해결했고, 유형 적합성(질문이 정말 그 유형인지) 판정은 남았다. 고객사 문서는 외부로 보낼 수 없으므로 DGX Spark vLLM으로 다시 확인해야 한다.
 - 답변 평가가 필요한 유형은 다루지 않는다: Negative/Unanswerable(근거 없음 응답), Aggregation·Global/Summarization(근거가 top-k보다 많음). 운영 LLM이 정해진 뒤 `/v1/chat` 답변 평가로 추가한다.
 - Conditional(질문에서 필터 추출)은 PRD 비목표라서 다루지 않는다.
 - `bench/m1/chunking/`의 벤치마크 스크립트는 그대로 뒀다(토큰 예산 지표 등 벤치마크 전용 기능이 있음).

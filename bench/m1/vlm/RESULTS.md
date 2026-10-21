@@ -1,7 +1,7 @@
 # M1 VLM 모델 벤치마크 (잠정, 고객사 샘플로 재검증 필요)
 
 실행: DGX Spark(GB10, 통합 메모리), vLLM `v0.31.0` 컨테이너 `m1-vlm`, 모델당 순차 호출(동시성 1), temperature 0, `flock gpu.lock`으로 직렬화.
-스캔 OCR은 운영 경로의 `folio/parse/vlm.py` PROMPT를 그대로 사용했다. 스크립트: `bench.py`(호출), `score.py`(스캔·표), `judge.py`(그림), `serve.sh`/`run_model.sh`/`run_judge.sh`(서빙). 원본 출력은 pgx `~/folio-m1-bench/out/vlm/`. 요약 점수: `scores.json`, `figure_scores.json`.
+스캔 OCR은 운영 경로의 `folio/parse/vlm.py` PROMPT를 그대로 사용했다. 스크립트: `bench.py`(호출), `score.py`(스캔·표), `judge.py`(그림), `serve.sh`/`run_model.sh`/`run_judge.sh`(서빙). 원본 출력은 DGX Spark `~/folio-m1-bench/out/vlm/`. 요약 점수: `scores.json`, `figure_scores.json`.
 
 ## 후보, 라이선스, 크기
 
@@ -103,4 +103,4 @@ Qwen 계열은 bf16 9B라 디코딩이 약 12 tok/s로 느리다(페이지당 �
 - 그림 점수는 LLM 심판(gemma-4-12B-it) 1회 채점이며 심판 오류는 정량화하지 않았다. 수동 점검은 3건.
 - 메모리는 통합 메모리 환경의 vLLM 로그 값이다. 고객사 GPU 메모리 상한 기준 재측정이 필요하다.
 - 속도는 단일 요청 지연이며 처리량/동시성은 측정하지 않았다.
-- 정리: `m1-*` 컨테이너는 모두 제거했다(`embed`/`rerank`는 건드리지 않음). 모델은 pgx `~/folio-m1-bench/models/`(약 63 GB)에 남겼다.
+- 정리: `m1-*` 컨테이너는 모두 제거했다(`embed`/`rerank`는 건드리지 않음). 모델은 DGX Spark `~/folio-m1-bench/models/`(약 63 GB)에 남겼다.

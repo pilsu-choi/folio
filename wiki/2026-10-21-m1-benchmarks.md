@@ -36,7 +36,7 @@ PRD 열린 질문 세 개를 공개 한글 문서로 미리 확인했다. 고객
 
 ## 실행 결과
 
-실행 위치: DGX Spark(`pgx`, aarch64, GB10, 통합 메모리 128GB). 원시 결과는 pgx `~/folio-m1-bench/out/`에만 있고 Git에 넣지 않았다.
+실행 위치: DGX Spark(aarch64, GB10, 통합 메모리 128GB). 원시 결과는 DGX Spark `~/folio-m1-bench/out/`에만 있고 Git에 넣지 않았다.
 
 ### 샘플 세트
 
@@ -50,7 +50,7 @@ PyPI 4.0.12(2026-10-11) 기준 Apache-2.0에 추가 조건이 붙는다. 계열�
 
 상세: [backends/RESULTS.md](../bench/m1/backends/RESULTS.md).
 
-- pgx(aarch64, sm_121)에서 Docling은 GPU로 돈다(torch 2.14.1+cu130). PP-StructureV3는 paddlepaddle-gpu 3.3.1(cu129)·3.5 nightly(cu130) 모두 `run_check()`에서 "Unsupported GPU architecture"로 실패해 CPU로만 쟀다.
+- DGX Spark(aarch64, sm_121)에서 Docling은 GPU로 돈다(torch 2.14.1+cu130). PP-StructureV3는 paddlepaddle-gpu 3.3.1(cu129)·3.5 nightly(cu130) 모두 `run_check()`에서 "Unsupported GPU architecture"로 실패해 CPU로만 쟀다.
 - 첫 측정에서 PP-StructureV3는 어댑터 버그 두 개(아래) 때문에 116쪽이 실패하고 실제 표가 뒤집혔다. 두 버그를 고친 뒤 다시 쟀다.
 - 잠정 권고는 Docling이다(확신도 중간). 기존 기본값(PP-StructureV3 GPU)은 바꾸지 않았다.
 
@@ -82,7 +82,7 @@ PyPI 4.0.12(2026-10-11) 기준 Apache-2.0에 추가 조건이 붙는다. 계열�
 - 그림 설명은 후보와 다른 계열인 gemma-4-12B-it가 1회 채점했다. 오차 범위는 모른다.
 - 병합 셀 표는 HTML 지시에서만 정확하다. 파이프라인의 `markdown_to_blocks`는 파이프 표만 읽으므로 HTML 표 파서가 필요하다.
 - GLM-OCR에 "한국에서는 권리가 없다"는 웹 글이 하나 있었다. 모델 카드는 MIT이고 제한 조항은 찾지 못했다. 법무 확인 전이다.
-- 모델 다운로드 약 63GB, pgx `~/folio-m1-bench/models/`.
+- 모델 다운로드 약 63GB, DGX Spark `~/folio-m1-bench/models/`.
 
 ### adaptive 청킹 기본값
 
@@ -104,10 +104,10 @@ PyPI 4.0.12(2026-10-11) 기준 Apache-2.0에 추가 조건이 붙는다. 계열�
 
 | 문제 | 상태 |
 | --- | --- |
-| `folio/backends/ppstructure.py`가 paddle의 numpy 배열(`cell_box_list`)에 `or []`를 써서 표가 있는 페이지에서 `ValueError` | pgx에서 재현 후 수정, 회귀 테스트 추가(`tests/test_backends.py::test_ppstructure_numpy_results`). 같은 패턴의 `rec_scores`도 수정 |
+| `folio/backends/ppstructure.py`가 paddle의 numpy 배열(`cell_box_list`)에 `or []`를 써서 표가 있는 페이지에서 `ValueError` | DGX Spark에서 재현 후 수정, 회귀 테스트 추가(`tests/test_backends.py::test_ppstructure_numpy_results`). 같은 패턴의 `rec_scores`도 수정 |
 | `ppstructure.py`가 `cell_box_list`를 `<td>` 순서와 그대로 짝지어, 상자가 오른쪽 아래부터 오는 실제 표가 행·열 모두 뒤집힘 | 수정(`_reading_order`), 회귀 테스트 `test_ppstructure_cell_reading_order`. 실제 표 셀 정확도 0.0~0.12 → 0.28~0.42. 상자 수와 `<td>` 수가 다르면 여전히 어긋남 |
-| 표 헤더 행 하나가 `max_tokens`보다 길면 `adaptive`가 상한을 넘는 중복 청크를 수천 개 만든다(d01 31쪽, Docling의 139열 표) | 수정(`folio/chunk/strategies.py`): 헤더가 `max_tokens`의 절반을 넘으면 조각마다 반복하지 않고 첫 행들처럼 나눈다. 회귀 테스트 `test_table_header_over_max_split_once_not_repeated`. pgx에서 d01(표 포함) 512/64 재청킹: 수정 전 6143개 중 5971개 상한 초과 → 수정 후 187개, 초과 0. 벤치마크 수치는 표를 뺀 채로 낸 것이라 그대로다 |
-| 약관 d12·d13의 `제N조` 줄이 헤딩으로 인식되지 않아 청킹이 페이지 단위로 내려간다 | 수정(`folio/parse/assemble.py` `apply_sections`): 문단이 `제N조(제목)`로 시작하면 현재 헤딩 아래 조 섹션을 연다. 조 표시만 있는 문단은 헤딩이 되고, 제목 뒤에 본문이 이어지면 문단의 `section_path`에 조를 넣는다. `제3조에 따라`처럼 본문 속 참조는 제외. 회귀 테스트 `test_article_paragraphs_become_sections`. pgx에서 기존 파싱 결과에 적용: d12 512/64 청크 24개 중 22개, d13 37개 중 34개가 조 경로를 가진다(수정 전 0). 검색 성능 재측정은 안 했다 |
+| 표 헤더 행 하나가 `max_tokens`보다 길면 `adaptive`가 상한을 넘는 중복 청크를 수천 개 만든다(d01 31쪽, Docling의 139열 표) | 수정(`folio/chunk/strategies.py`): 헤더가 `max_tokens`의 절반을 넘으면 조각마다 반복하지 않고 첫 행들처럼 나눈다. 회귀 테스트 `test_table_header_over_max_split_once_not_repeated`. DGX Spark에서 d01(표 포함) 512/64 재청킹: 수정 전 6143개 중 5971개 상한 초과 → 수정 후 187개, 초과 0. 벤치마크 수치는 표를 뺀 채로 낸 것이라 그대로다 |
+| 약관 d12·d13의 `제N조` 줄이 헤딩으로 인식되지 않아 청킹이 페이지 단위로 내려간다 | 수정(`folio/parse/assemble.py` `apply_sections`): 문단이 `제N조(제목)`로 시작하면 현재 헤딩 아래 조 섹션을 연다. 조 표시만 있는 문단은 헤딩이 되고, 제목 뒤에 본문이 이어지면 문단의 `section_path`에 조를 넣는다. `제3조에 따라`처럼 본문 속 참조는 제외. 회귀 테스트 `test_article_paragraphs_become_sections`. DGX Spark에서 기존 파싱 결과에 적용: d12 512/64 청크 24개 중 22개, d13 37개 중 34개가 조 경로를 가진다(수정 전 0). 검색 성능 재측정은 안 했다 |
 
 ## 미완료
 

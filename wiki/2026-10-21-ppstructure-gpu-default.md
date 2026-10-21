@@ -36,9 +36,9 @@ sources:
 - `scripts/bench_backends.py`(http → GPU 서버) 결과: 디지털 텍스트 1.000, 표 일치, OCR 유사도 0.92, 스키마 5/5.
 - 2026-10-21 같은 스크립트(`warm_bench.py`: warmup → digital.pdf로 한 번 예열 → 픽스처 6개 parse)로 다시 쟀다. 컨테이너 제한은 `--cpus 4 --memory 6g`이었다. 결과는 **0.33 s/page**, 컨테이너 최대 메모리 3.6 GiB, warmup 12.4 s.
 
-## 측정: CPU (pgx DGX Spark aarch64, 2026-10-21, 실제 실행)
+## 측정: CPU (DGX Spark aarch64, 2026-10-21, 실제 실행)
 
-- 컨테이너 제한: `--cpus 4 --memory 16g`, `cpu_threads=4`, `OMP_NUM_THREADS=4`. 이미지는 pgx에서 arm64로 빌드했다(1.79 GB, paddlepaddle 3.3.1 CPU).
+- 컨테이너 제한: `--cpus 4 --memory 16g`, `cpu_threads=4`, `OMP_NUM_THREADS=4`. 이미지는 DGX Spark에서 arm64로 빌드했다(1.79 GB, paddlepaddle 3.3.1 CPU).
 - 측정 조건과 대상(픽스처 11페이지, 구조 분석 8회, OCR 3회)은 GPU와 같다. 결과는 다음과 같다.
   - **17.6 s/page**. GPU의 약 40~50배다(GPU 0.33~0.42 s/page 기준).
   - 최대 메모리 11.55 GiB(cgroup `memory.peak`).
@@ -51,7 +51,7 @@ sources:
 
 ## 알려진 문제: aarch64에서 import 순서
 
-- 증상: pgx(aarch64) CPU에서 pymupdf(`fitz`)를 paddle보다 먼저 import하면 PP-StructureV3 첫 모델 생성에서 segfault가 난다. 위치는 `AnalysisPredictor::SaveOrLoadPirParameters`의 `std::filesystem::path` 소멸자다.
+- 증상: DGX Spark(aarch64) CPU에서 pymupdf(`fitz`)를 paddle보다 먼저 import하면 PP-StructureV3 첫 모델 생성에서 segfault가 난다. 위치는 `AnalysisPredictor::SaveOrLoadPirParameters`의 `std::filesystem::path` 소멸자다.
 - 재현 결과(같은 컨테이너, 첫 import만 바꿈):
 
   | 먼저 import | 결과 |
@@ -70,7 +70,7 @@ sources:
 ## 사고 기록
 
 - 로컬(WSL, 메모리 15 GB)에서 PP-StructureV3 CPU를 프로세스 안에서 돌리다가 PC가 멈췄다. 코어와 메모리 제한 없이 돌렸고, 동시에 GPU 컨테이너가 떠 있었으며 pip 설치도 진행 중이었다.
-- 이후 무거운 작업은 자원 제한(`--cpus`, `--memory`, 스레드 수)을 건 컨테이너에서 하나씩 실행한다. AGENTS.md에 따라 pgx에서 실행한다.
+- 이후 무거운 작업은 자원 제한(`--cpus`, `--memory`, 스레드 수)을 건 컨테이너에서 하나씩 실행한다. AGENTS.md에 따라 DGX Spark에서 실행한다.
 
 ## 미완료·미검증
 
@@ -81,6 +81,6 @@ sources:
 
 ## 정리한 자원
 
-- pgx: `~/folio-ppcpu-test`와 `folio-structure:ppcpu-test` 이미지(작업 후 삭제).
+- DGX Spark: `~/folio-ppcpu-test`와 `folio-structure:ppcpu-test` 이미지(작업 후 삭제).
 - 로컬: `folio-gpu-test` 컨테이너.
 - 남김: 로컬 `folio-structure:0.1.0-gpu` 이미지와 `folio-gpu-models` 볼륨은 재측정용으로 남겼다. `0.1.0-cpu`와 `search-e2e-cpu` 태그는 다른 세션 것일 수 있어 건드리지 않았다.

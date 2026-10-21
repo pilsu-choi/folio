@@ -22,7 +22,7 @@ sources:
 
 - 작업 기준: 원격 저장소가 없어서 로컬 `dev`(generation merge `464173f`)에서 `feat/chat-ui` worktree를 만들어 작업하고 로컬 `dev`에 merge했다. push는 하지 않았다.
 - 사용자 요청: RAG용 기본 Chat UI → 멀티턴 → SSO 연동과 대화 메시지 CRUD 백엔드를 포함한 기본 App. generation 세션과 협의해서 진행.
-- 결정(사용자): LLM은 우선 Claude API, 나중에 pgx spark의 vLLM으로 교체. 멀티턴 지원. 스트리밍은 우선 하지 않음.
+- 결정(사용자): LLM은 우선 Claude API, 나중에 DGX Spark의 vLLM으로 교체. 멀티턴 지원. 스트리밍은 우선 하지 않음.
 - 결정(사용자): UI는 generation 세션이 만든 `POST /v1/chat` 위에 얹는다. 백엔드 로직(재작성·프롬프트·인용)은 중복으로 만들지 않는다.
 - generation 세션(folio-c1)과 합의한 내용:
   - `/v1/chat` 계약을 고정한다. 바꾸거나 스트리밍을 추가하면 먼저 알린다.
@@ -85,8 +85,8 @@ flowchart LR
 
 ## 남은 작업
 
-- pgx spark vLLM이 준비되면 `generation.chat`을 `folio.generation:http`로 바꾸고 실제 질의로 확인한다.
-- 실제 IdP로 확인한다(Keycloak 컨테이너는 pgx spark에서 띄운다). RP-initiated logout을 붙일지 정한다.
+- DGX Spark vLLM이 준비되면 `generation.chat`을 `folio.generation:http`로 바꾸고 실제 질의로 확인한다.
+- 실제 IdP로 확인한다(Keycloak 컨테이너는 DGX Spark에서 띄운다). RP-initiated logout을 붙일지 정한다.
 - Compose·Helm에 `chat` 서비스를 넣을지 정한다(이미지 extras 변경이 필요하다).
 - 스트리밍: `/v1/chat`에 SSE가 생기면 App도 그대로 전달하게 바꾼다(folio-c1과 합의).
 - 대화 보존 기간·감사 로그·관리자 조회는 범위 밖이다.

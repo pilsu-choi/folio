@@ -99,7 +99,7 @@
 
 - 원인 확인: 실제 표에서 PP-StructureV3는 `cell_box_list`를 오른쪽 아래 셀부터 돌려준다(t08: 첫 상자 y=558 마지막 행, x 오른쪽→왼쪽). 어댑터는 이 목록을 `pred_html`의 `<td>` 순서(왼쪽 위부터)와 그대로 `zip`해서 표가 행·열 모두 뒤집혔다. 합성 표(t01)는 상자가 왼쪽 위부터 와서 문제가 없었다.
 - 수정: `_reading_order`로 상자를 위→아래(행은 최소 셀 높이의 절반 이내 윗변끼리 묶음), 왼→오른쪽으로 정렬한 뒤 짝짓는다. 회귀 테스트 `test_ppstructure_cell_reading_order`.
-- 재측정(pgx CPU, `inspect_table.py`, 10개 표만, 시간 미측정):
+- 재측정(DGX Spark CPU, `inspect_table.py`, 10개 표만, 시간 미측정):
 
 | 표 | 수정 전 | 수정 후 | Docling |
 |---|---|---|---|
@@ -121,9 +121,9 @@
 - PP digital d01~d08은 중단된 실행에서 이어받음(품질 값만 신뢰, 시간 아님). PP 4개 샤드는 스레드 4개씩.
 - 모든 결과는 공개 문서 기반 잠정치. 고객사 샘플로 재검증.
 
-## 다운로드 / 설치 (pgx)
-- 환경(가상환경은 pgx `~/folio-m1-bench/`): venv-docling 5.9GB (torch 2.14.1+cu130, docling), venv-paddle 1.6GB (paddlepaddle-gpu 3.3.1 cu129 wheel, paddleocr[doc-parser]), venv-paddle130 4.0GB (nightly 3.5.0.dev20260915 cu130, GPU 검증용, 삭제 가능).
+## 다운로드 / 설치 (DGX Spark)
+- 환경(가상환경은 DGX Spark `~/folio-m1-bench/`): venv-docling 5.9GB (torch 2.14.1+cu130, docling), venv-paddle 1.6GB (paddlepaddle-gpu 3.3.1 cu129 wheel, paddleocr[doc-parser]), venv-paddle130 4.0GB (nightly 3.5.0.dev20260915 cu130, GPU 검증용, 삭제 가능).
 - Docling 모델(HF 캐시): docling-project/docling-layout-heron, docling-project/docling-models(TableFormer), RapidOCR korean/latin ONNX (패키지 내장 또는 첫 실행 다운로드). HF blobs에는 다른 세션 모델도 섞여 있어 정확한 크기 분리 불가(레이아웃+TableFormer 합계 수백 MB 수준, 미측정).
 - PaddleOCR(`~/.paddlex/official_models`): PP-DocLayout_plus-L 125M, RT-DETR-L_wired_table_cell_det 124M, RT-DETR-L_wireless_table_cell_det 124M, SLANeXt_wired 349M, SLANet_plus 7.8M, PP-OCRv5_server_det 85M, korean_PP-OCRv5_mobile_rec 14M, PP-LCNet_x1_0_doc_ori 6.7M, PP-LCNet_x1_0_table_cls 6.7M, PP-LCNet_x1_0_textline_ori 6.7M. 합계 약 850MB. 40GB 초과 단일 모델 없음.
-- 원본 출력(pgx): `~/folio-m1-bench/out/backends/` (`docling_cuda.json`, `docling_cpu.json`, `ppstructure_cpu.json`(병합), `ppstructure_cpu_shard*.json`, `retime_*.json`, 로그). 로컬 재현 파일: `run_manifest.py`, `run_all.sh`, `shard.py`, `merge.py`, `summarize.py`.
+- 원본 출력(DGX Spark): `~/folio-m1-bench/out/backends/` (`docling_cuda.json`, `docling_cpu.json`, `ppstructure_cpu.json`(병합), `ppstructure_cpu_shard*.json`, `retime_*.json`, 로그). 로컬 재현 파일: `run_manifest.py`, `run_all.sh`, `shard.py`, `merge.py`, `summarize.py`.
 - 재현: `venv-uv`로 `uv venv`; docling venv는 `uv pip install --index-url https://download.pytorch.org/whl/cu130 --extra-index-url https://pypi.org/simple --index-strategy unsafe-best-match torch torchvision` 후 `docling jsonschema -e folio-src`; paddle venv는 `paddlepaddle-gpu==3.3.1 -i https://www.paddlepaddle.org.cn/packages/stable/cu129/` 후 `paddleocr[doc-parser]`.
