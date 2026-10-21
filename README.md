@@ -88,7 +88,7 @@ Airflow에서는 예시 DAG(`project-template/dags/folio_ingest.py`)가 folio �
 ```mermaid
 flowchart TD
     In["입력 파일"] --> T{"형식?"}
-    T -- "PPTX · XLSX · MD · TXT" --> N["원본 구조 그대로 읽기<br/>구조 분석·OCR 없음<br/>그림만 VLM 설명"]
+    T -- "PPTX · XLSX · MD · TXT" --> N["원본 구조 그대로 읽기<br/>구조 분석·OCR 없음<br/>그림만 VLM 설명<br/>(XLSX 표 헤더는 VLM 텍스트 질의 가능)"]
     T -- "DOCX · HWPX · HWP" --> X["PDF로 변환<br/>convert 서버(LibreOffice · rhwp)"]
     X --> Q
     T -- "이미지" --> IMG

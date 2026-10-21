@@ -18,7 +18,7 @@ Oct 20, 2026 · @pilsu
 ### 목표
 
 1. 고객사 구축을 **스키마 파일 + 파이프라인 YAML + 매퍼 함수** 세 가지 작성만으로 끝낸다.
-2. 디지털 텍스트(PDF 텍스트 레이어, DOCX·HWPX·PPTX·XLSX·Markdown·TXT 원본)는 OCR·VLM 없이 파싱한다. 이미지 콘텐츠(이미지 파일, 스캔 페이지, 문서 안 그림·차트)는 VLM으로 처리하는 것을 기본값으로 한다.
+2. 디지털 텍스트(PDF 텍스트 레이어, DOCX·HWPX·PPTX·XLSX·Markdown·TXT 원본)는 OCR·VLM 없이 파싱한다(예외: VLM이 켜져 있으면 XLSX 표 헤더 행 수를 파일에서 알 수 없을 때 VLM에 텍스트로 묻는다, `xlsx_header_llm=False`로 끔). 이미지 콘텐츠(이미지 파일, 스캔 페이지, 문서 안 그림·차트)는 VLM으로 처리하는 것을 기본값으로 한다.
 7. 청킹은 고정 길이가 아니라 문서 구조를 따르고, `max_tokens` 안에서 가능한 한 큰 의미 단위(섹션·표·목록)를 쪼개지 않는다.
 3. 같은 `run_pipeline` 함수를 API 워커, Airflow, 노트북에서 똑같이 실행한다.
 4. 매핑이나 스키마가 바뀌어도 저장된 Document JSON부터 재처리해서 OCR을 다시 하지 않는다.
@@ -100,7 +100,7 @@ P0는 첫 릴리스에 반드시 포함, P1은 두 번째 마일스톤, P2는 �
 | FR-20 | Parse | DOCX·HWPX `convert` 모드(PDF 변환 후 Parse 경로), 기본값 | P1 | DOCX·HWPX 샘플이 페이지·bbox 포함 Document JSON으로 출력 |
 | FR-21 | Parse | DOCX·HWPX `native` 모드(XML 직접 파싱) | P0 | 헤딩·표 구조가 원본과 일치, 모델 호출 0회 |
 | FR-27 | Parse | PPTX `native` 파싱: 슬라이드 = 페이지, 제목 → `heading`, 텍스트 상자 → `paragraph`·`list`(읽기 순서), 표 → `cells`, 그림 → `figure`(VLM 설명), 발표자 노트는 옵션. 도형 위치로 bbox 계산 | P1 | 슬라이드 수·제목·표 셀이 원본과 일치, 텍스트 블록에 구조 분석 호출 0회 |
-| FR-28 | Parse | XLSX `native` 파싱: 시트 = 페이지, 시트 이름 → `section_path`, 데이터 영역 → `table`(병합 셀은 `spans`, 수식은 저장된 값, 헤더 행 수는 `header_rows`), 차트·이미지 → `figure`. 숨김 시트 제외는 옵션 | P1 | 샘플의 시트별 행·열 수와 셀 값이 원본과 일치, 모델 호출 0회 |
+| FR-28 | Parse | XLSX `native` 파싱: 시트 = 페이지, 시트 이름 → `section_path`, 데이터 영역 → `table`(병합 셀은 `spans`, 수식은 저장된 값, 헤더 행 수는 `header_rows`), 차트·이미지 → `figure`. 숨김 시트 제외는 옵션 | P1 | 샘플의 시트별 행·열 수와 셀 값이 원본과 일치, VLM 꺼짐 또는 헤더가 파일에 적힌 표는 모델 호출 0회, 그 밖의 2×2 이상 표 영역은 텍스트 요청 1회 |
 | FR-29 | Parse | Markdown·TXT `native` 파싱: Markdown은 헤딩·목록·GFM 표·코드 블록을 블록으로, TXT는 빈 줄 단위 `paragraph`로 변환. 인코딩 자동 판별(UTF-8, CP949·EUC-KR) | P1 | 헤딩 계층이 `section_path`와 일치, CP949 TXT 샘플이 글자 깨짐 없이 출력, 모델 호출 0회 |
 | FR-07 | Chunk | 기본 전략 `adaptive`: 문서 구조 트리에서 `max_tokens` 안에 들어가는 가장 큰 의미 단위를 청크로 만든다([청킹](#청킹)). 대안 전략 `page`·`fixed`, 파라미터 덮어쓰기. 청크 출력은 Chunk Record 계약으로 검증 | P0 | `max_tokens` 이하인 섹션은 청크 1개로 유지, `max_tokens` 이하인 표·목록은 분할되지 않음, 초과 청크·헤딩만 있는 청크 0개, 필수 필드가 빠지면 chunk 단계에서 실패 |
 | FR-08 | Map | 매퍼 함수 `(doc, chunk) -> dict` 호출, 미지정 시 공통 필드만 채움 | P0 | 매퍼가 필수 필드를 지우면 명확한 에러로 실패 |
