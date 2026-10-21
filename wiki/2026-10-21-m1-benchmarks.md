@@ -112,7 +112,7 @@ PyPI 4.0.12(2026-10-11) 기준 Apache-2.0에 추가 조건이 붙는다. 계열�
 
 - 첫 고객사 샘플로 세 결론을 다시 확인한다.
 - 청킹 기본값을 512/64로 바꿀지, VLM을 Qwen3.5-9B로 정할지 사용자 결정.
-- VLM 출력용 HTML 표 파서, Qwen3.5-9B FP8 서빙 속도 확인.
+- Qwen3.5-9B FP8 서빙 속도 확인. (VLM 출력용 HTML 표 파서는 적용: [ocr_first 기록](./2026-10-21-vlm-scan-ocr-first.md))
 - 스캔 페이지 VLM 정책은 [ocr_first 기록](./2026-10-21-vlm-scan-ocr-first.md)으로 이어졌다.
 - `제N조` 섹션 적용 후 청킹 Eval 재측정(d12·d13).
 - ARM GPU 호스트에서 PP-StructureV3 GPU를 쓸 방법(소스 빌드 등) 또는 Docling 기본 여부.
