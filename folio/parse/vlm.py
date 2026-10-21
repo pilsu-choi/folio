@@ -22,12 +22,12 @@ from folio._loader import load_callable
 from folio.logging import clip, log_event, ms_since
 
 PROMPTS = {
-    "page": ("Convert this document page to Markdown. Use # for headings, '-' for list items and GitHub "
-             "pipe tables for tables. Output only the Markdown."),
+    "page": ("Convert this document page to Markdown. Use # for headings and '-' for list items. Write tables "
+             "as HTML <table> with rowspan/colspan for merged cells. Output only the Markdown."),
     "figure": ("Describe this figure for search. Keep all numbers, labels, legends and axis titles. "
                "Write in the language of the text in the figure. Output a short plain-text description."),
-    "table": ("Convert this table to a GitHub pipe table in Markdown. Keep every cell text exactly. "
-              "Output only the table."),
+    "table": ("Convert this table to HTML. Use <table>, <tr>, <th>/<td> and rowspan/colspan for merged cells. "
+              "Keep every cell text exactly. Output only the HTML."),
 }
 OFF = (False, None, "off", "none", "")
 

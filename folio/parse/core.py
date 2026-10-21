@@ -405,6 +405,8 @@ class _Run:
                 if tb:
                     b.update(cells=tb["cells"], text=tb["text"], text_source="vlm")
                     b.pop("spans", None)
+                    if tb.get("spans"):
+                        b["spans"] = tb["spans"]
                 elif md is not None:
                     self.sess.note(n, "table", "no table in response")
         blocks.sort(key=lambda b: (round(b["bbox"][1]), b["bbox"][0]))

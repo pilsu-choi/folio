@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import threading
-from html.parser import HTMLParser
 
 from folio.backends.base import PageStructure, Region, Table, TableCell, Word
+from folio.parse.html_table import table_cells
 
 # layout label -> (region type, heading level)
 _LABELS: dict[str, tuple[str, int | None]] = {
@@ -25,39 +25,6 @@ _LABELS: dict[str, tuple[str, int | None]] = {
     "inline_formula": ("formula", None), "formula_number": ("formula", None),
     "algorithm": ("paragraph", None),
 }
-
-
-class _GridParser(HTMLParser):
-    """Collect (row, col, rowspan, colspan) per <td>/<th> in document order, honoring spans."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.cells: list[tuple[int, int, int, int]] = []
-        self._row = -1
-        self._col = 0
-        self._busy: set[tuple[int, int]] = set()
-
-    def handle_starttag(self, tag, attrs):
-        if tag == "tr":
-            self._row += 1
-            self._col = 0
-        elif tag in ("td", "th"):
-            a = dict(attrs)
-            rs = max(int(a.get("rowspan") or 1), 1)
-            cs = max(int(a.get("colspan") or 1), 1)
-            while (self._row, self._col) in self._busy:
-                self._col += 1
-            self.cells.append((self._row, self._col, rs, cs))
-            for r in range(self._row, self._row + rs):
-                for c in range(self._col, self._col + cs):
-                    self._busy.add((r, c))
-            self._col += cs
-
-
-def _grid(html: str) -> list[tuple[int, int, int, int]]:
-    p = _GridParser()
-    p.feed(html or "")
-    return p.cells
 
 
 def _box(b) -> list[float]:
@@ -149,7 +116,7 @@ class PPStructureBackend:
             cells_px = t.get("cell_box_list")
             cells_px = [] if cells_px is None else _reading_order([_box(c) for c in cells_px])  # numpy array
             html = t.get("pred_html") or ""
-            grid = _grid(html)
+            grid = [cell[:4] for cell in next(iter(table_cells(html)), [])]
             if i < len(table_boxes):
                 tb = table_boxes[i][0]
             elif cells_px:

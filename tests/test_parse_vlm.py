@@ -225,3 +225,14 @@ def test_figure_description_keeps_text_read_in_region(stub):
                   vlm=cfg, vlm_scan="ocr_first")
     (fig,) = [b for _, b in doc.iter_blocks() if b.type == "figure"]
     assert fig.text.startswith("매출 100억") and "Figure: " in fig.text and fig.text_source == "ocr"
+
+
+def test_vlm_html_table_keeps_merged_cells():
+    def vlm(png, task="page"):
+        return "<table><tr><td colspan=2>합계</td></tr><tr><td>a</td><td>1</td></tr></table>" if task == "table" else ""
+
+    doc = default(str(FIX / "digital.pdf"), backend=WeakTableBackend(), vlm=vlm)
+    tb = [b for _, b in doc.iter_blocks() if b.type == "table"]
+    assert tb and all(b.text_source == "vlm" and b.cells == [["합계", ""], ["a", "1"]] for b in tb)
+    assert all([(s.row, s.col, s.rowspan, s.colspan) for s in b.spans] == [(0, 0, 1, 2)] for b in tb)
+    validate_doc(doc)

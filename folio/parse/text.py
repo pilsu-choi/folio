@@ -7,6 +7,7 @@ import re
 from markdown_it import MarkdownIt
 
 from folio.parse.assemble import apply_sections, table_text
+from folio.parse.html_table import table_cells, to_grid
 
 _MD = MarkdownIt("commonmark").enable("table")
 
@@ -53,8 +54,35 @@ def _inline(tok) -> tuple[str, list[str]]:
     return "".join(out).strip(), imgs
 
 
+_TABLE_TAG = re.compile(r"<(/?)table\b[^>]*>", re.I)
+_FENCED_TABLE = re.compile(r"```[\w-]*[ \t]*\n(\s*<table\b.*?</table>\s*)\n?```", re.I | re.S)
+_SLOT = "FOLIOHTMLTABLE{}"
+
+
+def _lift_tables(md: str) -> tuple[str, list[str]]:
+    """Cut top-level <table>...</table> out of `md` (also when fenced as ```html) and leave a placeholder
+    paragraph, so blank lines inside a table do not split it into several Markdown blocks."""
+    md = _FENCED_TABLE.sub(lambda m: m.group(1), md)
+    out, tables, depth, start, last = [], [], 0, 0, 0
+    for m in _TABLE_TAG.finditer(md):
+        if not m.group(1):
+            if depth == 0:
+                start = m.start()
+            depth += 1
+        elif depth:
+            depth -= 1
+            if depth == 0:
+                out.append(md[last:start] + f"\n\n{_SLOT.format(len(tables))}\n\n")
+                tables.append(md[start:m.end()])
+                last = m.end()
+    out.append(md[last:])
+    return "".join(out), tables
+
+
 def md_blocks(md: str, source: str = "native", box: list[float] | None = None) -> list[dict]:
-    """Markdown -> block dicts (no section_path). `box` is used as bbox for every block (VLM output)."""
+    """Markdown -> block dicts (no section_path). `box` is used as bbox for every block (VLM output).
+    HTML tables become table blocks with `spans` (rowspan/colspan)."""
+    md, html = _lift_tables(md)
     toks = _MD.parse(md)
     blocks: list[dict] = []
 
@@ -70,6 +98,12 @@ def md_blocks(md: str, source: str = "native", box: list[float] | None = None) -
         if t.type == "heading_open":
             text, _ = _inline(toks[i + 1])
             add({"type": "heading", "text": text, "level": int(t.tag[1])})
+            i += 3
+        elif t.type == "paragraph_open" and (m := re.fullmatch(_SLOT.format(r"(\d+)"), toks[i + 1].content.strip())):
+            for cells in table_cells(html[int(m.group(1))]):
+                grid, spans = to_grid(cells)
+                if grid:
+                    add({"type": "table", "text": table_text(grid), "cells": grid, **({"spans": spans} if spans else {})})
             i += 3
         elif t.type == "paragraph_open":
             text, imgs = _inline(toks[i + 1])
